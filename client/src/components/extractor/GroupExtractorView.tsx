@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { useContact } from '../../context/ContactContext';
 import { ExtractedGroup, ExtractedMember, ExtractionQuotaInfo } from '../../types';
 import {
   Users,
@@ -27,7 +28,8 @@ import {
   Square,
   Filter,
   ArrowRight,
-  Key
+  Key,
+  MessageCircle
 } from 'lucide-react';
 
 interface GroupExtractorViewProps {
@@ -40,6 +42,7 @@ type MemberFilter = 'all' | 'lid' | 'phone' | 'admin';
 
 export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunchBulkLid, onNavigateToSubscription }) => {
   const { user } = useAuth();
+  const { phone, getWhatsAppUrl } = useContact();
   const {
     isConnected,
     setIsQrModalOpen,
@@ -661,6 +664,18 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
                   Upgrade License
                 </button>
               )}
+
+              <a
+                href={getWhatsAppUrl('Hello! I would like to inquire about group extraction daily limits / upgrade.')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-bold transition flex items-center gap-1.5 shrink-0 shadow-2xs font-mono"
+                title={`WhatsApp Admin: ${phone}`}
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="hidden sm:inline">WhatsApp:</span>
+                <span>{phone}</span>
+              </a>
             </div>
           )}
         </div>

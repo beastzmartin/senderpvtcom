@@ -18,3 +18,4 @@ services:
     volumes:
       # Crucial: Persists your SQLite database and WhatsApp login session keys across restarts
       - ./server/data:/app/data
+

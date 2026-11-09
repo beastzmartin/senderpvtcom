@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useContact } from '../../context/ContactContext';
 import { StatusBadge } from './StatusBadge';
 import {
   MessageSquare,
@@ -24,7 +25,11 @@ import {
   CreditCard,
   Key,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Phone,
+  ExternalLink,
+  Edit2,
+  MessageCircle
 } from 'lucide-react';
 
 export type AppTab =
@@ -57,6 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     setIsDeviceManagerOpen
   } = useWhatsApp();
   const { user, logout } = useAuth();
+  const { phone, openWhatsApp, openEditModal } = useContact();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isSwitchingOpen, setIsSwitchingOpen] = useState(false);
 
@@ -380,6 +386,48 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         </div>
       )}
 
+      {/* WhatsApp Support & Direct Contact Widget */}
+      <div className="mx-3 my-2 p-3 bg-gradient-to-br from-emerald-50 via-teal-50/40 to-slate-50 border border-emerald-200/90 rounded-2xl shadow-2xs">
+        <div className="flex items-center justify-between gap-1 mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <div className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center text-white shrink-0">
+              <MessageCircle className="w-3 h-3" />
+            </div>
+            <span className="text-[11px] font-bold text-emerald-950 uppercase tracking-wider">
+              WhatsApp Support
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={openEditModal}
+            className="p-1 rounded-md text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100/70 transition"
+            title="Edit WhatsApp number"
+          >
+            <Edit2 className="w-3 h-3" />
+          </button>
+        </div>
+
+        <a
+          href={`https://wa.me/${phone.replace(/[^0-9]/g, '')}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs font-bold text-slate-800 hover:text-emerald-700 font-mono flex items-center gap-1 transition"
+          title="Click to chat on WhatsApp"
+        >
+          <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+          <span>{phone}</span>
+        </a>
+
+        <button
+          type="button"
+          onClick={() => openWhatsApp('Hello! I am reaching out for support with WhatsApp Sender.')}
+          className="w-full mt-2 py-1.5 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-xs shadow-emerald-700/10 cursor-pointer"
+        >
+          <span>Chat on WhatsApp</span>
+          <ExternalLink className="w-3 h-3" />
+        </button>
+      </div>
+
       {/* Footer Profile & Logout Area */}
       <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
         <div
@@ -453,6 +501,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => openWhatsApp('Hello! I need support with WhatsApp Sender.')}
+            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 transition shadow-2xs"
+            title={`WhatsApp Support: ${phone}`}
+          >
+            <MessageCircle className="w-4 h-4 text-emerald-600" />
+          </button>
+
           <button
             type="button"
             onClick={() => setIsDeviceManagerOpen(true)}

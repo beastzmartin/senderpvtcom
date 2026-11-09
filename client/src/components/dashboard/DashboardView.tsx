@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../../services/api';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { useContact } from '../../context/ContactContext';
 import { DashboardStats } from '../../types';
 import { StatsOverview } from './StatsOverview';
 import { QuickSender } from './QuickSender';
 import { RecentMessages } from './RecentMessages';
-import { RefreshCw, QrCode } from 'lucide-react';
+import { RefreshCw, QrCode, MessageCircle, Phone, Edit2 } from 'lucide-react';
 
 interface DashboardViewProps {
   onNavigateToConversation: (conversationId: string) => void;
@@ -13,6 +14,7 @@ interface DashboardViewProps {
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToConversation }) => {
   const { isConnected, setIsQrModalOpen, socket } = useWhatsApp();
+  const { phone, getWhatsAppUrl, openEditModal } = useContact();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -83,19 +85,43 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToConver
       )}
 
       {/* Header with Refresh */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Overview Dashboard</h2>
           <p className="text-xs text-slate-500">Real-time metrics, quick sender and recent logs</p>
         </div>
-        <button
-          type="button"
-          onClick={handleManualRefresh}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition border border-slate-200 shadow-2xs"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh Stats
-        </button>
+
+        <div className="flex items-center gap-2">
+          <a
+            href={getWhatsAppUrl('Hello! I have a question about WhatsApp Sender.')}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition border border-emerald-200 shadow-2xs font-mono"
+            title={`WhatsApp Support: ${phone}`}
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden sm:inline">WhatsApp:</span>
+            <span>{phone}</span>
+          </a>
+
+          <button
+            type="button"
+            onClick={openEditModal}
+            className="p-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-400 hover:text-emerald-700 transition border border-slate-200 shadow-2xs"
+            title="Edit WhatsApp number"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition border border-slate-200 shadow-2xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh Stats
+          </button>
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -112,6 +138,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToConver
             onSelectMessage={onNavigateToConversation}
           />
         </div>
+      </div>
+
+      {/* Quick Help & Contact Card */}
+      <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-3xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+            <MessageCircle className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-bold text-white">Need Technical Support or High-Volume Licenses?</h4>
+              <button
+                type="button"
+                onClick={openEditModal}
+                className="text-slate-400 hover:text-white p-0.5"
+                title="Edit WhatsApp number"
+              >
+                <Edit2 className="w-3 h-3" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-300">
+              Get immediate assistance for multi-device setup, LID messaging, anti-ban guidelines, and custom quotas.
+            </p>
+          </div>
+        </div>
+        <a
+          href={getWhatsAppUrl('Hello! I am reaching out from the WhatsApp Sender dashboard.')}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2 shrink-0 font-mono shadow-xs"
+        >
+          <Phone className="w-3.5 h-3.5 text-slate-950" />
+          <span>Chat {phone}</span>
+        </a>
       </div>
     </div>
   );

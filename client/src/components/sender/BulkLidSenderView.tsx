@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { useContact } from '../../context/ContactContext';
 import {
   BulkCampaign,
   BulkCampaignRecipient,
@@ -46,7 +47,8 @@ import {
   Calendar,
   Smartphone,
   Layers,
-  Key
+  Key,
+  MessageCircle
 } from 'lucide-react';
 
 interface BulkLidSenderViewProps {
@@ -98,6 +100,7 @@ export const BulkLidSenderView: React.FC<BulkLidSenderViewProps> = ({
 }) => {
   const { user } = useAuth();
   const { isConnected, setIsQrModalOpen, socket, devices, activeSessionId, setIsDeviceManagerOpen } = useWhatsApp();
+  const { phone, getWhatsAppUrl } = useContact();
 
   // Multi-Device settings
   const [deviceMode, setDeviceMode] = useState<'round_robin' | 'single'>('round_robin');
@@ -998,6 +1001,18 @@ export const BulkLidSenderView: React.FC<BulkLidSenderViewProps> = ({
                   {user?.role === 'admin' ? 'Change Limits (Admin)' : 'Upgrade License'}
                 </button>
               )}
+
+              <a
+                href={getWhatsAppUrl('Hello! I would like to inquire about WhatsApp Bulk LID daily limit / upgrade.')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-bold transition flex items-center gap-1.5 shadow-2xs font-mono"
+                title={`Contact Admin on WhatsApp: ${phone}`}
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="hidden sm:inline">WhatsApp:</span>
+                <span>{phone}</span>
+              </a>
             </div>
           </div>
         </div>

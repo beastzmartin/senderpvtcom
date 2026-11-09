@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { useContact } from '../../context/ContactContext';
 import { SubscriptionPlan, UserSubscriptionDetails, LicenseKeyRecord, ResellerInfo, ResellerStats } from '../../types';
 import {
   Key,
@@ -30,12 +31,16 @@ import {
   Coins,
   UserPlus,
   Award,
-  Sliders
+  Sliders,
+  Phone,
+  ExternalLink,
+  Edit2
 } from 'lucide-react';
 
 export const SubscriptionView: React.FC = () => {
   const { user, refreshUser } = useAuth();
   const { devices } = useWhatsApp();
+  const { phone, getWhatsAppUrl, openWhatsApp, openEditModal } = useContact();
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subscription, setSubscription] = useState<UserSubscriptionDetails | null>(null);
@@ -765,6 +770,19 @@ export const SubscriptionView: React.FC = () => {
               <p className="text-xs text-slate-500 mt-1 max-w-xl">
                 Purchased a software license key from an authorized admin or reseller? Enter your key code below to activate your edition, unlock multi-device slots, and extend your validity immediately.
               </p>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-slate-500">Don't have a license key?</span>
+                <a
+                  href={getWhatsAppUrl('Hello! I would like to buy a software license key for WhatsApp Sender.')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 font-mono"
+                  title="Buy license on WhatsApp"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>WhatsApp Admin: {phone}</span>
+                </a>
+              </div>
             </div>
           </div>
 
@@ -823,6 +841,18 @@ export const SubscriptionView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2.5">
+              <a
+                href={getWhatsAppUrl('Hello Admin! I am a reseller and need more quota/credits.')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 text-xs font-bold transition flex items-center gap-1.5"
+                title={`WhatsApp Admin: ${phone}`}
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-purple-600" />
+                <span className="hidden sm:inline">WhatsApp Admin:</span>
+                <span className="font-mono">{phone}</span>
+              </a>
+
               <button
                 type="button"
                 onClick={() => setShowResellerGenModal(true)}
@@ -1017,6 +1047,43 @@ export const SubscriptionView: React.FC = () => {
 
       {/* License Editions Catalog */}
       <div className="space-y-4">
+        {/* WhatsApp Support & Instant Activation Banner */}
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 rounded-3xl p-5 sm:p-6 text-white shadow-lg shadow-emerald-700/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/20 flex items-center justify-center shrink-0">
+              <MessageCircle className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-bold">Direct WhatsApp Inquiries & Fast Activation</h4>
+                <button
+                  type="button"
+                  onClick={openEditModal}
+                  className="text-white/80 hover:text-white p-1 rounded-md hover:bg-white/10 transition"
+                  title="Edit WhatsApp number"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-xs text-emerald-100 mt-0.5">
+                Chat directly with administrator for license keys, custom limits, reseller pricing, or technical help.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
+            <a
+              href={getWhatsAppUrl('Hello! I would like to inquire about WhatsApp Sender licenses and activation.')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm font-mono"
+            >
+              <Phone className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{phone}</span>
+              <ExternalLink className="w-3 h-3 text-emerald-700" />
+            </a>
+          </div>
+        </div>
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-bold text-slate-900 tracking-tight">Available Software License Editions</h3>
@@ -1120,7 +1187,7 @@ export const SubscriptionView: React.FC = () => {
                     onClick={() => {
                       const msg = `Hello! I would like to buy a license key for Private WhatsApp Sender (${plan.name} - ${plan.max_devices} Devices, ${plan.daily_message_limit} msgs/day). Please share payment details.`;
                       copyToClipboard(msg);
-                      alert('Inquiry text copied to clipboard! You can now send it to the software administrator on WhatsApp.');
+                      openWhatsApp(msg);
                     }}
                     className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer ${
                       isCurrent
@@ -1133,8 +1200,19 @@ export const SubscriptionView: React.FC = () => {
                     }`}
                   >
                     <MessageCircle className="w-3.5 h-3.5" />
-                    {isCurrent ? 'Copy Renew Request' : isTrialPlan ? 'Trial Included on Signup' : `Request ${plan.name}`}
+                    {isCurrent ? 'Renew on WhatsApp' : isTrialPlan ? 'Trial Included on Signup' : `Request ${plan.name} on WhatsApp`}
                   </button>
+
+                  <a
+                    href={getWhatsAppUrl(`Hello! I would like to inquire about ${plan.name} edition.`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full text-center text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center justify-center gap-1 font-mono pt-0.5"
+                    title={`Chat on WhatsApp with Admin: ${phone}`}
+                  >
+                    <MessageCircle className="w-3 h-3 text-emerald-600" />
+                    <span>WhatsApp: {phone}</span>
+                  </a>
 
                   {isAdmin && (
                     <button

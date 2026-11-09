@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WhatsAppProvider } from './context/WhatsAppContext';
+import { ContactProvider } from './context/ContactContext';
 import { Sidebar, AppTab } from './components/common/Sidebar';
 import { QrModal } from './components/connection/QrModal';
 import { DeviceManagerModal } from './components/devices/DeviceManagerModal';
@@ -141,9 +142,11 @@ const MainLayout: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <AuthProvider>
-      <WhatsAppProvider>
-        <MainLayout />
-      </WhatsAppProvider>
+      <ContactProvider>
+        <WhatsAppProvider>
+          <MainLayout />
+        </WhatsAppProvider>
+      </ContactProvider>
     </AuthProvider>
   );
 };
