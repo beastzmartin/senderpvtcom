@@ -40,7 +40,7 @@ import {
 export const SubscriptionView: React.FC = () => {
   const { user, refreshUser } = useAuth();
   const { devices } = useWhatsApp();
-  const { phone, getWhatsAppUrl, openWhatsApp, openEditModal } = useContact();
+  const { phone, getWhatsAppUrl, openWhatsApp } = useContact();
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subscription, setSubscription] = useState<UserSubscriptionDetails | null>(null);
@@ -1054,17 +1054,7 @@ export const SubscriptionView: React.FC = () => {
               <MessageCircle className="w-6 h-6 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-base font-bold">Direct WhatsApp Inquiries & Fast Activation</h4>
-                <button
-                  type="button"
-                  onClick={openEditModal}
-                  className="text-white/80 hover:text-white p-1 rounded-md hover:bg-white/10 transition"
-                  title="Edit WhatsApp number"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <h4 className="text-base font-bold">Direct WhatsApp Inquiries & Fast Activation</h4>
               <p className="text-xs text-emerald-100 mt-0.5">
                 Chat directly with administrator for license keys, custom limits, reseller pricing, or technical help.
               </p>

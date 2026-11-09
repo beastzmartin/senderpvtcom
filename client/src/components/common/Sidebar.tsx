@@ -62,7 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     setIsDeviceManagerOpen
   } = useWhatsApp();
   const { user, logout } = useAuth();
-  const { phone, openWhatsApp, openEditModal } = useContact();
+  const { phone, openWhatsApp } = useContact();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isSwitchingOpen, setIsSwitchingOpen] = useState(false);
 
@@ -388,23 +388,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
 
       {/* WhatsApp Support & Direct Contact Widget */}
       <div className="mx-3 my-2 p-3 bg-gradient-to-br from-emerald-50 via-teal-50/40 to-slate-50 border border-emerald-200/90 rounded-2xl shadow-2xs">
-        <div className="flex items-center justify-between gap-1 mb-1.5">
-          <div className="flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center text-white shrink-0">
-              <MessageCircle className="w-3 h-3" />
-            </div>
-            <span className="text-[11px] font-bold text-emerald-950 uppercase tracking-wider">
-              WhatsApp Support
-            </span>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <div className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center text-white shrink-0">
+            <MessageCircle className="w-3 h-3" />
           </div>
-          <button
-            type="button"
-            onClick={openEditModal}
-            className="p-1 rounded-md text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100/70 transition"
-            title="Edit WhatsApp number"
-          >
-            <Edit2 className="w-3 h-3" />
-          </button>
+          <span className="text-[11px] font-bold text-emerald-950 uppercase tracking-wider">
+            WhatsApp Support
+          </span>
         </div>
 
         <a

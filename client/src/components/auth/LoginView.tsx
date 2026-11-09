@@ -24,7 +24,7 @@ import {
 
 export const LoginView: React.FC = () => {
   const { login, register } = useAuth();
-  const { phone, getWhatsAppUrl, openEditModal } = useContact();
+  const { phone, getWhatsAppUrl } = useContact();
   const [isRegisterMode, setIsRegisterMode] = useState(false);
 
   // Form fields
@@ -332,17 +332,7 @@ export const LoginView: React.FC = () => {
 
           {/* WhatsApp Support & Direct Inquiry */}
           <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col items-center justify-center gap-1.5 text-center">
-            <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-              <span>Need help, software activation, or a license key?</span>
-              <button
-                type="button"
-                onClick={openEditModal}
-                className="text-slate-400 hover:text-emerald-700 p-0.5"
-                title="Edit WhatsApp number"
-              >
-                <Edit2 className="w-3 h-3" />
-              </button>
-            </div>
+            <span className="text-[11px] text-slate-500">Need help, software activation, or a license key?</span>
             <a
               href={getWhatsAppUrl(
                 isRegisterMode
