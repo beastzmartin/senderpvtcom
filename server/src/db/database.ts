@@ -75,6 +75,66 @@ export function initDatabase(): Database.Database {
     } catch {}
   }
 
+  // Safe migration: Auto-upgrade users table if legacy CHECK constraint missing 'trial' exists
+  try {
+    const userTableMeta = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get() as { sql: string } | undefined;
+    if (userTableMeta && userTableMeta.sql && userTableMeta.sql.includes("CHECK(plan_tier IN ('free'")) {
+      console.log('[DB Migration] Detected legacy plan_tier CHECK constraint in users table. Upgrading table to support trial tier...');
+      db.pragma('foreign_keys = OFF');
+
+      const columnsInfo = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+      const colNames = columnsInfo.map((c) => c.name).join(', ');
+
+      db.exec(`
+        CREATE TABLE users_temp_migration AS SELECT * FROM users;
+        DROP TABLE users;
+      `);
+
+      db.exec(SCHEMA_SQL);
+
+      db.exec(`
+        INSERT OR IGNORE INTO users (${colNames}) SELECT ${colNames} FROM users_temp_migration;
+        DROP TABLE users_temp_migration;
+      `);
+
+      db.pragma('foreign_keys = ON');
+      console.log('[DB Migration] Users table successfully upgraded to support trial plan tier.');
+    }
+  } catch (err) {
+    console.error('[DB Migration] Error migrating users table check constraint:', err);
+    try { db.pragma('foreign_keys = ON'); } catch {}
+  }
+
+  // Safe migration: Auto-upgrade license_keys table if legacy CHECK constraint exists
+  try {
+    const keyTableMeta = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'license_keys'").get() as { sql: string } | undefined;
+    if (keyTableMeta && keyTableMeta.sql && keyTableMeta.sql.includes("CHECK(plan_tier IN ('free'")) {
+      console.log('[DB Migration] Detected legacy plan_tier CHECK constraint in license_keys table. Upgrading table...');
+      db.pragma('foreign_keys = OFF');
+
+      const columnsInfo = db.prepare("PRAGMA table_info(license_keys)").all() as Array<{ name: string }>;
+      const colNames = columnsInfo.map((c) => c.name).join(', ');
+
+      db.exec(`
+        CREATE TABLE license_keys_temp_migration AS SELECT * FROM license_keys;
+        DROP TABLE license_keys;
+      `);
+
+      db.exec(SCHEMA_SQL);
+
+      db.exec(`
+        INSERT OR IGNORE INTO license_keys (${colNames}) SELECT ${colNames} FROM license_keys_temp_migration;
+        DROP TABLE license_keys_temp_migration;
+      `);
+
+      db.pragma('foreign_keys = ON');
+      console.log('[DB Migration] License keys table successfully upgraded.');
+    }
+  } catch (err) {
+    console.error('[DB Migration] Error migrating license_keys table check constraint:', err);
+    try { db.pragma('foreign_keys = ON'); } catch {}
+  }
+
   // Ensure extraction_logs table exists
   db.exec(`
     CREATE TABLE IF NOT EXISTS extraction_logs (

@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   company_name TEXT,
   phone TEXT,
   role TEXT DEFAULT 'user' CHECK(role IN ('admin', 'reseller', 'user')),
-  plan_tier TEXT DEFAULT 'starter' CHECK(plan_tier IN ('free', 'starter', 'pro', 'enterprise')),
+  plan_tier TEXT DEFAULT 'trial' CHECK(plan_tier IN ('trial', 'free', 'starter', 'pro', 'enterprise')),
   subscription_status TEXT DEFAULT 'active' CHECK(subscription_status IN ('active', 'trialing', 'past_due', 'expired', 'cancelled')),
   subscription_expires_at TEXT,
   max_devices INTEGER DEFAULT 1,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 CREATE TABLE IF NOT EXISTS license_keys (
   id TEXT PRIMARY KEY,
   code TEXT UNIQUE NOT NULL,
-  plan_tier TEXT NOT NULL CHECK(plan_tier IN ('free', 'starter', 'pro', 'enterprise')),
+  plan_tier TEXT NOT NULL CHECK(plan_tier IN ('trial', 'free', 'starter', 'pro', 'enterprise')),
   duration_days INTEGER NOT NULL DEFAULT 30,
   max_devices_override INTEGER,
   daily_limit_override INTEGER,
