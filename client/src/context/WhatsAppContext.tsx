@@ -144,6 +144,9 @@ export const WhatsAppProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           // fallback
         }
       }
+      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        return 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
+      }
       return window.location.origin;
     };
 

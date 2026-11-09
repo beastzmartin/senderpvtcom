@@ -27,8 +27,22 @@ import {
   ResellerStats
 } from '../types';
 
-const RAW_API_URL = ((import.meta as any).env?.VITE_API_URL as string)?.trim();
-const API_BASE = RAW_API_URL ? RAW_API_URL.replace(/\/+$/, '') : '/api';
+const LIVE_BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
+
+const getApiBase = (): string => {
+  const envUrl = ((import.meta as any).env?.VITE_API_URL as string)?.trim();
+  if (envUrl) {
+    const clean = envUrl.replace(/\/+$/, '');
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
+  }
+  // In production (e.g. Vercel deployment), point directly to the live Cloudflare HTTPS tunnel
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${LIVE_BACKEND_URL}/api`;
+  }
+  return '/api';
+};
+
+const API_BASE = getApiBase();
 
 export function getAuthToken(): string | null {
   return localStorage.getItem('wa_auth_token');
