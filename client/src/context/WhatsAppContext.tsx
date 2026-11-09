@@ -132,7 +132,22 @@ export const WhatsAppProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Connect Socket.IO with auth token for per-user isolation
     const token = localStorage.getItem('wa_auth_token');
-    const newSocket = io(window.location.origin, {
+    
+    // Resolve socket server target URL
+    const getSocketUrl = (): string => {
+      const envUrl = ((import.meta as any).env?.VITE_API_URL as string)?.trim();
+      if (envUrl && envUrl.startsWith('http')) {
+        try {
+          const parsed = new URL(envUrl);
+          return parsed.origin;
+        } catch {
+          // fallback
+        }
+      }
+      return window.location.origin;
+    };
+
+    const newSocket = io(getSocketUrl(), {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,

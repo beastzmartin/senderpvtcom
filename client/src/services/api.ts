@@ -27,7 +27,8 @@ import {
   ResellerStats
 } from '../types';
 
-const API_BASE = '/api';
+const RAW_API_URL = ((import.meta as any).env?.VITE_API_URL as string)?.trim();
+const API_BASE = RAW_API_URL ? RAW_API_URL.replace(/\/+$/, '') : '/api';
 
 export function getAuthToken(): string | null {
   return localStorage.getItem('wa_auth_token');
