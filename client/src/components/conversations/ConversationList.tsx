@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { Conversation } from '../../types';
-import { Search, MessageSquare, Phone, Hash, Plus, Pin, X } from 'lucide-react';
+import { Search, MessageSquare, Phone, Hash, Plus, Pin, X, Trash2 } from 'lucide-react';
 
 interface ConversationListProps {
   conversations: Conversation[];
   activeId: string | null;
   onSelect: (conversation: Conversation) => void;
   onStartNewChat: () => void;
+  onDeleteConversation?: (id: string) => void;
+  onClearAllConversations?: () => void;
+  isClearing?: boolean;
 }
 
 export const ConversationList: React.FC<ConversationListProps> = ({
   conversations,
   activeId,
   onSelect,
-  onStartNewChat
+  onStartNewChat,
+  onDeleteConversation,
+  onClearAllConversations,
+  isClearing
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'phone' | 'lid' | 'unread' | 'pinned'>('all');
@@ -98,15 +104,29 @@ export const ConversationList: React.FC<ConversationListProps> = ({
             {conversations.length} total active threads
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onStartNewChat}
-          className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-sm flex items-center gap-1 text-xs font-semibold"
-          title="Start New Chat"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">New</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          {conversations.length > 0 && onClearAllConversations && (
+            <button
+              type="button"
+              disabled={isClearing}
+              onClick={onClearAllConversations}
+              className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1 text-xs font-semibold disabled:opacity-50"
+              title="Delete all chats from website storage only (your WhatsApp phone app stays safe)"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{isClearing ? 'Clearing...' : 'Clear All'}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onStartNewChat}
+            className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-sm flex items-center gap-1 text-xs font-semibold"
+            title="Start New Chat"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">New</span>
+          </button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -243,6 +263,21 @@ export const ConversationList: React.FC<ConversationListProps> = ({
                       >
                         <Pin className="w-3.5 h-3.5" />
                       </button>
+
+                      {/* Delete single chat from website storage */}
+                      {onDeleteConversation && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteConversation(conv.id);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-rose-600 transition"
+                          title="Delete chat from website storage only"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
 
                       {conv.unread_count > 0 && (
                         <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white font-bold text-[10px]">

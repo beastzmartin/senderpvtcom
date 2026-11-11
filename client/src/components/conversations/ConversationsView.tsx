@@ -20,6 +20,7 @@ export const ConversationsView: React.FC<ConversationsViewProps> = ({
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState<boolean>(false);
+  const [isClearing, setIsClearing] = useState<boolean>(false);
 
   // Fetch list of conversations
   const fetchConversations = useCallback(async () => {
@@ -125,6 +126,43 @@ export const ConversationsView: React.FC<ConversationsViewProps> = ({
     fetchConversations();
   };
 
+  const handleDeleteConversation = async (id: string) => {
+    if (!window.confirm('Delete this chat from website storage? (Your phone WhatsApp messages will NOT be deleted).')) {
+      return;
+    }
+    try {
+      await api.conversations.delete(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (activeConversation?.id === id) {
+        setActiveConversation(null);
+        setMessages([]);
+      }
+    } catch (err) {
+      console.error('[Conversations] Failed to delete chat:', err);
+    }
+  };
+
+  const handleClearAllConversations = async () => {
+    if (
+      !window.confirm(
+        'Clear ALL live chats & message history from the website panel to free storage?\n\nNote: This ONLY removes data from the website database. Your WhatsApp mobile app chats remain 100% safe and untouched.'
+      )
+    ) {
+      return;
+    }
+    setIsClearing(true);
+    try {
+      await api.conversations.deleteAll();
+      setConversations([]);
+      setActiveConversation(null);
+      setMessages([]);
+    } catch (err) {
+      console.error('[Conversations] Failed to clear all chats:', err);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   return (
     <div className="h-[calc(100vh-6.5rem)] rounded-2xl overflow-hidden border border-slate-200 shadow-sm flex bg-white">
       {/* Left Conversations Sidebar */}
@@ -136,6 +174,9 @@ export const ConversationsView: React.FC<ConversationsViewProps> = ({
           onStartNewChat={() => {
             if (onNavigateToSender) onNavigateToSender();
           }}
+          onDeleteConversation={handleDeleteConversation}
+          onClearAllConversations={handleClearAllConversations}
+          isClearing={isClearing}
         />
       </div>
 

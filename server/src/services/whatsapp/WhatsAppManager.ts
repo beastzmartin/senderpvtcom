@@ -540,4 +540,184 @@ export class WhatsAppManager extends EventEmitter {
       }
     }
   }
+
+  // ========================================================
+  // SUPER ADMIN: SESSION CONTROLLER & DEVICE TERMINATOR
+  // ========================================================
+
+  private getDirectorySizeBytes(dirPath: string): number {
+    let total = 0;
+    try {
+      if (!fs.existsSync(dirPath)) return 0;
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          total += this.getDirectorySizeBytes(fullPath);
+        } else {
+          try {
+            total += fs.statSync(fullPath).size;
+          } catch {}
+        }
+      }
+    } catch {}
+    return total;
+  }
+
+  public adminGetAllSessions(): Array<any> {
+    const db = getDatabase();
+    const rows = db.prepare(`
+      SELECT 
+        ws.*,
+        u.username, u.name as user_name, u.email as user_email, u.plan_tier as user_plan
+      FROM whatsapp_sessions ws
+      LEFT JOIN users u ON ws.user_id = u.id
+      ORDER BY ws.connected_at DESC, ws.created_at DESC
+    `).all() as any[];
+
+    return rows.map((row) => {
+      const provider = this.providers.get(row.session_id);
+      const liveStatus = provider ? provider.getStatus() : 'disconnected';
+      const accountInfo = provider ? provider.getAccountInfo() : null;
+      const sessionDir = path.resolve(config.sessionsDir, `baileys_${row.session_id}`);
+      const diskBytes = this.getDirectorySizeBytes(sessionDir);
+
+      return {
+        id: row.id,
+        session_id: row.session_id,
+        user_id: row.user_id,
+        username: row.username || 'system',
+        user_name: row.user_name || 'System',
+        user_email: row.user_email || null,
+        user_plan: row.user_plan || 'starter',
+        alias: row.alias,
+        is_default: row.is_default === 1,
+        status: liveStatus,
+        phone_number: accountInfo?.phone || row.phone_number || null,
+        jid: accountInfo?.jid || row.jid || null,
+        display_name: accountInfo?.name || row.display_name || null,
+        platform: accountInfo?.platform || row.platform || null,
+        connected_at: row.connected_at || null,
+        last_active_at: row.last_active_at || null,
+        created_at: row.created_at,
+        disk_bytes: diskBytes
+      };
+    });
+  }
+
+  public async adminDisconnectDevice(sessionId: string): Promise<void> {
+    const provider = this.providers.get(sessionId);
+    if (provider) {
+      await provider.disconnect();
+    }
+    const db = getDatabase();
+    db.prepare("UPDATE whatsapp_sessions SET status = 'disconnected', updated_at = datetime('now') WHERE session_id = ?").run(sessionId);
+  }
+
+  public async adminReconnectDevice(sessionId: string): Promise<void> {
+    const provider = this.registerProvider(sessionId);
+    try {
+      await provider.disconnect();
+    } catch {}
+    await provider.connect();
+  }
+
+  public async adminTerminateDevice(sessionId: string): Promise<void> {
+    const db = getDatabase();
+    const row = db.prepare('SELECT user_id FROM whatsapp_sessions WHERE session_id = ?').get(sessionId) as { user_id?: string } | undefined;
+
+    const provider = this.providers.get(sessionId);
+    if (provider) {
+      try {
+        await provider.resetSession();
+      } catch {
+        try {
+          await provider.disconnect();
+        } catch {}
+        try {
+          await provider.clearSessionFiles();
+        } catch {}
+      }
+      this.providers.delete(sessionId);
+    } else {
+      const sessionDir = path.resolve(config.sessionsDir, `baileys_${sessionId}`);
+      if (fs.existsSync(sessionDir)) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      }
+    }
+
+    db.prepare('DELETE FROM whatsapp_sessions WHERE session_id = ?').run(sessionId);
+
+    if (row?.user_id) {
+      const remaining = db.prepare('SELECT session_id FROM whatsapp_sessions WHERE user_id = ? ORDER BY created_at ASC LIMIT 1').get(row.user_id) as { session_id: string } | undefined;
+      if (remaining) {
+        db.prepare('UPDATE whatsapp_sessions SET is_default = 1 WHERE session_id = ?').run(remaining.session_id);
+      }
+      this.emit('devices:updated', { userId: row.user_id, devices: this.getAllSessions(row.user_id) });
+    }
+  }
+
+  public async adminTerminateAllUserDevices(targetUserId: string): Promise<{ terminatedCount: number }> {
+    const db = getDatabase();
+    const rows = db.prepare('SELECT session_id FROM whatsapp_sessions WHERE user_id = ?').all(targetUserId) as { session_id: string }[];
+
+    for (const r of rows) {
+      await this.adminTerminateDevice(r.session_id);
+    }
+
+    return { terminatedCount: rows.length };
+  }
+
+  public adminGetSessionsDiskStats(): {
+    totalFolders: number;
+    totalBytes: number;
+    orphanFolders: string[];
+    orphanBytes: number;
+  } {
+    const db = getDatabase();
+    const dbRows = db.prepare('SELECT session_id FROM whatsapp_sessions').all() as { session_id: string }[];
+    const validDirs = new Set(dbRows.map((r) => `baileys_${r.session_id}`));
+
+    let totalFolders = 0;
+    let totalBytes = 0;
+    const orphanFolders: string[] = [];
+    let orphanBytes = 0;
+
+    try {
+      if (fs.existsSync(config.sessionsDir)) {
+        const entries = fs.readdirSync(config.sessionsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory() && entry.name.startsWith('baileys_')) {
+            totalFolders++;
+            const size = this.getDirectorySizeBytes(path.join(config.sessionsDir, entry.name));
+            totalBytes += size;
+            if (!validDirs.has(entry.name)) {
+              orphanFolders.push(entry.name);
+              orphanBytes += size;
+            }
+          }
+        }
+      }
+    } catch {}
+
+    return { totalFolders, totalBytes, orphanFolders, orphanBytes };
+  }
+
+  public adminPurgeOrphanSessionFolders(): { deletedCount: number; freedBytes: number } {
+    const stats = this.adminGetSessionsDiskStats();
+    let deletedCount = 0;
+    let freedBytes = 0;
+
+    for (const folderName of stats.orphanFolders) {
+      const fullPath = path.join(config.sessionsDir, folderName);
+      try {
+        const size = this.getDirectorySizeBytes(fullPath);
+        fs.rmSync(fullPath, { recursive: true, force: true });
+        deletedCount++;
+        freedBytes += size;
+      } catch {}
+    }
+
+    return { deletedCount, freedBytes };
+  }
 }

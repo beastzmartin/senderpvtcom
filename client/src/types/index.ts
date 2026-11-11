@@ -542,5 +542,84 @@ export interface JoinerProgressEvent {
   error?: string;
 }
 
+export interface AdminSessionItem {
+  id: string;
+  session_id: string;
+  user_id?: string | null;
+  username: string;
+  user_name: string;
+  user_email?: string | null;
+  user_plan?: string;
+  alias: string;
+  is_default: boolean;
+  status: WhatsAppStatus;
+  phone_number?: string | null;
+  jid?: string | null;
+  display_name?: string | null;
+  platform?: string | null;
+  connected_at?: string | null;
+  last_active_at?: string | null;
+  created_at: string;
+  disk_bytes: number;
+}
+
+export interface AdminStorageStats {
+  server: {
+    uptimeSeconds: number;
+    nodeVersion: string;
+    platform: string;
+    cpus: number;
+    loadAvg: number[];
+    memory: {
+      totalBytes: number;
+      freeBytes: number;
+      usedBytes: number;
+      processRss: number;
+      processHeapUsed: number;
+      processHeapTotal: number;
+    };
+  };
+  database: {
+    dbPath: string;
+    dbSizeBytes: number;
+    walSizeBytes: number;
+    shmSizeBytes: number;
+    totalDbBytes: number;
+    tables: Record<string, number>;
+  };
+  sessionsStorage: {
+    totalFolders: number;
+    totalBytes: number;
+    orphanFoldersCount: number;
+    orphanBytes: number;
+  };
+}
+
+export interface UserDataSummary {
+  messages: number;
+  conversations: number;
+  contacts: number;
+  bulkCampaigns: number;
+  broadcastSchedules: number;
+  joinCampaigns: number;
+  templates: number;
+  devices: number;
+  vaultExtractions: number;
+}
+
+export interface LiveCampaignItem {
+  id: string;
+  name: string;
+  user_id?: string | null;
+  username?: string;
+  user_name?: string;
+  total: number;
+  done: number;
+  failed: number;
+  status: string;
+  type: 'bulk' | 'joiner';
+  created_at: string;
+}
+
 
 

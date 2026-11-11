@@ -74,4 +74,66 @@ export class ConversationController {
       next(err);
     }
   };
+
+  /**
+   * Delete a single conversation from website storage only (does not delete from WhatsApp phone)
+   */
+  public deleteConversation = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = (Array.isArray(req.params.id) ? req.params.id[0] : req.params.id) as string;
+      const userId = req.user?.id;
+      const db = getDatabase();
+
+      let deleted = 0;
+      db.transaction(() => {
+        if (userId) {
+          db.prepare('DELETE FROM messages WHERE conversation_id = ? AND user_id = ?').run(id, userId);
+          deleted = db.prepare('DELETE FROM conversations WHERE id = ? AND user_id = ?').run(id, userId).changes;
+        } else {
+          db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(id);
+          deleted = db.prepare('DELETE FROM conversations WHERE id = ?').run(id).changes;
+        }
+      })();
+
+      if (deleted === 0) {
+        res.status(404).json({ error: 'Conversation not found.' });
+        return;
+      }
+
+      res.json({ success: true, message: 'Chat deleted from website storage.' });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Delete ALL conversations & messages for the current user from website storage only
+   */
+  public deleteAllConversations = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Authentication required.' });
+        return;
+      }
+
+      const db = getDatabase();
+      let deletedConvs = 0;
+      let deletedMsgs = 0;
+
+      db.transaction(() => {
+        deletedMsgs = db.prepare('DELETE FROM messages WHERE user_id = ?').run(userId).changes;
+        deletedConvs = db.prepare('DELETE FROM conversations WHERE user_id = ?').run(userId).changes;
+      })();
+
+      res.json({
+        success: true,
+        message: `Cleared ${deletedConvs} chat(s) and ${deletedMsgs} message(s) from website storage.`,
+        deletedConvs,
+        deletedMsgs
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
 }

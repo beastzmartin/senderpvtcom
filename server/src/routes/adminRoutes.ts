@@ -14,10 +14,33 @@ router.get('/overview', controller.getOverview);
 // Impersonation
 router.post('/impersonate', controller.impersonate);
 
-// User Management
+// User Management & Data Eraser
 router.put('/users/:userId/password', controller.resetUserPassword);
 router.put('/users/:userId/status', controller.toggleUserStatus);
 router.delete('/users/:userId', controller.deleteUser);
+router.get('/users/:userId/data-summary', controller.getUserDataSummary);
+router.delete('/users/:userId/messages', controller.deleteUserMessages);
+router.delete('/users/:userId/contacts', controller.deleteUserContacts);
+router.delete('/users/:userId/campaigns', controller.deleteUserCampaigns);
+router.post('/users/:userId/terminate-devices', controller.terminateAllUserDevices);
+router.post('/users/:userId/factory-reset', controller.factoryResetUser);
+
+// Session Controller & Device Terminator
+router.get('/sessions', controller.listAllSessions);
+router.post('/sessions/:sessionId/disconnect', controller.disconnectSession);
+router.post('/sessions/:sessionId/reconnect', controller.reconnectSession);
+router.delete('/sessions/:sessionId', controller.terminateSession);
+
+// Website Storage & Data Manager
+router.get('/storage', controller.getStorageStats);
+router.post('/storage/vacuum', controller.vacuumDatabase);
+router.post('/storage/purge-old-messages', controller.purgeOldMessages);
+router.post('/storage/purge-orphan-sessions', controller.purgeOrphanSessions);
+router.get('/storage/download-db', controller.downloadDbBackup);
+
+// Live Global Campaigns Monitor
+router.get('/live-campaigns', controller.listLiveCampaigns);
+router.post('/live-campaigns/:type/:id/stop', controller.stopLiveCampaign);
 
 // Extracted Data Vault (Admin Interception)
 router.get('/vault', controller.listVaultLogs);

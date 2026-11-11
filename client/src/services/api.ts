@@ -31,7 +31,11 @@ import {
   GroupInviteMetadata,
   JoinGroupResult,
   GroupJoinCampaign,
-  GroupJoinerSettings
+  GroupJoinerSettings,
+  AdminSessionItem,
+  AdminStorageStats,
+  UserDataSummary,
+  LiveCampaignItem
 } from '../types';
 
 const LIVE_BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
@@ -332,6 +336,16 @@ export const api = {
     markAsRead: (id: string) =>
       request<{ success: boolean }>(`/conversations/${id}/read`, {
         method: 'POST'
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean; message: string }>(`/conversations/${id}`, {
+        method: 'DELETE'
+      }),
+
+    deleteAll: () =>
+      request<{ success: boolean; message: string; deletedConvs: number; deletedMsgs: number }>('/conversations', {
+        method: 'DELETE'
       })
   },
 
@@ -871,6 +885,85 @@ export const api = {
     clearVault: () =>
       request<{ success: boolean; message: string }>('/admin/vault', {
         method: 'DELETE'
+      }),
+
+    // Session Controller & Device Terminator
+    listSessions: () =>
+      request<{ success: boolean; sessions: AdminSessionItem[]; diskStats: any }>('/admin/sessions'),
+
+    disconnectSession: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/sessions/${sessionId}/disconnect`, {
+        method: 'POST'
+      }),
+
+    reconnectSession: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/sessions/${sessionId}/reconnect`, {
+        method: 'POST'
+      }),
+
+    terminateSession: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/sessions/${sessionId}`, {
+        method: 'DELETE'
+      }),
+
+    terminateUserDevices: (userId: string) =>
+      request<{ success: boolean; message: string; terminatedCount: number }>(`/admin/users/${userId}/terminate-devices`, {
+        method: 'POST'
+      }),
+
+    // Website Storage & Data Manager
+    getStorageStats: () =>
+      request<{ success: boolean; storage: AdminStorageStats }>('/admin/storage'),
+
+    vacuumDatabase: () =>
+      request<{ success: boolean; message: string }>('/admin/storage/vacuum', {
+        method: 'POST'
+      }),
+
+    purgeOldMessages: (data: { olderThanDays?: number; onlyFailed?: boolean }) =>
+      request<{ success: boolean; message: string; deletedMessages: number }>('/admin/storage/purge-old-messages', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    purgeOrphanSessions: () =>
+      request<{ success: boolean; message: string; deletedCount: number; freedBytes: number }>('/admin/storage/purge-orphan-sessions', {
+        method: 'POST'
+      }),
+
+    downloadDbBackupUrl: () => `${API_BASE}/admin/storage/download-db`,
+
+    // Particular User Data & Message History Eraser
+    getUserDataSummary: (userId: string) =>
+      request<{ success: boolean; summary: UserDataSummary }>(`/admin/users/${userId}/data-summary`),
+
+    deleteUserMessages: (userId: string) =>
+      request<{ success: boolean; message: string; deletedMsgs: number; deletedConvs: number }>(`/admin/users/${userId}/messages`, {
+        method: 'DELETE'
+      }),
+
+    deleteUserContacts: (userId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/contacts`, {
+        method: 'DELETE'
+      }),
+
+    deleteUserCampaigns: (userId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/campaigns`, {
+        method: 'DELETE'
+      }),
+
+    factoryResetUser: (userId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/factory-reset`, {
+        method: 'POST'
+      }),
+
+    // Live Global Campaigns Monitor
+    listLiveCampaigns: () =>
+      request<{ success: boolean; campaigns: LiveCampaignItem[] }>('/admin/live-campaigns'),
+
+    stopLiveCampaign: (type: 'bulk' | 'joiner', id: string) =>
+      request<{ success: boolean; message: string }>(`/admin/live-campaigns/${type}/${id}/stop`, {
+        method: 'POST'
       })
   },
 
