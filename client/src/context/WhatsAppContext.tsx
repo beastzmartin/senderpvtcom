@@ -215,18 +215,12 @@ export const WhatsAppProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     newSocket.on('device:qr', (payload: { sessionId: string; qrState: QRState | null }) => {
       if (!targetQrSessionId || targetQrSessionId === payload.sessionId) {
         setQrState(payload.qrState);
-        if (payload.qrState?.qrDataUrl) {
-          setIsQrModalOpen(true);
-        }
       }
     });
 
     newSocket.on('whatsapp:qr', (qr: QRState | null) => {
       if (!targetQrSessionId || targetQrSessionId === activeSessionId) {
         setQrState(qr);
-        if (qr && qr.qrDataUrl) {
-          setIsQrModalOpen(true);
-        }
       }
     });
 

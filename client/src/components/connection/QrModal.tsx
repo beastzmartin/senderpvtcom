@@ -30,7 +30,7 @@ export const QrModal: React.FC = () => {
   const currentStatus = currentDevice?.status || 'disconnected';
 
   useEffect(() => {
-    if (!qrState) return;
+    if (!isQrModalOpen || !qrState) return;
 
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - qrState.generatedAt) / 1000);
@@ -43,7 +43,7 @@ export const QrModal: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [qrState, refreshStatus]);
+  }, [isQrModalOpen, qrState, refreshStatus]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);

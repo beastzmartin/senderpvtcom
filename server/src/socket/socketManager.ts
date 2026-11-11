@@ -97,7 +97,8 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 
   // Wire WhatsApp provider events to tenant-isolated Socket.IO broadcasts
   whatsappManager.on('status', (status, accountInfo, sessionId, userId) => {
-    const target = userId ? io.to(`user:${userId}`) : io;
+    if (!userId) return;
+    const target = io.to(`user:${userId}`);
     target.emit('whatsapp:status', {
       status,
       accountInfo,
@@ -109,13 +110,12 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
     } else if (status === 'disconnected') {
       target.emit('whatsapp:disconnected', { sessionId });
     }
-    if (userId) {
-      target.emit('devices:updated', whatsappManager.getAllSessions(userId));
-    }
+    target.emit('devices:updated', whatsappManager.getAllSessions(userId));
   });
 
   whatsappManager.on('qr', (qrState, sessionId, userId) => {
-    const target = userId ? io.to(`user:${userId}`) : io;
+    if (!userId) return;
+    const target = io.to(`user:${userId}`);
     target.emit('whatsapp:qr', qrState);
     target.emit('device:qr', { sessionId, qrState });
   });
