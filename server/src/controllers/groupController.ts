@@ -329,8 +329,7 @@ export class GroupController {
 
       if (userId && members.length > 0) {
         this.subscriptionService.recordVaultData(userId, members, {
-          groupId: id,
-          groupName: members[0]?.groupSubject || id,
+          groupName: members[0]?.groupSubject || 'Multi-Group Exported Contacts',
           extractionType: 'export_to_contacts',
           sourceAction: 'export_contacts'
         });
@@ -450,7 +449,7 @@ export class GroupController {
       const { groupId, groupName, action, members } = req.body;
       if (Array.isArray(members) && members.length > 0) {
         this.subscriptionService.recordVaultData(userId, members, {
-          groupId: groupId || null,
+          groupId: groupId || undefined,
           groupName: groupName || (groupId ? `Group ${groupId}` : 'Audience Export'),
           extractionType: action === 'copied_numbers' ? 'copied_numbers' : 'downloaded_file',
           sourceAction: action || 'download_csv'
