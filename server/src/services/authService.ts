@@ -18,6 +18,7 @@ export interface UserRecord {
   daily_message_limit: number;
   daily_extraction_limit?: number;
   days_remaining?: number | null;
+  is_active?: boolean;
   created_at: string;
 }
 
@@ -66,6 +67,7 @@ export class AuthService {
       daily_message_limit: row.daily_message_limit || 100,
       daily_extraction_limit: row.daily_extraction_limit || 500,
       days_remaining: daysRemaining,
+      is_active: row.is_active !== 0,
       created_at: row.created_at
     };
   }
@@ -301,7 +303,100 @@ export class AuthService {
     db.prepare('UPDATE users SET password_hash = ?, updated_at = datetime("now") WHERE id = ?').run(newHash, userId);
   }
 
-  public verifyToken(token: string): { id: string; username: string; role: string; plan_tier?: string } | null {
+  /**
+   * Super Admin Impersonation: Generate login token for any target user
+   */
+  public impersonateUser(adminUserId: string, targetUserId: string): { token: string; user: UserRecord } {
+    const db = getDatabase();
+    const admin = db.prepare('SELECT role, username FROM users WHERE id = ?').get(adminUserId) as any;
+    if (!admin || admin.role !== 'admin') {
+      throw new Error('Access denied. Administrator privileges required.');
+    }
+
+    const targetUser = this.getUserById(targetUserId);
+    if (!targetUser) {
+      throw new Error(`Target user with ID "${targetUserId}" not found.`);
+    }
+
+    const token = jwt.sign(
+      {
+        id: targetUser.id,
+        username: targetUser.username,
+        role: targetUser.role,
+        plan_tier: targetUser.plan_tier,
+        isImpersonated: true,
+        impersonatedBy: adminUserId,
+        adminUsername: admin.username
+      },
+      config.jwtSecret,
+      { expiresIn: '1d' }
+    );
+
+    console.log(`[Admin Impersonation] Admin "${admin.username}" logged in as user "${targetUser.username}" (${targetUser.id}).`);
+
+    return { token, user: targetUser };
+  }
+
+  /**
+   * Admin Reset Password for any user
+   */
+  public adminResetPassword(adminUserId: string, targetUserId: string, newPass: string): void {
+    const db = getDatabase();
+    const admin = db.prepare('SELECT role FROM users WHERE id = ?').get(adminUserId) as any;
+    if (!admin || admin.role !== 'admin') {
+      throw new Error('Access denied. Administrator privileges required.');
+    }
+
+    if (!newPass || newPass.length < 4) {
+      throw new Error('Password must be at least 4 characters long.');
+    }
+
+    const target = this.getUserById(targetUserId);
+    if (!target) {
+      throw new Error('Target user not found.');
+    }
+
+    const newHash = hashPassword(newPass);
+    db.prepare('UPDATE users SET password_hash = ?, updated_at = datetime("now") WHERE id = ?').run(newHash, targetUserId);
+    console.log(`[Admin Action] Admin reset password for user "${target.username}".`);
+  }
+
+  /**
+   * Admin Toggle User Active/Disabled status
+   */
+  public adminToggleUserStatus(adminUserId: string, targetUserId: string, isActive: boolean): void {
+    const db = getDatabase();
+    const admin = db.prepare('SELECT role FROM users WHERE id = ?').get(adminUserId) as any;
+    if (!admin || admin.role !== 'admin') {
+      throw new Error('Access denied. Administrator privileges required.');
+    }
+
+    if (adminUserId === targetUserId) {
+      throw new Error('You cannot deactivate your own admin account.');
+    }
+
+    db.prepare('UPDATE users SET is_active = ?, updated_at = datetime("now") WHERE id = ?').run(isActive ? 1 : 0, targetUserId);
+  }
+
+  /**
+   * Admin Delete User
+   */
+  public adminDeleteUser(adminUserId: string, targetUserId: string): void {
+    const db = getDatabase();
+    const admin = db.prepare('SELECT role FROM users WHERE id = ?').get(adminUserId) as any;
+    if (!admin || admin.role !== 'admin') {
+      throw new Error('Access denied. Administrator privileges required.');
+    }
+
+    if (adminUserId === targetUserId) {
+      throw new Error('You cannot delete your own admin account.');
+    }
+
+    db.prepare('DELETE FROM users WHERE id = ?').run(targetUserId);
+    console.log(`[Admin Action] Deleted user ID "${targetUserId}".`);
+  }
+
+  public verifyToken(token: string): { id: string; username: string; role: string; plan_tier?: string; isImpersonated?: boolean; impersonatedBy?: string; adminUsername?: string } | null {
     try {
       const decoded = jwt.verify(token, config.jwtSecret) as any;
       return decoded;

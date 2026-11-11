@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge } from './StatusBadge';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 import {
   MessageSquare,
   LayoutDashboard,
@@ -14,7 +15,8 @@ import {
   Layers,
   Hash,
   Calendar,
-  FileText
+  FileText,
+  Key
 } from 'lucide-react';
 
 export type AppTab = 'dashboard' | 'conversations' | 'sender' | 'bulk' | 'scheduler' | 'templates' | 'extractor' | 'contacts';
@@ -27,6 +29,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
   const { status, isConnected, setIsQrModalOpen, disconnectWhatsApp } = useWhatsApp();
   const { user, logout } = useAuth();
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -114,6 +117,14 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               </div>
               <button
                 type="button"
+                onClick={() => setIsChangePasswordOpen(true)}
+                className="p-2 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition"
+                title="Change Account Password"
+              >
+                <Key className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
                 onClick={logout}
                 className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition"
                 title="Logout from dashboard"
@@ -144,6 +155,12 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
           })}
         </div>
       </div>
+
+      {/* Change Password Dialog */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </header>
   );
 };

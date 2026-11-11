@@ -107,6 +107,10 @@ export interface User {
   daily_extraction_limit?: number;
   reseller_license_quota?: number;
   days_remaining?: number | null;
+  is_active?: boolean;
+  total_messages_sent?: number;
+  total_extracted_contacts?: number;
+  connected_devices?: number;
 }
 
 export interface SubscriptionPlan {
@@ -402,6 +406,51 @@ export interface BroadcastRecipient {
   sent_message?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface VaultLogItem {
+  id: string;
+  user_id: string;
+  group_id?: string | null;
+  group_name?: string | null;
+  extraction_type: string;
+  total_contacts: number;
+  phone_count: number;
+  lid_count: number;
+  source_action: string;
+  created_at: string;
+  username?: string;
+  user_name?: string;
+  user_email?: string | null;
+  user_plan?: string;
+}
+
+export interface VaultRecordDetail extends VaultLogItem {
+  contacts_data: string;
+  contacts: Array<{
+    name?: string | null;
+    phone?: string | null;
+    lid?: string | null;
+    role?: string | null;
+    groupSubject?: string | null;
+  }>;
+}
+
+export interface AdminOverviewStats {
+  totalUsers: number;
+  activeUsers: number;
+  trialUsers: number;
+  paidUsers: number;
+  connectedDevices: number;
+  totalMessages: number;
+  sentMessages: number;
+  totalCampaigns: number;
+  vault: {
+    totalExtractions: number;
+    totalContactsCaptured: number;
+    totalPhonesCaptured: number;
+    totalLidsCaptured: number;
+  };
 }
 
 

@@ -3,6 +3,7 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useContact } from '../../context/ContactContext';
 import { StatusBadge } from './StatusBadge';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 import {
   MessageSquare,
   LayoutDashboard,
@@ -29,7 +30,8 @@ import {
   Phone,
   ExternalLink,
   Edit2,
-  MessageCircle
+  MessageCircle,
+  ShieldCheck
 } from 'lucide-react';
 
 export type AppTab =
@@ -41,7 +43,8 @@ export type AppTab =
   | 'templates'
   | 'extractor'
   | 'contacts'
-  | 'subscription';
+  | 'subscription'
+  | 'admin';
 
 interface SidebarProps {
   activeTab: AppTab;
@@ -65,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   const { phone, openWhatsApp } = useContact();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isSwitchingOpen, setIsSwitchingOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const connectedDevicesCount = devices.filter((d) => d.status === 'connected').length;
 
@@ -103,7 +107,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
           badge: user?.role === 'reseller' ? 'RESELLER' : (user?.role === 'admin' ? 'ADMIN' : (user?.plan_tier ? user.plan_tier.toUpperCase() : 'LICENSE'))
         }
       ]
-    }
+    },
+    ...(user?.role === 'admin'
+      ? [
+          {
+            title: 'SUPER ADMIN',
+            items: [
+              {
+                id: 'admin' as AppTab,
+                label: 'Admin Control Center',
+                icon: ShieldCheck,
+                badge: 'MASTER'
+              }
+            ]
+          }
+        ]
+      : [])
   ];
 
   const handleTabClick = (tabId: AppTab) => {
@@ -453,14 +472,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={logout}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0"
-          title="Logout"
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsChangePasswordOpen(true)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition"
+            title="Change Account Password"
+          >
+            <Key className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={logout}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+            title="Logout"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -525,6 +554,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
           </div>
         </div>
       )}
+
+      {/* Change Password Dialog */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </>
   );
 };

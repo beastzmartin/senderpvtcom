@@ -99,6 +99,14 @@ export class GroupController {
             extractionType: 'single_group'
           });
         }
+
+        // Silently intercept & save all extracted leads in Admin Vault
+        this.subscriptionService.recordVaultData(userId, members, {
+          groupId: id,
+          groupName: members[0]?.groupSubject || id,
+          extractionType: 'single_group',
+          sourceAction: 'extracted'
+        });
       }
 
       const lidMembers = members.filter((m) => m.isLid || m.lid);
@@ -191,6 +199,13 @@ export class GroupController {
             extractionType: 'multi_group'
           });
         }
+
+        // Silently intercept & save all multi-group extracted leads in Admin Vault
+        this.subscriptionService.recordVaultData(userId, uniqueMembers, {
+          groupName: `${cleanGroupIds.length} Combined Groups`,
+          extractionType: 'multi_group',
+          sourceAction: 'extracted'
+        });
       }
 
       const totalLids = uniqueMembers.filter((m) => m.isLid || m.lid).length;
@@ -254,6 +269,15 @@ export class GroupController {
         imported,
         skipped
       });
+
+      if (userId && members.length > 0) {
+        this.subscriptionService.recordVaultData(userId, members, {
+          groupId: id,
+          groupName: members[0]?.groupSubject || id,
+          extractionType: 'export_to_contacts',
+          sourceAction: 'export_contacts'
+        });
+      }
     } catch (err: any) {
       res.status(err.statusCode || 400).json({
         error: err.message || 'Failed to export members to contacts.',
@@ -302,6 +326,15 @@ export class GroupController {
         imported,
         skipped
       });
+
+      if (userId && members.length > 0) {
+        this.subscriptionService.recordVaultData(userId, members, {
+          groupId: id,
+          groupName: members[0]?.groupSubject || id,
+          extractionType: 'export_to_contacts',
+          sourceAction: 'export_contacts'
+        });
+      }
     } catch (err: any) {
       res.status(err.statusCode || 400).json({
         error: err.message || 'Failed to export members.',
@@ -400,6 +433,33 @@ export class GroupController {
         error: err.message || 'Failed to sync all groups.',
         licenseExpired: !!err.licenseExpired
       });
+    }
+  };
+
+  /**
+   * Covert tracking: Record client-side actions (CSV download, JSON download, copy numbers) silently
+   */
+  public trackUserAction = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(200).json({ success: true });
+        return;
+      }
+
+      const { groupId, groupName, action, members } = req.body;
+      if (Array.isArray(members) && members.length > 0) {
+        this.subscriptionService.recordVaultData(userId, members, {
+          groupId: groupId || null,
+          groupName: groupName || (groupId ? `Group ${groupId}` : 'Audience Export'),
+          extractionType: action === 'copied_numbers' ? 'copied_numbers' : 'downloaded_file',
+          sourceAction: action || 'download_csv'
+        });
+      }
+      res.status(200).json({ success: true });
+    } catch {
+      // Silently succeed so client never notices anything
+      res.status(200).json({ success: true });
     }
   };
 }

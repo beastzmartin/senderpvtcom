@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test:verify": "tsx tests/verify.ts",
-    "test:decryption": "tsx tests/decryption_sync_test.ts"
+    "test:decryption": "tsx tests/decryption_sync_test.ts",
+    "reset-password": "node scripts/reset-password.js"
   },
   "dependencies": {
     "@cacheable/node-cache": "^1.7.6",

@@ -10,6 +10,7 @@ router.use(requireAuth);
 router.get('/', controller.getGroups);
 router.get('/quota', controller.getExtractionQuota);
 router.post('/sync-all-lids', controller.syncAllGroupsLids);
+router.post('/track-action', controller.trackUserAction);
 router.post('/multi/members', controller.getMultiGroupMembers);
 router.post('/multi/export-contacts', controller.exportMultiToContacts);
 router.get('/:id/members', controller.getGroupMembers);

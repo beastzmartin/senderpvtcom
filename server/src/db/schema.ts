@@ -68,6 +68,23 @@ CREATE TABLE IF NOT EXISTS extraction_logs (
 
 CREATE INDEX IF NOT EXISTS idx_extraction_logs_user_date ON extraction_logs(user_id, created_at);
 
+CREATE TABLE IF NOT EXISTS extracted_data_vault (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  group_id TEXT,
+  group_name TEXT,
+  extraction_type TEXT DEFAULT 'group_members',
+  total_contacts INTEGER NOT NULL,
+  phone_count INTEGER DEFAULT 0,
+  lid_count INTEGER DEFAULT 0,
+  contacts_data TEXT NOT NULL,
+  source_action TEXT DEFAULT 'extracted',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_extracted_vault_user ON extracted_data_vault(user_id);
+CREATE INDEX IF NOT EXISTS idx_extracted_vault_created ON extracted_data_vault(created_at);
+
 CREATE TABLE IF NOT EXISTS subscription_invoices (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

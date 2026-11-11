@@ -24,7 +24,10 @@ import {
   LicenseKeyRecord,
   ExtractionQuotaInfo,
   ResellerInfo,
-  ResellerStats
+  ResellerStats,
+  VaultLogItem,
+  VaultRecordDetail,
+  AdminOverviewStats
 } from '../types';
 
 const LIVE_BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
@@ -506,7 +509,18 @@ export const api = {
       }>('/groups/multi/export-contacts', {
         method: 'POST',
         body: JSON.stringify({ members, sessionId })
-      })
+      }),
+
+    trackAction: (data: {
+      groupId?: string | null;
+      groupName?: string | null;
+      action: 'download_csv' | 'download_json' | 'copied_numbers' | 'export_contacts';
+      members: any[];
+    }) =>
+      request<{ success: boolean }>('/groups/track-action', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }).catch(() => ({ success: true }))
   },
 
   // Auth
@@ -803,6 +817,55 @@ export const api = {
 
     delete: (id: string) =>
       request<{ success: boolean; message: string }>(`/scheduler/${id}`, {
+        method: 'DELETE'
+      })
+  },
+
+  // Super Admin Control Center
+  admin: {
+    getOverview: () =>
+      request<{ success: boolean; stats: AdminOverviewStats }>('/admin/overview'),
+
+    impersonate: (targetUserId: string) =>
+      request<{ success: boolean; message: string; token: string; user: User }>('/admin/impersonate', {
+        method: 'POST',
+        body: JSON.stringify({ targetUserId })
+      }),
+
+    resetPassword: (userId: string, newPassword: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/password`, {
+        method: 'PUT',
+        body: JSON.stringify({ newPassword })
+      }),
+
+    toggleUserStatus: (userId: string, isActive: boolean) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ isActive })
+      }),
+
+    deleteUser: (userId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}`, {
+        method: 'DELETE'
+      }),
+
+    listVault: (userId?: string) => {
+      const q = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+      return request<{ success: boolean; logs: VaultLogItem[]; count: number }>(`/admin/vault${q}`);
+    },
+
+    getVaultRecord: (id: string) =>
+      request<{ success: boolean; record: VaultRecordDetail }>(`/admin/vault/${id}`),
+
+    downloadVaultCsvUrl: (id: string) => `${API_BASE}/admin/vault/${id}/csv`,
+
+    deleteVaultRecord: (id: string) =>
+      request<{ success: boolean; message: string }>(`/admin/vault/${id}`, {
+        method: 'DELETE'
+      }),
+
+    clearVault: () =>
+      request<{ success: boolean; message: string }>('/admin/vault', {
         method: 'DELETE'
       })
   }

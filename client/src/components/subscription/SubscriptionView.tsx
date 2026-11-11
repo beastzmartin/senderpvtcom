@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useContact } from '../../context/ContactContext';
 import { SubscriptionPlan, UserSubscriptionDetails, LicenseKeyRecord, ResellerInfo, ResellerStats } from '../../types';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 import {
   Key,
   ShieldCheck,
@@ -99,6 +100,7 @@ export const SubscriptionView: React.FC = () => {
   const [resellerKeySearch, setResellerKeySearch] = useState('');
 
   // Key generator modal state
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [genPlan, setGenPlan] = useState<'starter' | 'pro' | 'enterprise'>('pro');
   const [genDuration, setGenDuration] = useState('30');
   const [genCount, setGenCount] = useState('1');
@@ -565,6 +567,15 @@ export const SubscriptionView: React.FC = () => {
             >
               {subscription.status === 'active' ? 'License Active' : 'License Expired'}
             </span>
+            <button
+              type="button"
+              onClick={() => setShowChangePasswordModal(true)}
+              className="px-3.5 py-1.5 rounded-2xl text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+              title="Change Account Password"
+            >
+              <Key className="w-3.5 h-3.5 text-amber-600" />
+              Change Password
+            </button>
           </div>
         )}
       </div>
@@ -2620,6 +2631,12 @@ export const SubscriptionView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Change Password Dialog */}
+      <ChangePasswordModal
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+      />
     </div>
   );
 };

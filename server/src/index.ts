@@ -16,6 +16,7 @@ import groupRoutes from './routes/groupRoutes.js';
 import templateRoutes from './routes/templateRoutes.js';
 import schedulerRoutes from './routes/schedulerRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
@@ -24,6 +25,7 @@ import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
 initDatabase();
 
 const app = express();
+app.set('trust proxy', 1); // Crucial when running behind Cloudflare Tunnel / Nginx / Docker reverse proxies
 const httpServer = http.createServer(app);
 
 // CORS configuration - allow all origins for seamless client/Vercel connections
@@ -35,8 +37,8 @@ app.use(cors({
 }));
 
 // Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Apply rate limiting on API endpoints
 app.use('/api/', apiRateLimiter);
@@ -56,6 +58,7 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/scheduler', schedulerRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Dashboard stats endpoint
 const messageController = new MessageController();
