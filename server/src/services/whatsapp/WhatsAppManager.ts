@@ -14,7 +14,9 @@ import {
   MessageContentUpdateEvent,
   MessageStatusUpdateEvent,
   ExtractedGroup,
-  ExtractedMember
+  ExtractedMember,
+  GroupInviteMetadata,
+  JoinGroupResult
 } from './types.js';
 import { getDatabase } from '../../db/database.js';
 
@@ -509,6 +511,15 @@ export class WhatsAppManager extends EventEmitter {
     source?: string;
   }>> {
     return this.getProvider(sessionId, userId).resolveLidsToPhones(lids);
+  }
+
+  public async getGroupInviteInfo(codeOrLink: string, sessionId?: string, userId?: string): Promise<GroupInviteMetadata> {
+    return this.getProvider(sessionId, userId).getGroupInviteInfo(codeOrLink);
+  }
+
+  public async acceptGroupInvite(codeOrLink: string, sessionId?: string, userId?: string, useRoundRobin: boolean = false): Promise<JoinGroupResult> {
+    const provider = useRoundRobin ? this.getRoundRobinProvider(userId) : this.getProvider(sessionId, userId);
+    return provider.acceptGroupInvite(codeOrLink);
   }
 
   public autoConnectPairedSessions(): void {

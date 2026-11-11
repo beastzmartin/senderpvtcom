@@ -105,3 +105,30 @@ export interface BulkLidProgressEvent {
   isCompleted: boolean;
 }
 
+export interface GroupInviteMetadata {
+  id?: string;
+  code: string;
+  subject: string;
+  desc?: string | null;
+  size?: number;
+  creation?: number;
+  owner?: string | null;
+  isCommunity?: boolean;
+  isCommunityAnnounce?: boolean;
+  membershipApprovalMode?: boolean;
+  restrict?: boolean;
+  announce?: boolean;
+  status: 'valid' | 'already_joined' | 'invalid_or_revoked' | 'group_full' | 'error';
+  errorMessage?: string;
+}
+
+export interface JoinGroupResult {
+  success: boolean;
+  code: string;
+  groupJid?: string;
+  groupSubject?: string;
+  status: 'joined' | 'already_member' | 'pending_approval' | 'invalid_link' | 'group_full' | 'failed';
+  error?: string;
+  participantCount?: number;
+}
+

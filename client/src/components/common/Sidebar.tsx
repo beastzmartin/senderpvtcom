@@ -31,7 +31,8 @@ import {
   ExternalLink,
   Edit2,
   MessageCircle,
-  ShieldCheck
+  ShieldCheck,
+  UserPlus
 } from 'lucide-react';
 
 export type AppTab =
@@ -42,6 +43,7 @@ export type AppTab =
   | 'scheduler'
   | 'templates'
   | 'extractor'
+  | 'joiner'
   | 'contacts'
   | 'subscription'
   | 'admin';
@@ -94,6 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       title: 'AUDIENCE & EXTRACTOR',
       items: [
         { id: 'extractor' as AppTab, label: 'Group Extractor', icon: Layers },
+        { id: 'joiner' as AppTab, label: 'Group & Community Joiner', icon: UserPlus, badge: 'Auto' },
         { id: 'contacts' as AppTab, label: 'Contacts Directory', icon: Users }
       ]
     },

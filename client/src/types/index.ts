@@ -453,5 +453,94 @@ export interface AdminOverviewStats {
   };
 }
 
+export interface GroupInviteMetadata {
+  id?: string;
+  code: string;
+  subject: string;
+  desc?: string | null;
+  size?: number;
+  creation?: number;
+  owner?: string | null;
+  isCommunity?: boolean;
+  isCommunityAnnounce?: boolean;
+  membershipApprovalMode?: boolean;
+  restrict?: boolean;
+  announce?: boolean;
+  status: 'valid' | 'already_joined' | 'invalid_or_revoked' | 'group_full' | 'error';
+  errorMessage?: string;
+}
+
+export interface JoinGroupResult {
+  success: boolean;
+  code: string;
+  groupJid?: string;
+  groupSubject?: string;
+  status: 'joined' | 'already_member' | 'pending_approval' | 'invalid_link' | 'group_full' | 'failed';
+  error?: string;
+  participantCount?: number;
+}
+
+export interface GroupJoinerSettings {
+  minDelaySeconds: number;
+  maxDelaySeconds: number;
+  batchSize: number;
+  batchPauseSeconds: number;
+  autoExtractMembers: boolean;
+  skipAlreadyMember: boolean;
+  senderDeviceId?: string;
+  deviceMode?: 'single' | 'round_robin';
+}
+
+export interface GroupJoinCampaign {
+  id: string;
+  user_id?: string | null;
+  name: string;
+  total_links: number;
+  joined_count: number;
+  failed_count: number;
+  skipped_count: number;
+  pending_approval_count: number;
+  status: 'draft' | 'running' | 'paused' | 'completed' | 'stopped' | 'failed';
+  settings: GroupJoinerSettings;
+  current_index: number;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+  items?: GroupJoinItem[];
+}
+
+export interface GroupJoinItem {
+  id: string;
+  campaign_id: string;
+  invite_code: string;
+  raw_link: string;
+  group_name?: string | null;
+  group_jid?: string | null;
+  participant_count: number;
+  is_community: boolean;
+  status: 'pending' | 'inspecting' | 'joining' | 'joined' | 'already_member' | 'pending_approval' | 'invalid_link' | 'group_full' | 'failed';
+  error_message?: string | null;
+  joined_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JoinerProgressEvent {
+  campaignId: string;
+  total: number;
+  joined: number;
+  failed: number;
+  skipped: number;
+  pendingApproval: number;
+  percentage: number;
+  status: string;
+  phase: string;
+  currentCode?: string;
+  groupName?: string;
+  countdownSeconds?: number;
+  pauseReason?: string;
+  error?: string;
+}
+
 
 

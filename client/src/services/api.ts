@@ -27,7 +27,11 @@ import {
   ResellerStats,
   VaultLogItem,
   VaultRecordDetail,
-  AdminOverviewStats
+  AdminOverviewStats,
+  GroupInviteMetadata,
+  JoinGroupResult,
+  GroupJoinCampaign,
+  GroupJoinerSettings
 } from '../types';
 
 const LIVE_BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
@@ -866,6 +870,64 @@ export const api = {
 
     clearVault: () =>
       request<{ success: boolean; message: string }>('/admin/vault', {
+        method: 'DELETE'
+      })
+  },
+
+  // Advanced Group & Community Joiner
+  groupJoiner: {
+    parseLinks: (text: string) =>
+      request<{ success: boolean; count: number; links: string[] }>('/group-joiner/parse-links', {
+        method: 'POST',
+        body: JSON.stringify({ text })
+      }),
+
+    inspectLinks: (links: string[], sessionId?: string) =>
+      request<{ success: boolean; count: number; results: GroupInviteMetadata[] }>('/group-joiner/inspect-links', {
+        method: 'POST',
+        body: JSON.stringify({ links, sessionId })
+      }),
+
+    joinSingle: (link: string, sessionId?: string) =>
+      request<{ success: boolean; result: JoinGroupResult }>('/group-joiner/join-single', {
+        method: 'POST',
+        body: JSON.stringify({ link, sessionId })
+      }),
+
+    listCampaigns: () =>
+      request<{ success: boolean; campaigns: GroupJoinCampaign[]; count: number }>('/group-joiner/campaigns'),
+
+    createCampaign: (data: {
+      name?: string;
+      links: string[];
+      settings?: Partial<GroupJoinerSettings>;
+      autoStart?: boolean;
+    }) =>
+      request<{ success: boolean; message: string; campaign: GroupJoinCampaign }>('/group-joiner/campaigns', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getCampaign: (id: string) =>
+      request<{ success: boolean; campaign: GroupJoinCampaign }>(`/group-joiner/campaigns/${id}`),
+
+    startCampaign: (id: string) =>
+      request<{ success: boolean; message: string }>(`/group-joiner/campaigns/${id}/start`, {
+        method: 'POST'
+      }),
+
+    pauseCampaign: (id: string) =>
+      request<{ success: boolean; message: string }>(`/group-joiner/campaigns/${id}/pause`, {
+        method: 'POST'
+      }),
+
+    stopCampaign: (id: string) =>
+      request<{ success: boolean; message: string }>(`/group-joiner/campaigns/${id}/stop`, {
+        method: 'POST'
+      }),
+
+    deleteCampaign: (id: string) =>
+      request<{ success: boolean; message: string }>(`/group-joiner/campaigns/${id}`, {
         method: 'DELETE'
       })
   }

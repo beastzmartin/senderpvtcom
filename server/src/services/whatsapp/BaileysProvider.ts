@@ -33,7 +33,9 @@ import {
   MessageContentUpdateEvent,
   MessageStatusUpdateEvent,
   ExtractedGroup,
-  ExtractedMember
+  ExtractedMember,
+  GroupInviteMetadata,
+  JoinGroupResult
 } from './types.js';
 
 export class BaileysWhatsAppProvider extends EventEmitter implements IWhatsAppProvider {
@@ -1255,5 +1257,151 @@ export class BaileysWhatsAppProvider extends EventEmitter implements IWhatsAppPr
         source: 'unresolved'
       };
     });
+  }
+
+  /**
+   * Extract a pure invite code from any WhatsApp URL or raw code
+   */
+  public extractInviteCode(input: string): string {
+    const trimmed = input.trim();
+    const match = trimmed.match(/(?:chat\.whatsapp\.com\/(?:invite\/)?|invite\/)?([a-zA-Z0-9_-]{15,35})/);
+    return match ? match[1] : trimmed.replace(/[^a-zA-Z0-9_-]/g, '');
+  }
+
+  /**
+   * Inspect a WhatsApp Group or Community invite link without joining
+   */
+  public async getGroupInviteInfo(codeOrLink: string): Promise<GroupInviteMetadata> {
+    if (!this.sock || this.status !== 'connected') {
+      throw new Error('WhatsApp device is not connected. Please connect before inspecting links.');
+    }
+
+    const cleanCode = this.extractInviteCode(codeOrLink);
+    if (!cleanCode) {
+      return {
+        code: codeOrLink,
+        subject: 'Invalid Link Format',
+        status: 'invalid_or_revoked',
+        errorMessage: 'Could not parse a valid WhatsApp invite code from this URL.'
+      };
+    }
+
+    try {
+      const info = await this.sock.groupGetInviteInfo(cleanCode);
+
+      // Check if this WhatsApp account is already in this group
+      let isAlreadyJoined = false;
+      try {
+        const participating = await this.sock.groupFetchAllParticipating();
+        if (info.id && participating[info.id]) {
+          isAlreadyJoined = true;
+        }
+      } catch {}
+
+      return {
+        id: info.id,
+        code: cleanCode,
+        subject: info.subject || 'WhatsApp Group',
+        desc: info.desc || null,
+        size: info.size,
+        creation: info.creation,
+        owner: info.owner || null,
+        isCommunity: !!(info as any).isCommunity,
+        isCommunityAnnounce: !!(info as any).isCommunityAnnounce,
+        membershipApprovalMode: !!(info as any).membershipApprovalMode,
+        restrict: !!info.restrict,
+        announce: !!info.announce,
+        status: isAlreadyJoined ? 'already_joined' : (info.size && info.size >= 1024 ? 'group_full' : 'valid')
+      };
+    } catch (err: any) {
+      const msg = err.message || '';
+      let status: 'invalid_or_revoked' | 'error' = 'invalid_or_revoked';
+      if (msg.includes('not-authorized') || msg.includes('item-not-found') || err.output?.statusCode === 404) {
+        status = 'invalid_or_revoked';
+      }
+      return {
+        code: cleanCode,
+        subject: 'Unavailable Group',
+        status,
+        errorMessage: msg || 'Invite link is expired, revoked, or invalid.'
+      };
+    }
+  }
+
+  /**
+   * Join a WhatsApp Group or Community via invite code or link
+   */
+  public async acceptGroupInvite(codeOrLink: string): Promise<JoinGroupResult> {
+    if (!this.sock || this.status !== 'connected') {
+      throw new Error('WhatsApp device is not connected. Please connect before joining.');
+    }
+
+    const cleanCode = this.extractInviteCode(codeOrLink);
+    if (!cleanCode) {
+      return {
+        success: false,
+        code: codeOrLink,
+        status: 'invalid_link',
+        error: 'Invalid WhatsApp invite link or code format.'
+      };
+    }
+
+    try {
+      const groupJid = await this.sock.groupAcceptInvite(cleanCode);
+      this.clearGroupCaches();
+
+      return {
+        success: true,
+        code: cleanCode,
+        groupJid: groupJid || undefined,
+        status: 'joined'
+      };
+    } catch (err: any) {
+      const msg = (err.message || '').toLowerCase();
+      const code = err.output?.statusCode;
+
+      if (code === 409 || msg.includes('conflict') || msg.includes('already in group')) {
+        return {
+          success: true,
+          code: cleanCode,
+          status: 'already_member',
+          error: 'You are already a participant in this group.'
+        };
+      }
+
+      if (msg.includes('request') || msg.includes('approval') || msg.includes('membership-approval')) {
+        return {
+          success: true,
+          code: cleanCode,
+          status: 'pending_approval',
+          error: 'Join request sent. Awaiting admin approval.'
+        };
+      }
+
+      if (code === 404 || code === 410 || msg.includes('item-not-found') || msg.includes('not-authorized')) {
+        return {
+          success: false,
+          code: cleanCode,
+          status: 'invalid_link',
+          error: 'Invite link is invalid, expired, or reset by admin.'
+        };
+      }
+
+      if (code === 401 || code === 403 || msg.includes('full')) {
+        return {
+          success: false,
+          code: cleanCode,
+          status: 'group_full',
+          error: 'Group is full or participation is restricted.'
+        };
+      }
+
+      return {
+        success: false,
+        code: cleanCode,
+        status: 'failed',
+        error: err.message || 'Failed to join group.'
+      };
+    }
   }
 }

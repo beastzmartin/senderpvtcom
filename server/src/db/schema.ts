@@ -288,5 +288,42 @@ CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_status ON broadcast_schedule
 CREATE INDEX IF NOT EXISTS idx_broadcast_schedules_status ON broadcast_schedules(status);
 CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id);
 CREATE INDEX IF NOT EXISTS idx_templates_category ON templates(category);
+
+CREATE TABLE IF NOT EXISTS group_join_campaigns (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  total_links INTEGER DEFAULT 0,
+  joined_count INTEGER DEFAULT 0,
+  failed_count INTEGER DEFAULT 0,
+  skipped_count INTEGER DEFAULT 0,
+  pending_approval_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'draft' CHECK(status IN ('draft', 'running', 'paused', 'completed', 'stopped', 'failed')),
+  settings TEXT,
+  current_index INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS group_join_items (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT NOT NULL REFERENCES group_join_campaigns(id) ON DELETE CASCADE,
+  invite_code TEXT NOT NULL,
+  raw_link TEXT,
+  group_name TEXT,
+  group_jid TEXT,
+  participant_count INTEGER DEFAULT 0,
+  is_community INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'inspecting', 'joining', 'joined', 'already_member', 'pending_approval', 'invalid_link', 'group_full', 'failed')),
+  error_message TEXT,
+  joined_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_join_campaigns_user ON group_join_campaigns(user_id);
+CREATE INDEX IF NOT EXISTS idx_join_items_campaign ON group_join_items(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_join_items_status ON group_join_items(status);
 `;
 

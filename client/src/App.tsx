@@ -10,6 +10,7 @@ import { ConversationsView } from './components/conversations/ConversationsView'
 import { DedicatedSenderView } from './components/sender/DedicatedSenderView';
 import { BulkLidSenderView } from './components/sender/BulkLidSenderView';
 import { GroupExtractorView } from './components/extractor/GroupExtractorView';
+import { GroupJoinerView } from './components/joiner/GroupJoinerView';
 import { ContactsView } from './components/contacts/ContactsView';
 import { TemplatesView } from './components/templates/TemplatesView';
 import { SchedulerView } from './components/scheduler/SchedulerView';
@@ -150,6 +151,12 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
           <GroupExtractorView
             onLaunchBulkLid={handleLaunchBulkLid}
             onNavigateToSubscription={() => setActiveTab('subscription')}
+          />
+        )}
+
+        {activeTab === 'joiner' && (
+          <GroupJoinerView
+            onNavigateToExtractor={() => setActiveTab('extractor')}
           />
         )}
 

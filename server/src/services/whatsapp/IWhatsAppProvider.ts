@@ -31,6 +31,9 @@ export interface IWhatsAppProvider {
     status: 'resolved' | 'unresolved';
     source?: string;
   }>>;
+  getGroupInviteInfo(codeOrLink: string): Promise<import('./types.js').GroupInviteMetadata>;
+  acceptGroupInvite(codeOrLink: string): Promise<import('./types.js').JoinGroupResult>;
+  extractInviteCode(input: string): string;
   
   // Event listeners
   on(event: 'status', listener: (status: WhatsAppConnectionStatus, accountInfo?: WhatsAppAccountInfo | null, sessionId?: string) => void): this;
