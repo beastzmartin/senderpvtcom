@@ -238,16 +238,51 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Sync now
   btnSyncNow.addEventListener('click', () => {
     btnSyncNow.textContent = 'Syncing...';
-    chrome.runtime.sendMessage({ type: 'SYNC_QUEUE' }, () => {
-      btnSyncNow.textContent = 'Sync Now';
-      updateBufferUI(0);
-      syncStatusMsg.textContent = 'All leads up to date!';
+    btnSyncNow.disabled = true;
+    chrome.runtime.sendMessage({ type: 'SYNC_QUEUE' }, (res) => {
+      btnSyncNow.disabled = false;
+      if (res && res.success) {
+        updateBufferUI(0);
+      } else {
+        btnSyncNow.textContent = 'Retry Sync';
+      }
     });
   });
 
   function updateBufferUI(count) {
-    syncBufferCount.textContent = `${count} lead${count === 1 ? '' : 's'}`;
+    if (!syncStatusMsg) return;
+    if (count > 0) {
+      if (syncStatusDot) syncStatusDot.style.background = '#f59e0b';
+      syncStatusMsg.textContent = 'Pending Cloud Sync';
+      syncStatusMsg.style.color = '#b45309';
+      if (syncBufferCount) {
+        syncBufferCount.textContent = `${count} lead${count === 1 ? '' : 's'} waiting to upload`;
+        syncBufferCount.classList.remove('hidden');
+      }
+      if (btnSyncNow) {
+        btnSyncNow.classList.remove('hidden');
+        btnSyncNow.textContent = 'Sync Now';
+      }
+    } else {
+      if (syncStatusDot) syncStatusDot.style.background = '#10b981';
+      syncStatusMsg.textContent = '✓ All leads synced to Cloud CRM';
+      syncStatusMsg.style.color = '#047857';
+      if (syncBufferCount) {
+        syncBufferCount.textContent = '';
+        syncBufferCount.classList.add('hidden');
+      }
+      if (btnSyncNow) {
+        btnSyncNow.classList.add('hidden');
+      }
+    }
   }
+
+  // Real-time listener for background sync state
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === 'SYNC_STATE_CHANGED') {
+      updateBufferUI(msg.payload?.pendingCount || 0);
+    }
+  });
 
   /**
    * Self-contained in-page scanner function injected directly into any tab

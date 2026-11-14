@@ -537,7 +537,8 @@
 
     // Finished current keyword / task
     isExtracting = false;
-    updateHud('Completed', false, leadsCollected, maxLeads, currentKeyword);
+    updateHud('✓ Synced & Saved to CRM', false, leadsCollected, maxLeads, currentKeyword);
+    dismissHudWithAnimation(1800);
 
     // Notify background runner that this keyword has finished
     try {
@@ -550,6 +551,22 @@
         }
       });
     } catch (e) {}
+  }
+
+  function dismissHudWithAnimation(delayMs = 1500) {
+    setTimeout(() => {
+      if (hudContainer && !isExtracting) {
+        hudContainer.style.transition = 'all 0.5s ease-out';
+        hudContainer.style.opacity = '0';
+        hudContainer.style.transform = 'translateY(24px) scale(0.95)';
+        setTimeout(() => {
+          if (hudContainer && !isExtracting) {
+            hudContainer.remove();
+            hudContainer = null;
+          }
+        }, 500);
+      }
+    }, delayMs);
   }
 
   function startExtraction(targetCount = 50, jobId = null, keyword = '') {
@@ -577,6 +594,7 @@
     isExtracting = false;
     isPaused = false;
     updateHud('Stopped', false, leadsCollected, maxLeads, currentKeyword);
+    dismissHudWithAnimation(1200);
     try {
       chrome.runtime.sendMessage({
         type: 'SCRAPE_JOB_CANCELLED',
