@@ -169,3 +169,4 @@ export const ExtensionPairingModal: React.FC<ExtensionPairingModalProps> = ({ is
     </div>
   );
 };
+

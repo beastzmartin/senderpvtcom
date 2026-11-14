@@ -541,3 +541,4 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
     </div>
   );
 };
+

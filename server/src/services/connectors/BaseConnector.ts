@@ -105,3 +105,4 @@ export abstract class BaseConnector implements IExtractionConnector {
     return rawName.trim().replace(/\s+/g, ' ');
   }
 }
+

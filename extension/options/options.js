@@ -52,3 +52,4 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 1500);
   });
 });
+

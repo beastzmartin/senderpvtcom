@@ -51,3 +51,4 @@ Production-grade Chrome / Chromium extension for multi-source business lead extr
 2. Open the extension popup and click **Scan & Extract Contacts**.
 3. Review the detected contact email, phone, and social profiles.
 4. Click **Save to SaaS Dashboard** to sync immediately.
+

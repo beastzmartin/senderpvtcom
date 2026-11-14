@@ -118,3 +118,4 @@ export interface IExtractionConnector {
   normalizeLead(raw: any, userId: string, jobId?: string): Partial<LeadRecord>;
   enrichLead?(lead: Partial<LeadRecord>): Promise<Partial<LeadRecord>>;
 }
+

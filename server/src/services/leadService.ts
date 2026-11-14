@@ -678,3 +678,4 @@ export class LeadService {
     return db.prepare(`SELECT id, content, created_at FROM lead_notes WHERE lead_id = ? ORDER BY created_at DESC`).all(leadId) as any[];
   }
 }
+

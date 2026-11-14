@@ -14,3 +14,4 @@ router.get('/profile', requireAuth, controller.getProfile);
 router.post('/sync', requireAuth, controller.syncBatch);
 
 export default router;
+

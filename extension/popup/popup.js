@@ -384,3 +384,4 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Start initialization
   init();
 });
+

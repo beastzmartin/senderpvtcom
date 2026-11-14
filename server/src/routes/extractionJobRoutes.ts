@@ -21,3 +21,4 @@ router.post('/:id/progress', controller.updateProgress);
 router.delete('/:id', controller.deleteJob);
 
 export default router;
+

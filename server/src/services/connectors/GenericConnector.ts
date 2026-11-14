@@ -62,3 +62,4 @@ export class GenericLeadConnector extends BaseConnector {
     };
   }
 }
+
