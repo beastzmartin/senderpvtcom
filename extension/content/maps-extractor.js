@@ -10,6 +10,26 @@
 
   console.log('[Maps Extractor Pro] Content script initialized on Google Maps.');
 
+  // Immediately capture auto_extract parameters before Google Maps router rewrites the URL
+  function captureAutoExtractImmediate() {
+    try {
+      const fullUrl = window.location.href;
+      if (fullUrl.includes('auto_extract')) {
+        let count = 50;
+        const countMatch = fullUrl.match(/auto_extract=(\d+)/);
+        if (countMatch) count = parseInt(countMatch[1], 10);
+
+        let jobId = null;
+        const jobMatch = fullUrl.match(/job_id=([a-zA-Z0-9_-]+)/);
+        if (jobMatch) jobId = jobMatch[1];
+
+        sessionStorage.setItem('__gmap_pending_auto_extract', JSON.stringify({ count, jobId }));
+        console.log('[Maps Extractor Pro] Captured immediate auto_extract command:', { count, jobId });
+      }
+    } catch (e) {}
+  }
+  captureAutoExtractImmediate();
+
   let isExtracting = false;
   let isPaused = false;
   let currentKeyword = '';
@@ -579,6 +599,7 @@
     extractedKeys.clear();
     runExtractionLoop();
   }
+  window.startExtraction = startExtraction;
 
   function pauseExtraction() {
     isPaused = true;
@@ -672,44 +693,56 @@
   });
 
   /**
-   * Auto-Start Execution when URL has #auto_extract or ?auto_extract
+   * Auto-Start Execution when URL has #auto_extract or ?auto_extract, or cached in sessionStorage
    * Enables one-click launch from SaaS Dashboard and Extension
    */
   function checkUrlAutoExtract() {
     try {
-      const hashStr = window.location.hash || '';
-      const searchStr = window.location.search || '';
-      const combined = hashStr + '&' + searchStr;
+      let count = 50;
+      let jobId = null;
+      let shouldExtract = false;
 
-      if (combined.includes('auto_extract')) {
-        console.log('[Maps Extractor Pro] Detected auto_extract parameter. Preparing automatic extraction...');
+      // 1. Check current URL hash and search params
+      const fullUrl = window.location.href;
+      if (fullUrl.includes('auto_extract')) {
+        shouldExtract = true;
+        const countMatch = fullUrl.match(/auto_extract=(\d+)/);
+        if (countMatch) count = parseInt(countMatch[1], 10);
+        const jobMatch = fullUrl.match(/job_id=([a-zA-Z0-9_-]+)/);
+        if (jobMatch) jobId = jobMatch[1];
+      }
 
-        let count = 50;
-        const countMatch = combined.match(/auto_extract=(\d+)/);
-        if (countMatch) {
-          count = parseInt(countMatch[1], 10);
+      // 2. Check cached in-tab sessionStorage (if Google Maps redirected/rewrote the URL)
+      if (!shouldExtract) {
+        const cached = sessionStorage.getItem('__gmap_pending_auto_extract');
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            count = parsed.count || 50;
+            jobId = parsed.jobId || null;
+            shouldExtract = true;
+            sessionStorage.removeItem('__gmap_pending_auto_extract');
+          } catch (e) {}
         }
+      }
 
-        let jobId = null;
-        const jobMatch = combined.match(/job_id=([a-zA-Z0-9_-]+)/);
-        if (jobMatch) {
-          jobId = jobMatch[1];
-        }
+      if (shouldExtract) {
+        console.log(`[Maps Extractor Pro] Auto-extract triggered: target ${count} leads, job ${jobId}`);
 
-        // Adaptive polling: check every 600ms for feed or place cards to appear, up to 10 attempts
+        // Adaptive polling: check every 400ms for up to 25 attempts (10 seconds)
         let attempts = 0;
         const checkTimer = setInterval(() => {
           attempts++;
           const feed = findFeedContainer();
           const hasCards = document.querySelector('div.Nv2PK, div.THOPZb, a.hfpxzc, h1.DUwDvf');
-          if (feed || hasCards || attempts >= 8) {
+          if (feed || hasCards || attempts >= 20) {
             clearInterval(checkTimer);
             if (!isExtracting) {
-              console.log(`[Maps Extractor Pro] Launching auto-extraction: ${count} target leads, job ${jobId}`);
+              console.log(`[Maps Extractor Pro] Target feed mounted. Starting extraction for ${count} leads.`);
               startExtraction(count, jobId, '');
             }
           }
-        }, 600);
+        }, 400);
       }
     } catch (err) {
       console.warn('[Maps Extractor Pro] Auto-extract check error:', err);

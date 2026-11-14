@@ -11,6 +11,48 @@ const API_BASE_URL = `${BACKEND_URL}/api`;
 // In-memory active job state
 let activeScrapeJob = null;
 let isSyncPipelineActive = false;
+const pendingTabExtractions = {};
+
+// Watch for Google Maps tabs opened with auto_extract
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const currentUrl = changeInfo.url || tab.url || '';
+  if (currentUrl.includes('google.com/maps') && currentUrl.includes('auto_extract')) {
+    let count = 50;
+    const countMatch = currentUrl.match(/auto_extract=(\d+)/);
+    if (countMatch) count = parseInt(countMatch[1], 10);
+    let jobId = null;
+    const jobMatch = currentUrl.match(/job_id=([a-zA-Z0-9_-]+)/);
+    if (jobMatch) jobId = jobMatch[1];
+
+    pendingTabExtractions[tabId] = { count, jobId };
+    console.log('[Service Worker] Auto-extract tab registered:', { tabId, count, jobId });
+  }
+
+  if (changeInfo.status === 'complete' && pendingTabExtractions[tabId]) {
+    const job = pendingTabExtractions[tabId];
+    delete pendingTabExtractions[tabId];
+
+    setTimeout(() => {
+      chrome.tabs.sendMessage(tabId, {
+        action: 'START_MAPS_EXTRACTION',
+        count: job.count,
+        jobId: job.jobId
+      }, () => {
+        if (chrome.runtime.lastError) {
+          chrome.scripting.executeScript({
+            target: { tabId },
+            func: (cnt, jId) => {
+              if (typeof window.startExtraction === 'function') {
+                window.startExtraction(cnt, jId, '');
+              }
+            },
+            args: [job.count, job.jobId]
+          }).catch(() => {});
+        }
+      });
+    }, 1200);
+  }
+});
 
 /**
  * Deterministic lead fingerprinting for duplicate avoidance across sessions

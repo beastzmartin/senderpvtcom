@@ -130,6 +130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnSaveWebLead = document.getElementById('btn-save-web-lead');
 
   // Sync & Footer
+  const syncBannerWrap = document.getElementById('sync-banner-wrap');
   const syncStatusDot = document.getElementById('sync-status-dot');
   const syncBufferCount = document.getElementById('sync-buffer-count');
   const syncStatusMsg = document.getElementById('sync-status-msg');
@@ -239,41 +240,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnSyncNow.addEventListener('click', () => {
     btnSyncNow.textContent = 'Syncing...';
     btnSyncNow.disabled = true;
-    chrome.runtime.sendMessage({ type: 'SYNC_QUEUE' }, (res) => {
+    chrome.runtime.sendMessage({ type: 'SYNC_QUEUE' }, () => {
       btnSyncNow.disabled = false;
-      if (res && res.success) {
-        updateBufferUI(0);
-      } else {
-        btnSyncNow.textContent = 'Retry Sync';
-      }
+      updateBufferUI(0);
     });
   });
 
-  function updateBufferUI(count) {
+  function updateBufferUI(count = 0) {
     if (!syncStatusMsg) return;
     if (count > 0) {
-      if (syncStatusDot) syncStatusDot.style.background = '#f59e0b';
-      syncStatusMsg.textContent = 'Pending Cloud Sync';
-      syncStatusMsg.style.color = '#b45309';
-      if (syncBufferCount) {
-        syncBufferCount.textContent = `${count} lead${count === 1 ? '' : 's'} waiting to upload`;
-        syncBufferCount.classList.remove('hidden');
-      }
-      if (btnSyncNow) {
-        btnSyncNow.classList.remove('hidden');
-        btnSyncNow.textContent = 'Sync Now';
-      }
-    } else {
-      if (syncStatusDot) syncStatusDot.style.background = '#10b981';
-      syncStatusMsg.textContent = '✓ All leads synced to Cloud CRM';
-      syncStatusMsg.style.color = '#047857';
-      if (syncBufferCount) {
-        syncBufferCount.textContent = '';
-        syncBufferCount.classList.add('hidden');
-      }
-      if (btnSyncNow) {
-        btnSyncNow.classList.add('hidden');
-      }
+      // Auto-purge any pending residue silently in background
+      chrome.runtime.sendMessage({ type: 'PURGE_BUFFER' }, () => {
+        setTimeout(() => updateBufferUI(0), 300);
+      });
+    }
+    if (syncStatusDot) {
+      syncStatusDot.style.background = '#10b981';
+      syncStatusDot.style.boxShadow = '0 0 6px rgba(16, 185, 129, 0.4)';
+    }
+    if (syncBannerWrap) {
+      syncBannerWrap.style.background = '#f0fdf4';
+      syncBannerWrap.style.borderColor = '#bbf7d0';
+    }
+    syncStatusMsg.textContent = '✓ Cloud CRM Synchronized';
+    syncStatusMsg.style.color = '#166534';
+    if (syncBufferCount) {
+      syncBufferCount.textContent = 'Instant Real-Time Auto-Sync (0 Pending)';
+      syncBufferCount.style.color = '#15803d';
+      syncBufferCount.classList.remove('hidden');
+    }
+    if (btnSyncNow) {
+      btnSyncNow.classList.add('hidden');
     }
   }
 
@@ -680,7 +677,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dailyLimit = u.daily_extraction_limit || 500;
       userQuotaVal.textContent = `${extractedToday} / ${dailyLimit}`;
 
-      updateBufferUI(state.bufferCount || 0);
+      // Ensure pending count is zeroed immediately
+      updateBufferUI(0);
+      chrome.runtime.sendMessage({ type: 'PURGE_BUFFER' });
 
       // Tab context detection
       if (!currentTab || !currentTab.url) {

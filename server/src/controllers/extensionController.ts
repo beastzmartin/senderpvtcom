@@ -201,17 +201,6 @@ export class ExtensionController {
         totalCost: settlement.totalCost,
         unitsCharged: settlement.unitsCharged
       });
-
-      // Record in extension_sessions last active
-      db.prepare(`UPDATE extension_sessions SET last_active_at = datetime('now') WHERE user_id = ?`).run(userId);
-
-      res.json({
-        success: true,
-        syncedCount: result.created.length,
-        duplicates: result.duplicates,
-        failed: result.failed,
-        remainingToday: Math.max(0, dailyLimit - (todayCount + result.created.length))
-      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

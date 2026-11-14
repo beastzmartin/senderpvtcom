@@ -35,6 +35,7 @@ import {
   UserPlus,
   Building2,
   Compass,
+  MapPin,
   ShoppingBag,
   Boxes,
   Wallet
@@ -103,18 +104,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       ]
     },
     {
-      title: 'LEAD PROSPECTING & INTELLIGENCE',
+      title: 'GOOGLE MAPS LEAD EXTRACTOR',
       items: [
-        { id: 'leads' as AppTab, label: 'Lead Intelligence CRM', icon: Building2, badge: 'Prospects' },
-        { id: 'extractors' as AppTab, label: 'Extraction Hub & Tools', icon: Compass, badge: '12 Sources' }
-      ]
-    },
-    {
-      title: 'EXTENSIONS & MARKETPLACE',
-      items: [
-        { id: 'marketplace' as AppTab, label: 'Extensions Marketplace', icon: ShoppingBag, badge: 'New' },
-        { id: 'my-extensions' as AppTab, label: 'My Extensions & Modules', icon: Boxes },
-        { id: 'wallet' as AppTab, label: 'Wallet & Billing', icon: Wallet, badge: '₹' }
+        { id: 'extractors' as AppTab, label: 'Google Maps Extractor', icon: MapPin, badge: 'Live Scraper' },
+        { id: 'leads' as AppTab, label: 'Extracted Leads CRM', icon: Building2, badge: 'Prospects' }
       ]
     },
     {

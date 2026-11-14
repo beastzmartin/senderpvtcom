@@ -171,8 +171,19 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
 
   const handleStartJob = async (jobId: string) => {
     try {
+      const job = jobs.find((j) => j.id === jobId);
       const updated = await api.extractionJobs.start(jobId);
       setJobs(jobs.map((j) => (j.id === jobId ? updated : j)));
+
+      // Automatically launch Google Maps and trigger extraction in browser!
+      const targetUrl = buildTargetExtractionUrl(
+        'google_maps',
+        job?.keyword || '',
+        job?.location || '',
+        job?.requested_count || 50,
+        jobId
+      );
+      window.open(targetUrl, '_blank');
     } catch (err: any) {
       alert(err.message);
     }
@@ -189,8 +200,19 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
 
   const handleResumeJob = async (jobId: string) => {
     try {
+      const job = jobs.find((j) => j.id === jobId);
       const updated = await api.extractionJobs.resume(jobId);
       setJobs(jobs.map((j) => (j.id === jobId ? updated : j)));
+
+      // Re-open Google Maps to continue scraping
+      const targetUrl = buildTargetExtractionUrl(
+        'google_maps',
+        job?.keyword || '',
+        job?.location || '',
+        job?.requested_count || 50,
+        jobId
+      );
+      window.open(targetUrl, '_blank');
     } catch (err: any) {
       alert(err.message);
     }
@@ -217,18 +239,18 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
 
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Top Banner */}
+      {/* Top Banner - Focused strictly on Google Maps Lead Extractor */}
       <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 rounded-2xl p-6 sm:p-8 text-white shadow-xl shadow-emerald-950/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
         <div className="space-y-2 z-10 max-w-xl">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-white/20 backdrop-blur-md border border-white/20">
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            MULTI-SOURCE LEAD INTELLIGENCE ENGINE
+            <MapPin className="w-3.5 h-3.5 text-amber-300" />
+            GOOGLE MAPS LEAD EXTRACTOR PRO
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-            Extraction Hub & Marketplace
+            Google Maps Lead Extraction Studio
           </h1>
           <p className="text-emerald-100 text-xs sm:text-sm leading-relaxed">
-            Prospect business leads from Google Maps, corporate websites, B2B directories, and company registries. Synchronize thousands of verified contacts directly to your dashboard.
+            Extract verified business names, direct phone numbers, full addresses, ratings, reviews, and websites straight from Google Maps directly into your CRM with automatic background cloud sync.
           </p>
         </div>
 
@@ -246,7 +268,7 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
               onClick={onNavigateToLeads}
               className="px-4 py-2.5 bg-emerald-800/60 hover:bg-emerald-800 text-white border border-white/20 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
             >
-              View Extracted Leads
+              View Extracted Leads CRM
               <ChevronRight className="w-4 h-4" />
             </button>
           )}
@@ -256,85 +278,123 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
         <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 rounded-full bg-emerald-400/20 blur-3xl pointer-events-none"></div>
       </div>
 
-      {/* SECTION 1: EXTRACTION MARKETPLACE */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
+      {/* SECTION 1: GOOGLE MAPS INSTANT EXTRACTION CONSOLE */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm hover:shadow-md transition space-y-4">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Supported Extraction Connectors</h2>
-            <p className="text-xs text-slate-500">Modular prospecting engines configured for specialized lead pipelines.</p>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-emerald-600" />
+                Launch Google Maps Lead Prospector
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500">
+              Type your target category and location. Clicking Start automatically opens Google Maps in a new tab and begins extracting leads immediately.
+            </p>
           </div>
-          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-            {sources.length} Active Connectors
-          </span>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const sampleUrl = buildTargetExtractionUrl('google_maps', jobKeyword || 'Restaurants', jobLocation || 'Dubai', jobCount);
+                window.open(sampleUrl, '_blank');
+              }}
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+              Open Live Google Maps
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sources.map((src) => (
-            <div
-              key={src.id}
-              className="bg-white border border-slate-200/80 rounded-2xl p-5 hover:border-emerald-300 hover:shadow-md transition flex flex-col justify-between group"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition shadow-sm">
-                    {getSourceIcon(src.icon || 'Layers')}
-                  </div>
-                  {src.badge && (
-                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                      {src.badge}
-                    </span>
-                  )}
-                </div>
+        {/* Form */}
+        <form onSubmit={handleCreateJob} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+          <div className="md:col-span-4">
+            <label className="text-xs font-bold text-slate-700 mb-1.5 block">
+              Business Category / Keyword
+            </label>
+            <input
+              type="text"
+              value={jobKeyword}
+              onChange={(e) => setJobKeyword(e.target.value)}
+              placeholder="e.g. Dentists, Real Estate Agents, Cafes, Digital Agencies"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 transition"
+              required
+            />
+          </div>
 
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition">
-                    {src.name}
-                  </h3>
-                  <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">{src.category}</span>
-                  <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                    {src.description}
-                  </p>
-                </div>
+          <div className="md:col-span-4">
+            <label className="text-xs font-bold text-slate-700 mb-1.5 block">
+              Target City / Location / Region
+            </label>
+            <input
+              type="text"
+              value={jobLocation}
+              onChange={(e) => setJobLocation(e.target.value)}
+              placeholder="e.g. Dubai, New York, Mumbai, London, Toronto"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 transition"
+              required
+            />
+          </div>
 
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {(src.supported_fields || []).slice(0, 4).map((f) => (
-                    <span
-                      key={f}
-                      className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-50 text-slate-600 border border-slate-100"
-                    >
-                      {f.replace(/_/g, ' ')}
-                    </span>
-                  ))}
-                  {(src.supported_fields || []).length > 4 && (
-                    <span className="text-[10px] font-semibold text-slate-400 px-1 py-0.5">
-                      +{(src.supported_fields || []).length - 4} more
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => {
-                    const sampleUrl = buildTargetExtractionUrl(src.id, '', '', 50);
-                    window.open(sampleUrl, '_blank');
-                  }}
-                  className="text-xs font-semibold text-slate-500 hover:text-emerald-600 flex items-center gap-1 shrink-0"
-                  title="Directly open source website in new tab"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" /> Open
-                </button>
-
-                <button
-                  onClick={() => handleLaunchModalForSource(src.id)}
-                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm ml-auto"
-                >
-                  <Plus className="w-3.5 h-3.5 text-emerald-400" /> Launch & Extract
-                </button>
+          <div className="md:col-span-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-slate-700">Lead Target Count</label>
+              <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                {jobCount} Leads
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={10000}
+                value={jobCount}
+                onChange={(e) => setJobCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                className="w-24 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500"
+              />
+              <div className="flex items-center gap-1 overflow-x-auto">
+                {[50, 100, 250, 500, 1000].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setJobCount(preset)}
+                    className={`px-2 py-1.5 rounded-lg text-[10px] font-bold transition ${
+                      jobCount === preset
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+
+          <div className="md:col-span-12 pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-slate-100">
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-600">
+              <input
+                type="checkbox"
+                checked={autoLaunchBrowser}
+                onChange={(e) => setAutoLaunchBrowser(e.target.checked)}
+                className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 border-slate-300"
+              />
+              <span>Automatically open Google Maps & start scraping leads immediately</span>
+            </label>
+
+            <button
+              type="submit"
+              disabled={isSubmittingJob}
+              className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>{isSubmittingJob ? 'Launching...' : '🚀 Start Google Maps Scraping'}</span>
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* SECTION 2: EXTRACTION JOB MANAGER */}
@@ -465,10 +525,11 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
                           {job.status === 'pending' && (
                             <button
                               onClick={() => handleStartJob(job.id)}
-                              className="p-1.5 hover:bg-slate-100 rounded-lg text-emerald-600 transition"
-                              title="Start Job"
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                              title="Start Scraping on Google Maps"
                             >
-                              <Play className="w-4 h-4" />
+                              <Play className="w-3 h-3 fill-current" />
+                              <span>Start Scrape</span>
                             </button>
                           )}
                           {job.status === 'running' && (
@@ -483,10 +544,11 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
                           {job.status === 'paused' && (
                             <button
                               onClick={() => handleResumeJob(job.id)}
-                              className="p-1.5 hover:bg-slate-100 rounded-lg text-emerald-600 transition"
-                              title="Resume Job"
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                              title="Resume Scraping on Google Maps"
                             >
-                              <Play className="w-4 h-4" />
+                              <Play className="w-3 h-3 fill-current" />
+                              <span>Resume</span>
                             </button>
                           )}
                           {(job.status === 'running' || job.status === 'paused') && (
@@ -540,19 +602,14 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
             )}
 
             <form onSubmit={handleCreateJob} className="space-y-3.5">
-              <div>
-                <label className="text-xs font-bold text-slate-700 mb-1 block">Extraction Source</label>
-                <select
-                  value={selectedSourceId}
-                  onChange={(e) => setSelectedSourceId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold bg-white text-slate-800 outline-none focus:border-emerald-500"
-                >
-                  {sources.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.category})
-                    </option>
-                  ))}
-                </select>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-900">Google Maps Lead Extractor</div>
+                  <div className="text-[10px] text-emerald-700 font-semibold">Verified Contact & Local Business Discovery Engine</div>
+                </div>
               </div>
 
               <div>

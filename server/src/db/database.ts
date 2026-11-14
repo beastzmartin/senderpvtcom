@@ -678,8 +678,11 @@ export function initDatabase(): Database.Database {
           src.supported_fields
         );
       }
-      console.log('[DB] Seeded 12 standardized multi-source lead extractors into extraction_sources table.');
+      console.log('[DB] Seeded standardized Google Maps lead extractor into extraction_sources table.');
     }
+    // Deactivate all non-Google Maps connectors to keep system strictly focused on Google Maps
+    db.exec(`UPDATE extraction_sources SET is_active = 0 WHERE id != 'google_maps'`);
+    db.exec(`UPDATE extraction_sources SET is_active = 1 WHERE id = 'google_maps'`);
   } catch (err) {
     console.error('[DB] Error configuring lead intelligence tables:', err);
   }

@@ -75,3 +75,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 
 # Start server
 CMD ["node", "dist/index.js"]
+
