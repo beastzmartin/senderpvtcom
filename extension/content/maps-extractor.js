@@ -136,12 +136,14 @@
     const pauseBtn = document.getElementById('hud-btn-pause');
     const kwLabel = document.getElementById('hud-keyword-label');
 
+    const displayCount = max > 0 ? Math.min(count, max) : count;
+
     if (statusLabel) statusLabel.textContent = statusText;
-    if (countLabel) countLabel.textContent = `${count} / ${max || 'All'}`;
+    if (countLabel) countLabel.textContent = `${displayCount} / ${max || 'All'}`;
     if (kwLabel && keyword) kwLabel.textContent = `Keyword: ${keyword.substring(0, 22)}`;
 
     const targetMax = max || 100;
-    const percent = Math.min(100, Math.round((count / targetMax) * 100));
+    const percent = Math.min(100, Math.round((displayCount / targetMax) * 100));
     if (progressBar) progressBar.style.width = `${percent}%`;
 
     if (statusDot) {
@@ -192,6 +194,9 @@
       const results = [];
       for (const item of rawItems) {
         if (!item) continue;
+        if (maxLeads > 0 && (leadsCollected + results.length) >= maxLeads) {
+          break;
+        }
         let o = item;
         if (Array.isArray(item) && item.length === 15 && item[14]) o = item[14];
         if (Array.isArray(item) && (item.length === 2 || item.length === 15) && item[1]) o = item[1];
@@ -282,6 +287,9 @@
 
     rawItems.forEach((item) => {
       try {
+        if (maxLeads > 0 && (leadsCollected + leads.length) >= maxLeads) {
+          return;
+        }
         const parentCard = item.closest('div.Nv2PK') || item.closest('div.THOPZb') || item;
         const linkEl = parentCard.querySelector('a.hfpxzc') || (item.tagName === 'A' ? item : null);
         const listingUrl = linkEl ? linkEl.getAttribute('href') : null;
@@ -396,6 +404,7 @@
    */
   function parseSinglePlaceDetail() {
     try {
+      if (maxLeads > 0 && leadsCollected >= maxLeads) return null;
       const nameEl = document.querySelector('h1.DUwDvf') || document.querySelector('h1.fontHeadlineLarge');
       if (!nameEl) return null;
       const name = nameEl.textContent.trim();
@@ -503,8 +512,20 @@
       const intercepted = parseInterceptedResponse();
       const visible = parseVisibleListings();
       const single = parseSinglePlaceDetail();
-      const combined = [...intercepted, ...visible];
+      let combined = [...intercepted, ...visible];
       if (single) combined.push(single);
+
+      // Strict enforcement of requested lead count: NEVER extract or sync more than requested!
+      if (maxLeads > 0) {
+        const remainingNeeded = Math.max(0, maxLeads - leadsCollected);
+        if (remainingNeeded <= 0) {
+          console.log(`[Maps Extractor] Exact target reached (${leadsCollected}/${maxLeads}). Halting extraction immediately.`);
+          break;
+        }
+        if (combined.length > remainingNeeded) {
+          combined = combined.slice(0, remainingNeeded);
+        }
+      }
 
       if (combined.length > 0) {
         leadsCollected += combined.length;
@@ -531,6 +552,7 @@
 
       // Check target count reached
       if (maxLeads > 0 && leadsCollected >= maxLeads) {
+        console.log(`[Maps Extractor] Target limit of ${maxLeads} leads fully satisfied (${leadsCollected}/${maxLeads}). Completing extraction.`);
         break;
       }
 

@@ -166,8 +166,34 @@ export class ExtensionController {
         return;
       }
 
+      // If tied to a job, clamp leads to remaining requested count
+      let leadsToProcess = leads;
+      let targetJob: any = null;
+      if (jobId) {
+        targetJob = this.jobService.getJobById(userId, jobId);
+        if (targetJob) {
+          const reqCount = targetJob.requested_count || 50;
+          const remainingNeeded = Math.max(0, reqCount - targetJob.collected_count);
+          if (remainingNeeded <= 0) {
+            this.jobService.completeJob(jobId, targetJob.collected_count, targetJob.duplicate_count, targetJob.failed_count);
+            res.json({
+              success: true,
+              syncedCount: 0,
+              duplicates: 0,
+              failed: 0,
+              remainingToday: Math.max(0, dailyLimit - todayCount),
+              jobCompleted: true
+            });
+            return;
+          }
+          if (leadsToProcess.length > remainingNeeded) {
+            leadsToProcess = leadsToProcess.slice(0, remainingNeeded);
+          }
+        }
+      }
+
       // Save leads
-      const result = this.leadService.batchCreateLeads(userId, leads, jobId);
+      const result = this.leadService.batchCreateLeads(userId, leadsToProcess, jobId);
 
       // Settle usage and wallet deduction based on successfully stored leads
       const settlement = this.entitlementService.recordUsageAndSettle(userId, moduleId, result.created.length, {
@@ -175,15 +201,17 @@ export class ExtensionController {
         description: `Extracted ${result.created.length} new leads via ${moduleId}`
       });
 
-      // If tied to a job, update progress
-      if (jobId) {
-        const job = this.jobService.getJobById(userId, jobId);
-        if (job) {
-          const totalCollected = job.collected_count + result.created.length;
-          const totalDuplicates = job.duplicate_count + result.duplicates;
-          const totalFailed = job.failed_count + result.failed;
-          const progress = Math.min(100, Math.round((totalCollected / (job.requested_count || 50)) * 100));
+      // If tied to a job, update progress and auto-complete if target reached
+      if (jobId && targetJob) {
+        const reqCount = targetJob.requested_count || 50;
+        const totalCollected = Math.min(reqCount, targetJob.collected_count + result.created.length);
+        const totalDuplicates = targetJob.duplicate_count + result.duplicates;
+        const totalFailed = targetJob.failed_count + result.failed;
+        const progress = Math.min(100, Math.round((totalCollected / reqCount) * 100));
 
+        if (totalCollected >= reqCount) {
+          this.jobService.completeJob(jobId, totalCollected, totalDuplicates, totalFailed);
+        } else {
           this.jobService.updateProgress(jobId, progress, totalCollected, totalDuplicates, totalFailed);
         }
       }

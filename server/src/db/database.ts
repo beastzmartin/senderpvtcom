@@ -4,6 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { config } from '../config.js';
 import { SCHEMA_SQL } from './schema.js';
+import { initVirtualNumberDatabase } from './virtualNumberSeeder.js';
 
 let dbInstance: Database.Database | null = null;
 
@@ -1060,6 +1061,9 @@ export function initDatabase(): Database.Database {
 
       console.log('[DB] Extensions Marketplace & 20 Standardized Modules successfully initialized.');
     }
+
+    // Initialize Virtual Number Marketplace & Management System Schema and Seed Data
+    initVirtualNumberDatabase(db);
   } catch (err) {
     console.error('[DB] Error configuring wallet and marketplace tables:', err);
   }
