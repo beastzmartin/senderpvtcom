@@ -22,3 +22,4 @@ router.delete('/admin/modules/:id', requireAuth, controller.adminDeleteModule);
 router.post('/admin/entitlements/override', requireAuth, controller.adminSetOverride);
 
 export default router;
+

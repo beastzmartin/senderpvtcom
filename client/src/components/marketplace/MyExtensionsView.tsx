@@ -345,3 +345,4 @@ export const MyExtensionsView: React.FC<MyExtensionsViewProps> = ({
     </div>
   );
 };
+

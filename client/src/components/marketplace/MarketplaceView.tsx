@@ -342,3 +342,4 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
     </div>
   );
 };
+

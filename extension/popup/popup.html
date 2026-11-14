@@ -23,12 +23,6 @@
       </div>
       <div class="header-actions">
         <div id="connection-pill" class="pill pill-offline">Checking...</div>
-        <button id="btn-settings" class="icon-btn" title="Settings">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-        </button>
       </div>
     </header>
 
@@ -88,10 +82,14 @@
 
         <!-- GOOGLE MAPS CONTROLLER -->
         <div id="panel-gmaps" class="tab-panel hidden">
-          <p class="panel-desc">Google Maps place results detected. Ready to extract business contacts and reviews.</p>
+          <div class="panel-header-row">
+            <span class="panel-title-text">📍 Google Maps Extractor</span>
+            <span class="badge-auto">Live Sync</span>
+          </div>
+          <p class="panel-desc">Scrolls Google Maps results, extracts verified phone numbers, websites, and addresses, and syncs directly to your CRM.</p>
           
           <div class="form-row">
-            <label for="maps-max-count">Extraction Limit:</label>
+            <label for="maps-max-count">Target Leads:</label>
             <select id="maps-max-count" class="select-field">
               <option value="25">25 leads</option>
               <option value="50" selected>50 leads</option>
@@ -102,7 +100,7 @@
 
           <div class="progress-box hidden" id="maps-progress-box">
             <div class="progress-labels">
-              <span>Progress:</span>
+              <span id="maps-status-lbl">Extracting...</span>
               <span id="maps-progress-count">0 / 50</span>
             </div>
             <div class="progress-bar-bg">
@@ -111,7 +109,12 @@
           </div>
 
           <div class="action-grid">
-            <button id="btn-maps-start" class="btn btn-primary">Start Extraction</button>
+            <button id="btn-maps-start" class="btn btn-primary w-full">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              Start Automatic Extraction
+            </button>
             <button id="btn-maps-pause" class="btn btn-secondary hidden">Pause</button>
             <button id="btn-maps-resume" class="btn btn-secondary hidden">Resume</button>
             <button id="btn-maps-stop" class="btn btn-danger hidden">Stop & Sync</button>
@@ -120,32 +123,45 @@
 
         <!-- WEBSITE LEAD CONTROLLER -->
         <div id="panel-website" class="tab-panel hidden">
-          <p class="panel-desc">Inspect this webpage to discover verified business emails, phone numbers, and social links.</p>
-
-          <button id="btn-scan-web" class="btn btn-primary w-full">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            Scan & Extract Contacts
-          </button>
+          <div class="panel-header-row">
+            <span class="panel-title-text">⚡ Instant Web Prospector</span>
+            <span class="badge-auto" id="auto-scan-badge">Auto-Scan Ready</span>
+          </div>
 
           <!-- Discovered Preview -->
-          <div id="web-preview-box" class="preview-box hidden">
-            <div class="preview-title" id="web-preview-name">Company Name</div>
+          <div id="web-preview-box" class="preview-box">
+            <div class="preview-header">
+              <div class="preview-title" id="web-preview-name">Detecting company...</div>
+              <span class="preview-status" id="web-preview-status">Detecting</span>
+            </div>
             <div class="preview-item">
               <span class="preview-label">Email:</span>
-              <span class="preview-val" id="web-preview-email">None</span>
+              <span class="preview-val font-highlight" id="web-preview-email">Searching...</span>
             </div>
             <div class="preview-item">
               <span class="preview-label">Phone:</span>
-              <span class="preview-val" id="web-preview-phone">None</span>
+              <span class="preview-val font-highlight" id="web-preview-phone">Searching...</span>
             </div>
             <div class="preview-item">
               <span class="preview-label">Socials:</span>
-              <span class="preview-val" id="web-preview-socials">0 profiles</span>
+              <span class="preview-val" id="web-preview-socials">0 channels</span>
             </div>
-            <button id="btn-save-web-lead" class="btn btn-success w-full mt-2">Save to SaaS Dashboard</button>
+            <div class="preview-item" id="web-preview-addr-row">
+              <span class="preview-label">Address:</span>
+              <span class="preview-val text-truncate" id="web-preview-address">None</span>
+            </div>
+
+            <div class="auto-sync-opt">
+              <label class="checkbox-container">
+                <input type="checkbox" id="chk-auto-sync" checked />
+                <span class="checkbox-label">Auto-Sync leads directly to CRM</span>
+              </label>
+            </div>
+
+            <div class="btn-group-mt">
+              <button id="btn-save-web-lead" class="btn btn-success w-full">✓ Save to SaaS Dashboard</button>
+              <button id="btn-scan-web" class="btn btn-outline btn-sm w-full mt-1">Re-Scan Webpage</button>
+            </div>
           </div>
         </div>
 

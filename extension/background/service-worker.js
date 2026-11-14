@@ -3,20 +3,22 @@
  * Manifest V3 Architecture
  */
 
-const DEFAULT_API_URL = 'http://localhost:3000';
+const BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
+const API_BASE_URL = `${BACKEND_URL}/api`;
 
 // Ensure default settings exist on install
 chrome.runtime.onInstalled.addListener(async () => {
-  const data = await chrome.storage.local.get(['apiUrl', 'leadsBuffer', 'offlineQueue']);
-  const updates = {};
-  if (!data.apiUrl) updates.apiUrl = DEFAULT_API_URL;
+  const data = await chrome.storage.local.get(['leadsBuffer', 'offlineQueue']);
+  const updates = {
+    apiUrl: BACKEND_URL
+  };
   if (!data.leadsBuffer) updates.leadsBuffer = [];
   if (!data.offlineQueue) updates.offlineQueue = [];
   await chrome.storage.local.set(updates);
 
   await chrome.action.setBadgeText({ text: '' });
   await chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
-  console.log('[Service Worker] Lead Intelligence Extension installed successfully.');
+  console.log('[Service Worker] Lead Intelligence Extension installed successfully with backend:', BACKEND_URL);
 });
 
 // Periodic alarm for sync queue processing
@@ -28,17 +30,16 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 /**
- * Helper to get active configuration
+ * Helper to get active configuration.
+ * Backend URL is permanently locked to the live cloud endpoint and cannot be modified by users.
  */
 async function getConfig() {
-  const { apiUrl = DEFAULT_API_URL, token = null, user = null } = await chrome.storage.local.get([
-    'apiUrl',
+  const { token = null, user = null } = await chrome.storage.local.get([
     'token',
     'user'
   ]);
-  const cleanApiUrl = apiUrl.replace(/\/+$/, '');
   return {
-    apiUrl: cleanApiUrl.endsWith('/api') ? cleanApiUrl : `${cleanApiUrl}/api`,
+    apiUrl: API_BASE_URL,
     token,
     user
   };
@@ -206,13 +207,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       if (type === 'GET_STATE') {
         const data = await chrome.storage.local.get([
-          'apiUrl',
           'token',
           'user',
           'leadsBuffer',
           'offlineQueue',
           'activeJob'
         ]);
+
+        // Always keep storage in sync with fixed BACKEND_URL
+        await chrome.storage.local.set({ apiUrl: BACKEND_URL });
 
         // Get active tab info
         let currentTab = null;
@@ -230,7 +233,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         sendResponse({
           success: true,
-          apiUrl: data.apiUrl || DEFAULT_API_URL,
+          apiUrl: BACKEND_URL,
           isAuthenticated: !!data.token,
           user: data.user || null,
           bufferCount: (data.leadsBuffer || []).length,
@@ -269,11 +272,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       if (type === 'SET_SETTINGS') {
-        const { apiUrl } = payload;
-        if (apiUrl) {
-          await chrome.storage.local.set({ apiUrl });
-        }
-        sendResponse({ success: true });
+        // apiUrl is permanently locked to the live backend URL and cannot be altered by users
+        await chrome.storage.local.set({ apiUrl: BACKEND_URL });
+        sendResponse({ success: true, message: 'Settings locked to managed endpoint.' });
         return;
       }
 

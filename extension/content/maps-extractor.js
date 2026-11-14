@@ -109,6 +109,73 @@
   }
 
   /**
+   * Extract from a single place details page if opened directly
+   */
+  function parseSinglePlaceDetail() {
+    const titleEl = document.querySelector('h1.DUwDvf, h1.fontHeadlineLarge, h1');
+    if (!titleEl) return [];
+    const name = titleEl.textContent.trim();
+    if (!name || name === 'Google Maps' || name.length < 2) return [];
+
+    const placeId = `gmap_single_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    if (extractedPlaceIds.has(placeId)) return [];
+
+    let rating = null;
+    let reviewsCount = 0;
+    const ratingEl = document.querySelector('div.F7nice > span > span[aria-hidden="true"], span.ceNzKf');
+    if (ratingEl) rating = parseFloat(ratingEl.textContent.trim()) || null;
+
+    const reviewsEl = document.querySelector('div.F7nice > span:nth-child(2) > span > span, button[jsaction*="review"]');
+    if (reviewsEl) {
+      const match = reviewsEl.textContent.replace(/[(),]/g, '').match(/\d+/);
+      if (match) reviewsCount = parseInt(match[0], 10);
+    }
+
+    let category = 'Local Business';
+    const catBtn = document.querySelector('button[jsaction*="category"], div.fontBodyMedium button.DkEaL');
+    if (catBtn) category = catBtn.textContent.trim();
+
+    let address = null;
+    const addrBtn = document.querySelector('button[data-item-id="address"] div.fontBodyMedium, button[aria-label*="Address:" i], [data-tooltip*="Copy address" i]');
+    if (addrBtn) address = addrBtn.textContent.trim();
+
+    let phone = null;
+    const phoneBtn = document.querySelector('button[data-item-id*="phone:"] div.fontBodyMedium, button[aria-label*="Phone:" i], [data-tooltip*="Copy phone number" i]');
+    if (phoneBtn) phone = phoneBtn.textContent.trim();
+
+    let website = null;
+    const webBtn = document.querySelector('a[data-item-id="authority"], a[aria-label*="Website:" i]');
+    if (webBtn) website = webBtn.getAttribute('href');
+
+    let latitude = null;
+    let longitude = null;
+    const coordMatch = window.location.href.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (coordMatch) {
+      latitude = parseFloat(coordMatch[1]);
+      longitude = parseFloat(coordMatch[2]);
+    }
+
+    extractedPlaceIds.add(placeId);
+
+    return [{
+      business_name: name,
+      category,
+      phone,
+      website,
+      address,
+      rating,
+      reviews_count: reviewsCount,
+      operating_status: 'Operational',
+      place_id: placeId,
+      listing_url: window.location.href,
+      latitude,
+      longitude,
+      source: 'google_maps',
+      source_url: window.location.href
+    }];
+  }
+
+  /**
    * Find results scrollable feed container in Google Maps
    */
   function findFeedContainer() {
@@ -131,6 +198,12 @@
    * Extract business listings from currently visible feed items
    */
   function parseVisibleListings() {
+    // If on a single place view
+    if (window.location.href.includes('/place/')) {
+      const single = parseSinglePlaceDetail();
+      if (single.length > 0) return single;
+    }
+
     const rawItems = document.querySelectorAll('div.Nv2PK, div.THOPZb, a.hfpxzc');
     const newLeads = [];
 
@@ -203,13 +276,21 @@
 
           if (text.includes('·')) {
             const parts = text.split('·').map((p) => p.trim());
-            if (parts[0] && parts[0].length < 40 && !category) {
+            if (parts[0] && parts[0].length < 40 && (!category || category === 'Local Business')) {
               category = parts[0];
             }
+            for (let i = 1; i < parts.length; i++) {
+              const p = parts[i];
+              if (!p.includes('Open') && !p.includes('Closed') && !p.includes('+') && !p.match(/\d{5,}/)) {
+                if (!address && p.length > 3) address = p;
+              }
+            }
+          } else if (!address && text.length > 4 && !text.includes('Open') && !text.includes('Closed')) {
+            address = text;
           }
 
           if (text.includes('Open') || text.includes('Closed')) {
-            operatingStatus = text.split('·')[0].trim();
+            operatingStatus = text.includes('Open') ? 'Open' : 'Closed';
           }
         });
 

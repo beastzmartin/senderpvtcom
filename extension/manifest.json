@@ -24,12 +24,15 @@
     "storage",
     "tabs",
     "activeTab",
-    "alarms"
+    "scripting",
+    "alarms",
+    "downloads"
   ],
   "host_permissions": [
     "*://*.google.com/maps/*",
     "*://*.google.co.in/maps/*",
     "*://maps.google.com/*",
+    "https://taken-rough-hydrocodone-empirical.trycloudflare.com/*",
     "http://*/*",
     "https://*/*"
   ],
@@ -57,6 +60,15 @@
       "run_at": "document_idle"
     }
   ],
-  "options_page": "options/options.html"
+  "web_accessible_resources": [
+    {
+      "resources": ["content/interceptData.js"],
+      "matches": [
+        "*://*.google.com/*",
+        "*://*.google.co.in/*",
+        "*://maps.google.com/*"
+      ]
+    }
+  ]
 }
 

@@ -1,11 +1,11 @@
 /**
- * Lead Intelligence & Prospecting Pro - Popup Controller
+ * Lead Intelligence & Prospecting Pro - Automated Popup Controller
+ * Automatic Page Inspection, Auto-Scan, Auto-Sync & Robust Manifest V3 Fallback
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Elements
   const connectionPill = document.getElementById('connection-pill');
-  const btnSettings = document.getElementById('btn-settings');
   const viewAuth = document.getElementById('view-auth');
   const viewMain = document.getElementById('view-main');
 
@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const mapsProgressBox = document.getElementById('maps-progress-box');
   const mapsProgressCount = document.getElementById('maps-progress-count');
   const mapsProgressFill = document.getElementById('maps-progress-fill');
+  const mapsStatusLbl = document.getElementById('maps-status-lbl');
   const btnMapsStart = document.getElementById('btn-maps-start');
   const btnMapsPause = document.getElementById('btn-maps-pause');
   const btnMapsResume = document.getElementById('btn-maps-resume');
@@ -52,6 +53,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const webPreviewEmail = document.getElementById('web-preview-email');
   const webPreviewPhone = document.getElementById('web-preview-phone');
   const webPreviewSocials = document.getElementById('web-preview-socials');
+  const webPreviewAddress = document.getElementById('web-preview-address');
+  const webPreviewStatus = document.getElementById('web-preview-status');
+  const chkAutoSync = document.getElementById('chk-auto-sync');
   const btnSaveWebLead = document.getElementById('btn-save-web-lead');
 
   // Sync & Footer
@@ -65,10 +69,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   let scannedWebLead = null;
   let srvState = null;
 
-  // Open settings
-  btnSettings.addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
-  });
+  // Restore auto-sync user preference
+  const pref = await chrome.storage.local.get('autoSyncEnabled');
+  if (chkAutoSync) {
+    chkAutoSync.checked = pref.autoSyncEnabled !== false;
+    chkAutoSync.addEventListener('change', () => {
+      chrome.storage.local.set({ autoSyncEnabled: chkAutoSync.checked });
+    });
+  }
 
   // Switch Auth Tabs
   tabBtnToken.addEventListener('click', () => {
@@ -144,7 +152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Open Dashboard in new tab
   btnOpenDashboard.addEventListener('click', () => {
-    const targetUrl = srvState?.apiUrl ? srvState.apiUrl.replace(/\/api\/?$/, '') : 'http://localhost:3000';
+    const targetUrl = srvState?.apiUrl ? srvState.apiUrl.replace(/\/api\/?$/, '') : 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
     chrome.tabs.create({ url: targetUrl });
   });
 
@@ -160,6 +168,369 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateBufferUI(count) {
     syncBufferCount.textContent = `${count} lead${count === 1 ? '' : 's'}`;
+  }
+
+  /**
+   * Self-contained in-page scanner function injected directly into any tab
+   * Bypasses content script messaging limitations entirely
+   */
+  function inPageScanner() {
+    function isValidEmail(email) {
+      if (!email || email.length < 5 || email.length > 80) return false;
+      const lower = email.toLowerCase().trim();
+      if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.svg') || lower.endsWith('.webp') || lower.endsWith('.gif')) return false;
+      const blacklisted = ['domain.com', 'example.com', 'yourname@', 'sentry.io', 'wixpress.com', 'email@', 'user@'];
+      if (blacklisted.some((bl) => lower.includes(bl))) return false;
+      return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(lower);
+    }
+
+    function cleanPhone(raw) {
+      if (!raw) return null;
+      const digits = raw.replace(/\D/g, '');
+      if (digits.length < 7 || digits.length > 15) return null;
+      return raw.trim().replace(/\s+/g, ' ');
+    }
+
+    // 1. Business Name
+    let businessName = '';
+    const ogSite = document.querySelector('meta[property="og:site_name"]');
+    if (ogSite && ogSite.content) businessName = ogSite.content.trim();
+
+    if (!businessName) {
+      const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const s of ldScripts) {
+        try {
+          const d = JSON.parse(s.textContent || '{}');
+          if (d.name && (d['@type'] === 'Organization' || d['@type'] === 'LocalBusiness' || d['@type'] === 'Corporation')) {
+            businessName = d.name.trim();
+            break;
+          }
+        } catch {}
+      }
+    }
+
+    if (!businessName && document.title) {
+      let t = document.title.split(/[|\-–—:]/)[0].trim();
+      t = t.replace(/^(home|welcome to|official site|about us|contact us)\s*/i, '').trim();
+      if (t.length > 1 && t.length < 60) businessName = t;
+    }
+
+    if (!businessName) {
+      const host = window.location.hostname.replace(/^www\./i, '').split('.')[0];
+      businessName = host.charAt(0).toUpperCase() + host.slice(1);
+    }
+
+    // 2. Emails
+    const emailsSet = new Set();
+    document.querySelectorAll('a[href^="mailto:"]').forEach((a) => {
+      const em = (a.getAttribute('href') || '').replace(/^mailto:/i, '').split('?')[0].trim();
+      if (isValidEmail(em)) emailsSet.add(em.toLowerCase());
+    });
+
+    const bodyText = document.body ? document.body.innerText : '';
+    const regexEmails = bodyText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+    regexEmails.forEach((em) => {
+      if (isValidEmail(em)) emailsSet.add(em.toLowerCase());
+    });
+
+    // 3. Phones
+    const phonesSet = new Set();
+    document.querySelectorAll('a[href^="tel:"]').forEach((a) => {
+      const p = cleanPhone((a.getAttribute('href') || '').replace(/^tel:/i, '').trim());
+      if (p) phonesSet.add(p);
+    });
+
+    const phoneRegex = /(?:\+?\d{1,4}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,5}[-.\s]?\d{3,5}/g;
+    const blocks = document.querySelectorAll('footer, header, address, [class*="contact" i], [id*="contact" i], [class*="footer" i]');
+    blocks.forEach((b) => {
+      const matches = (b.innerText || '').match(phoneRegex) || [];
+      matches.forEach((m) => {
+        const p = cleanPhone(m);
+        if (p) phonesSet.add(p);
+      });
+    });
+
+    // 4. Social Links
+    const socials = {};
+    document.querySelectorAll('a[href]').forEach((a) => {
+      const href = a.getAttribute('href') || '';
+      if (href.includes('linkedin.com/company/') || href.includes('linkedin.com/in/')) socials.linkedin = href;
+      else if (href.includes('facebook.com/') && !href.includes('sharer')) socials.facebook = href;
+      else if (href.includes('instagram.com/')) socials.instagram = href;
+      else if ((href.includes('twitter.com/') || href.includes('x.com/')) && !href.includes('intent/tweet')) socials.twitter = href;
+      else if (href.includes('youtube.com/') && !href.includes('watch')) socials.youtube = href;
+      else if (href.includes('wa.me/') || href.includes('whatsapp.com')) socials.whatsapp = href;
+    });
+
+    // 5. Address
+    let address = '';
+    const addrTag = document.querySelector('address');
+    if (addrTag && addrTag.innerText.trim().length > 5) {
+      address = addrTag.innerText.replace(/\s+/g, ' ').trim();
+    }
+
+    // 6. Description
+    const descMeta = document.querySelector('meta[name="description"], meta[property="og:description"]');
+    const description = descMeta ? descMeta.getAttribute('content') : '';
+
+    return {
+      business_name: businessName,
+      website: window.location.origin,
+      source_url: window.location.href,
+      email: Array.from(emailsSet)[0] || null,
+      emails: Array.from(emailsSet),
+      phone: Array.from(phonesSet)[0] || null,
+      phones: Array.from(phonesSet),
+      social_profiles: socials,
+      address: address || null,
+      company_description: description || null,
+      source: 'website_extractor'
+    };
+  }
+
+  /**
+   * Automatic Website Scanner - runs immediately when popup is opened on any website
+   */
+  async function autoScanWebsite(tabId) {
+    if (!tabId) return;
+
+    if (webPreviewStatus) webPreviewStatus.textContent = 'Auto-Scanning';
+    if (webPreviewName) webPreviewName.textContent = 'Analyzing page structure...';
+    if (webPreviewEmail) webPreviewEmail.textContent = 'Scanning emails...';
+    if (webPreviewPhone) webPreviewPhone.textContent = 'Scanning phones...';
+
+    let leadData = null;
+
+    // Step 1: Try messaging existing content script
+    try {
+      leadData = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { action: 'SCAN_WEBSITE' }, (res) => {
+          if (chrome.runtime.lastError || !res?.data) {
+            resolve(null);
+          } else {
+            resolve(res.data);
+          }
+        });
+      });
+    } catch {
+      leadData = null;
+    }
+
+    // Step 2: Robust Fallback via chrome.scripting.executeScript
+    if (!leadData) {
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: inPageScanner
+        });
+        leadData = results?.[0]?.result || null;
+      } catch (scriptErr) {
+        console.warn('[Popup] Dynamic inPageScanner execution:', scriptErr);
+      }
+    }
+
+    if (!leadData) {
+      if (webPreviewStatus) webPreviewStatus.textContent = 'Ready';
+      if (webPreviewName) webPreviewName.textContent = 'Click to scan this page';
+      if (webPreviewEmail) webPreviewEmail.textContent = 'None detected';
+      if (webPreviewPhone) webPreviewPhone.textContent = 'None detected';
+      return;
+    }
+
+    scannedWebLead = leadData;
+    if (webPreviewStatus) webPreviewStatus.textContent = 'Discovered';
+    if (webPreviewName) webPreviewName.textContent = scannedWebLead.business_name || 'Business Found';
+    if (webPreviewEmail) webPreviewEmail.textContent = scannedWebLead.email || 'None found';
+    if (webPreviewPhone) webPreviewPhone.textContent = scannedWebLead.phone || 'None found';
+    if (webPreviewAddress) webPreviewAddress.textContent = scannedWebLead.address || 'None detected';
+
+    const socialCount = Object.values(scannedWebLead.social_profiles || {}).filter(Boolean).length;
+    if (webPreviewSocials) webPreviewSocials.textContent = `${socialCount} social channel${socialCount === 1 ? '' : 's'}`;
+
+    // Auto-Sync to CRM if enabled
+    const shouldAutoSync = chkAutoSync ? chkAutoSync.checked : true;
+    if (shouldAutoSync && (scannedWebLead.business_name || scannedWebLead.email || scannedWebLead.phone)) {
+      triggerSaveWebLead(true);
+    }
+  }
+
+  function triggerSaveWebLead(isAuto = false) {
+    if (!scannedWebLead) return;
+
+    if (!isAuto) {
+      btnSaveWebLead.textContent = 'Saving...';
+      btnSaveWebLead.disabled = true;
+    } else {
+      if (webPreviewStatus) webPreviewStatus.textContent = 'Auto-Syncing...';
+    }
+
+    chrome.runtime.sendMessage(
+      {
+        type: 'LEADS_DISCOVERED',
+        payload: {
+          leads: [scannedWebLead],
+          source: 'website_extractor'
+        }
+      },
+      (res) => {
+        if (webPreviewStatus) webPreviewStatus.textContent = '✓ Saved in CRM';
+        btnSaveWebLead.textContent = '✓ Saved to Dashboard!';
+        btnSaveWebLead.classList.remove('btn-success');
+        btnSaveWebLead.classList.add('btn-secondary');
+
+        // Trigger in-page toast notification
+        if (currentTab?.id) {
+          try {
+            chrome.tabs.sendMessage(currentTab.id, {
+              action: 'SHOW_TOAST',
+              payload: { text: `Lead "${scannedWebLead.business_name}" saved to SaaS dashboard!` }
+            });
+          } catch {}
+        }
+
+        setTimeout(() => {
+          btnSaveWebLead.textContent = '✓ Save to SaaS Dashboard';
+          btnSaveWebLead.disabled = false;
+          btnSaveWebLead.classList.add('btn-success');
+          btnSaveWebLead.classList.remove('btn-secondary');
+        }, 2500);
+      }
+    );
+  }
+
+  btnSaveWebLead.addEventListener('click', () => {
+    triggerSaveWebLead(false);
+  });
+
+  btnScanWeb.addEventListener('click', () => {
+    if (currentTab?.id) {
+      autoScanWebsite(currentTab.id);
+    }
+  });
+
+  /**
+   * Ensure Google Maps extractor script is loaded in tab
+   */
+  async function ensureGoogleMapsInjected(tabId) {
+    if (!tabId) return;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content/maps-extractor.js']
+      });
+    } catch (e) {
+      console.warn('[Popup] Maps script inject:', e);
+    }
+  }
+
+  // Google Maps start extraction
+  btnMapsStart.addEventListener('click', async () => {
+    const count = parseInt(mapsMaxCount.value, 10) || 50;
+    if (!currentTab?.id) return;
+
+    btnMapsStart.textContent = 'Initializing...';
+    await ensureGoogleMapsInjected(currentTab.id);
+
+    chrome.tabs.sendMessage(currentTab.id, { action: 'START_MAPS_EXTRACTION', payload: { count } }, (res) => {
+      btnMapsStart.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        Start Automatic Extraction
+      `;
+      setMapsExtractingState(true, false, 0, count);
+    });
+  });
+
+  btnMapsPause.addEventListener('click', () => {
+    if (currentTab?.id) {
+      chrome.tabs.sendMessage(currentTab.id, { action: 'PAUSE_MAPS_EXTRACTION' }, () => {
+        setMapsExtractingState(true, true);
+      });
+    }
+  });
+
+  btnMapsResume.addEventListener('click', () => {
+    if (currentTab?.id) {
+      chrome.tabs.sendMessage(currentTab.id, { action: 'RESUME_MAPS_EXTRACTION' }, () => {
+        setMapsExtractingState(true, false);
+      });
+    }
+  });
+
+  btnMapsStop.addEventListener('click', () => {
+    if (currentTab?.id) {
+      chrome.tabs.sendMessage(currentTab.id, { action: 'STOP_MAPS_EXTRACTION' }, () => {
+        setMapsExtractingState(false, false);
+      });
+    }
+  });
+
+  function setMapsExtractingState(isRunning, isPaused, count = 0, max = 50) {
+    if (isRunning) {
+      btnMapsStart.classList.add('hidden');
+      mapsProgressBox.classList.remove('hidden');
+      btnMapsStop.classList.remove('hidden');
+
+      if (isPaused) {
+        btnMapsPause.classList.add('hidden');
+        btnMapsResume.classList.remove('hidden');
+        if (mapsStatusLbl) mapsStatusLbl.textContent = 'Paused';
+      } else {
+        btnMapsPause.classList.remove('hidden');
+        btnMapsResume.classList.add('hidden');
+        if (mapsStatusLbl) mapsStatusLbl.textContent = 'Extracting...';
+      }
+
+      mapsProgressCount.textContent = `${count} / ${max}`;
+      const pct = Math.min(100, Math.round((count / max) * 100));
+      mapsProgressFill.style.width = `${pct}%`;
+    } else {
+      btnMapsStart.classList.remove('hidden');
+      mapsProgressBox.classList.add('hidden');
+      btnMapsStop.classList.add('hidden');
+      btnMapsPause.classList.add('hidden');
+      btnMapsResume.classList.add('hidden');
+    }
+  }
+
+  function showGoogleMapsPanel() {
+    tabTypeText.textContent = 'Google Maps Active';
+    tabTypeBadge.style.color = '#059669';
+    panelGmaps.classList.remove('hidden');
+    panelWebsite.classList.add('hidden');
+    panelUnsupported.classList.add('hidden');
+
+    if (currentTab?.id) {
+      ensureGoogleMapsInjected(currentTab.id);
+      chrome.tabs.sendMessage(currentTab.id, { action: 'GET_MAPS_STATUS' }, (res) => {
+        if (chrome.runtime.lastError || !res) return;
+        if (res.isExtracting) {
+          setMapsExtractingState(true, res.isPaused, res.count, res.maxLeads);
+        }
+      });
+    }
+  }
+
+  function showWebsitePanel(hostname) {
+    tabTypeText.textContent = 'Website Scanner';
+    tabTypeBadge.style.color = '#3b82f6';
+    panelWebsite.classList.remove('hidden');
+    panelGmaps.classList.add('hidden');
+    panelUnsupported.classList.add('hidden');
+
+    // Automatically scan the page immediately upon opening!
+    if (currentTab?.id) {
+      autoScanWebsite(currentTab.id);
+    }
+  }
+
+  function showUnsupportedTab() {
+    tabTypeText.textContent = 'System Page';
+    tabTypeBadge.style.color = '#94a3b8';
+    panelGmaps.classList.add('hidden');
+    panelWebsite.classList.add('hidden');
+    panelUnsupported.classList.remove('hidden');
   }
 
   // Initialize view
@@ -220,172 +591,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  function showUnsupportedTab() {
-    tabTypeText.textContent = 'System Page';
-    tabTypeBadge.style.color = '#94a3b8';
-    panelGmaps.classList.add('hidden');
-    panelWebsite.classList.add('hidden');
-    panelUnsupported.classList.remove('hidden');
-  }
-
-  function showGoogleMapsPanel() {
-    tabTypeText.textContent = 'Google Maps Active';
-    tabTypeBadge.style.color = '#059669';
-    panelGmaps.classList.remove('hidden');
-    panelWebsite.classList.add('hidden');
-    panelUnsupported.classList.add('hidden');
-
-    // Query status from content script
-    if (currentTab?.id) {
-      chrome.tabs.sendMessage(currentTab.id, { action: 'GET_MAPS_STATUS' }, (res) => {
-        if (chrome.runtime.lastError || !res) return;
-        if (res.isExtracting) {
-          setMapsExtractingState(true, res.isPaused, res.count, res.maxLeads);
-        }
-      });
-    }
-  }
-
-  function setMapsExtractingState(isRunning, isPaused, count = 0, max = 50) {
-    if (isRunning) {
-      btnMapsStart.classList.add('hidden');
-      mapsProgressBox.classList.remove('hidden');
-      btnMapsStop.classList.remove('hidden');
-
-      if (isPaused) {
-        btnMapsPause.classList.add('hidden');
-        btnMapsResume.classList.remove('hidden');
-      } else {
-        btnMapsPause.classList.remove('hidden');
-        btnMapsResume.classList.add('hidden');
-      }
-
-      mapsProgressCount.textContent = `${count} / ${max}`;
-      const pct = Math.min(100, Math.round((count / max) * 100));
-      mapsProgressFill.style.width = `${pct}%`;
-    } else {
-      btnMapsStart.classList.remove('hidden');
-      btnMapsPause.classList.add('hidden');
-      btnMapsResume.classList.add('hidden');
-      btnMapsStop.classList.add('hidden');
-      mapsProgressBox.classList.add('hidden');
-    }
-  }
-
-  // Google Maps Actions
-  btnMapsStart.addEventListener('click', () => {
-    const count = parseInt(mapsMaxCount.value, 10) || 50;
-    if (currentTab?.id) {
-      chrome.tabs.sendMessage(currentTab.id, { action: 'START_MAPS_EXTRACTION', payload: { count } }, (res) => {
-        if (chrome.runtime.lastError) {
-          alert('Please refresh the Google Maps page to enable extraction script.');
-          return;
-        }
-        setMapsExtractingState(true, false, 0, count);
-      });
-    }
-  });
-
-  btnMapsPause.addEventListener('click', () => {
-    if (currentTab?.id) {
-      chrome.tabs.sendMessage(currentTab.id, { action: 'PAUSE_MAPS_EXTRACTION' }, () => {
-        setMapsExtractingState(true, true);
-      });
-    }
-  });
-
-  btnMapsResume.addEventListener('click', () => {
-    if (currentTab?.id) {
-      chrome.tabs.sendMessage(currentTab.id, { action: 'RESUME_MAPS_EXTRACTION' }, () => {
-        setMapsExtractingState(true, false);
-      });
-    }
-  });
-
-  btnMapsStop.addEventListener('click', () => {
-    if (currentTab?.id) {
-      chrome.tabs.sendMessage(currentTab.id, { action: 'STOP_MAPS_EXTRACTION' }, () => {
-        setMapsExtractingState(false, false);
-      });
-    }
-  });
-
-  // Website Panel Actions
-  function showWebsitePanel(hostname) {
-    tabTypeText.textContent = 'Website Scanner';
-    tabTypeBadge.style.color = '#3b82f6';
-    panelWebsite.classList.remove('hidden');
-    panelGmaps.classList.add('hidden');
-    panelUnsupported.classList.add('hidden');
-  }
-
-  btnScanWeb.addEventListener('click', () => {
-    if (!currentTab?.id) return;
-    btnScanWeb.textContent = 'Scanning Page...';
-
-    chrome.tabs.sendMessage(currentTab.id, { action: 'SCAN_WEBSITE' }, (res) => {
-      btnScanWeb.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-        Scan & Extract Contacts
-      `;
-
-      if (chrome.runtime.lastError || !res?.data) {
-        alert('Could not inspect page. Please refresh the page and try again.');
-        return;
-      }
-
-      scannedWebLead = res.data;
-      webPreviewName.textContent = scannedWebLead.business_name || 'Unknown Company';
-      webPreviewEmail.textContent = scannedWebLead.email || 'None found';
-      webPreviewPhone.textContent = scannedWebLead.phone || 'None found';
-
-      const socialCount = Object.values(scannedWebLead.social_profiles || {}).filter(Boolean).length;
-      webPreviewSocials.textContent = `${socialCount} social channel${socialCount === 1 ? '' : 's'}`;
-
-      webPreviewBox.classList.remove('hidden');
-    });
-  });
-
-  btnSaveWebLead.addEventListener('click', () => {
-    if (!scannedWebLead) return;
-    btnSaveWebLead.textContent = 'Saving...';
-    btnSaveWebLead.disabled = true;
-
-    chrome.runtime.sendMessage(
-      {
-        type: 'LEADS_DISCOVERED',
-        payload: {
-          leads: [scannedWebLead],
-          source: 'website_extractor'
-        }
-      },
-      (res) => {
-        btnSaveWebLead.textContent = '✓ Saved to Dashboard!';
-        btnSaveWebLead.classList.remove('btn-success');
-        btnSaveWebLead.classList.add('btn-secondary');
-
-        // Trigger toast on page
-        if (currentTab?.id) {
-          chrome.tabs.sendMessage(currentTab.id, {
-            action: 'SHOW_TOAST',
-            payload: { text: `Lead "${scannedWebLead.business_name}" saved to SaaS dashboard!` }
-          });
-        }
-
-        setTimeout(() => {
-          btnSaveWebLead.textContent = 'Save to SaaS Dashboard';
-          btnSaveWebLead.disabled = false;
-          btnSaveWebLead.classList.add('btn-success');
-          btnSaveWebLead.classList.remove('btn-secondary');
-        }, 2000);
-      }
-    );
-  });
-
   // Start initialization
   init();
 });
-

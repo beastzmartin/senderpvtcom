@@ -389,3 +389,4 @@ export const ExtensionDetailModal: React.FC<ExtensionDetailModalProps> = ({
     </div>
   );
 };
+
