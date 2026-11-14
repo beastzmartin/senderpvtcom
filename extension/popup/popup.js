@@ -107,7 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const loc = qlLocation?.value?.trim() || '';
       const count = parseInt(qlCount?.value, 10) || 50;
       const query = (kw && loc ? `${kw} in ${loc}` : (kw || loc || 'local businesses')).trim();
-      const targetUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}#auto_extract=${count}`;
+      const targetUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}?auto_extract=${count}#auto_extract=${count}`;
       chrome.tabs.create({ url: targetUrl });
       window.close();
     });
@@ -289,14 +289,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     chrome.tabs.sendMessage(currentTab.id, {
       action: 'START_MAPS_EXTRACTION',
-      count: targetCount
+      count: targetCount,
+      payload: { count: targetCount },
+      isManual: true
     }, () => {
       if (chrome.runtime.lastError) {
         chrome.scripting.executeScript({
           target: { tabId: currentTab.id },
           func: (cnt) => {
             if (typeof window.startExtraction === 'function') {
-              window.startExtraction(cnt, null, '');
+              window.startExtraction(cnt, null, '', { isManual: true });
             }
           },
           args: [targetCount]

@@ -53,6 +53,7 @@ export type AppTab =
   | 'marketplace'
   | 'my-extensions'
   | 'wallet'
+  | 'virtual-numbers'
   | 'extractor'
   | 'joiner'
   | 'contacts'
@@ -108,6 +109,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       items: [
         { id: 'extractors' as AppTab, label: 'Google Maps Extractor', icon: MapPin, badge: 'Live Scraper' },
         { id: 'leads' as AppTab, label: 'Extracted Leads CRM', icon: Building2, badge: 'Prospects' }
+      ]
+    },
+    {
+      title: 'VIRTUAL NUMBERS',
+      items: [
+        { id: 'virtual-numbers' as AppTab, label: 'Virtual Numbers', icon: Phone, badge: 'Marketplace' },
+        { id: 'wallet' as AppTab, label: 'Platform Wallet', icon: Wallet }
       ]
     },
     {

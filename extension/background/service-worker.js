@@ -36,14 +36,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       chrome.tabs.sendMessage(tabId, {
         action: 'START_MAPS_EXTRACTION',
         count: job.count,
-        jobId: job.jobId
+        jobId: job.jobId,
+        payload: { count: job.count, jobId: job.jobId },
+        isManual: false
       }, () => {
         if (chrome.runtime.lastError) {
           chrome.scripting.executeScript({
             target: { tabId },
             func: (cnt, jId) => {
               if (typeof window.startExtraction === 'function') {
-                window.startExtraction(cnt, jId, '');
+                window.startExtraction(cnt, jId, '', { isManual: false });
               }
             },
             args: [job.count, job.jobId]

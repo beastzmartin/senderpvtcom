@@ -18,6 +18,7 @@ import { ExtractionHubView } from './components/leads/ExtractionHubView';
 import { MarketplaceView } from './components/marketplace/MarketplaceView';
 import { MyExtensionsView } from './components/marketplace/MyExtensionsView';
 import { WalletView } from './components/marketplace/WalletView';
+import { VirtualNumbersView } from './components/virtualNumbers/VirtualNumbersView';
 import { SchedulerView } from './components/scheduler/SchedulerView';
 import { SubscriptionView } from './components/subscription/SubscriptionView';
 import { AdminControlCenter } from './components/admin/AdminControlCenter';
@@ -191,6 +192,12 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
           <WalletView
             onNavigateToMarketplace={() => setActiveTab('marketplace')}
             onNavigateToMyExtensions={() => setActiveTab('my-extensions')}
+          />
+        )}
+
+        {activeTab === 'virtual-numbers' && (
+          <VirtualNumbersView
+            onNavigateToWallet={() => setActiveTab('wallet')}
           />
         )}
 

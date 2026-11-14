@@ -38,6 +38,8 @@
   let currentJobId = null;
   let extractedKeys = new Set();
   let hudContainer = null;
+  let hasExtractedOnThisPage = false;
+  let lastCompletedAt = 0;
   let scrollAttemptsWithoutNewData = 0;
 
   // Inject Page-World Network Interceptor for raw structured JSON extraction
@@ -579,6 +581,8 @@
 
     // Finished current keyword / task
     isExtracting = false;
+    hasExtractedOnThisPage = true;
+    lastCompletedAt = Date.now();
     updateHud('✓ Synced & Saved to CRM', false, leadsCollected, maxLeads, currentKeyword);
     dismissHudWithAnimation(1800);
 
@@ -611,14 +615,37 @@
     }, delayMs);
   }
 
-  function startExtraction(targetCount = 50, jobId = null, keyword = '') {
-    maxLeads = targetCount;
+  function startExtraction(targetCount = 50, jobId = null, keyword = '', options = {}) {
+    const parsedTarget = parseInt(targetCount, 10) || 50;
+    const isManual = options.isManual === true;
+
+    // If extraction is already active in this tab, update target count without resetting collected count to 0
+    if (isExtracting) {
+      console.log(`[Maps Extractor Pro] Extraction already active. Updating maxLeads target to ${parsedTarget}`);
+      maxLeads = parsedTarget;
+      if (jobId) currentJobId = jobId;
+      updateHud('Extracting...', true, leadsCollected, maxLeads, currentKeyword);
+      if (leadsCollected >= maxLeads) {
+        stopExtraction();
+      }
+      return;
+    }
+
+    // Prevent redundant auto-start triggers on the same page load (within 30 seconds)
+    if (hasExtractedOnThisPage && !isManual && (Date.now() - lastCompletedAt < 30000)) {
+      console.log(`[Maps Extractor Pro] Ignoring redundant auto-start trigger (already extracted ${leadsCollected}/${maxLeads} leads on this page).`);
+      return;
+    }
+
+    maxLeads = parsedTarget;
     currentJobId = jobId;
     currentKeyword = keyword || '';
     leadsCollected = 0;
     isExtracting = true;
     isPaused = false;
+    hasExtractedOnThisPage = false;
     extractedKeys.clear();
+    console.log(`[Maps Extractor Pro] Extraction initialized with strict limit: ${maxLeads} leads`);
     runExtractionLoop();
   }
   window.startExtraction = startExtraction;
@@ -636,6 +663,8 @@
   function stopExtraction() {
     isExtracting = false;
     isPaused = false;
+    hasExtractedOnThisPage = true;
+    lastCompletedAt = Date.now();
     updateHud('Stopped', false, leadsCollected, maxLeads, currentKeyword);
     dismissHudWithAnimation(1200);
     try {
@@ -673,7 +702,11 @@
     const { action, payload } = message;
 
     if (action === 'START_MAPS_EXTRACTION') {
-      startExtraction(payload?.count || 50, payload?.jobId || null, payload?.keyword || '');
+      const targetCount = parseInt(message.count || payload?.count || message.targetCount || payload?.targetCount || 50, 10);
+      const targetJobId = message.jobId || payload?.jobId || null;
+      const targetKeyword = message.keyword || payload?.keyword || '';
+      const isManual = message.isManual || payload?.isManual || false;
+      startExtraction(targetCount, targetJobId, targetKeyword, { isManual });
       sendResponse({ success: true, count: leadsCollected });
       return true;
     }

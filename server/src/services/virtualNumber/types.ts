@@ -110,6 +110,8 @@ export interface ProviderWebhookResult {
   eventType: string;
   data?: any;
   error?: string;
+  handled?: boolean;
+  responsePayload?: any;
 }
 
 export interface CalculatedPricing {

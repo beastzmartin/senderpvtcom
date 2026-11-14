@@ -46,7 +46,16 @@ import {
   UserWallet,
   WalletTransaction,
   MarketplaceExtension,
-  MarketplaceModule
+  MarketplaceModule,
+  VirtualNumberCountry,
+  VirtualNumberItem,
+  VirtualNumberRental,
+  VirtualNumberOrder,
+  VirtualNumberMessage,
+  VirtualNumberCall,
+  VirtualNumberAnalytics,
+  VirtualNumberPricingRule,
+  VirtualNumberProviderRecord
 } from '../types';
 
 const LIVE_BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
@@ -1340,6 +1349,157 @@ export const api = {
       request<{ success: boolean }>('/marketplace/admin/entitlements/override', {
         method: 'POST',
         body: JSON.stringify(data)
+      })
+  },
+
+  virtualNumbers: {
+    getCountries: () =>
+      request<{ countries: VirtualNumberCountry[] }>('/virtual-numbers/countries'),
+
+    searchNumbers: (params: {
+      country?: string;
+      type?: string;
+      whatsapp?: boolean;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const query = new URLSearchParams();
+      if (params.country) query.set('country', params.country);
+      if (params.type) query.set('type', params.type);
+      if (params.whatsapp) query.set('whatsapp', 'true');
+      if (params.search) query.set('search', params.search);
+      if (params.limit) query.set('limit', String(params.limit));
+      if (params.offset) query.set('offset', String(params.offset));
+      return request<{
+        total: number;
+        limit: number;
+        offset: number;
+        numbers: VirtualNumberItem[];
+      }>(`/virtual-numbers/search?${query.toString()}`);
+    },
+
+    purchaseNumber: (data: {
+      inventoryId: string;
+      rentalDuration?: string;
+      idempotencyKey?: string;
+    }) =>
+      request<{
+        success: boolean;
+        rentalId: string;
+        orderId: string;
+        phoneNumber: string;
+        message: string;
+      }>('/virtual-numbers/purchase', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getMyRentals: (status?: string) => {
+      const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+      return request<{ rentals: VirtualNumberRental[] }>(`/virtual-numbers/rentals${qs}`);
+    },
+
+    renewRental: (rentalId: string, durationDays: number = 30) =>
+      request<{
+        success: boolean;
+        newExpiresAt: string;
+        newRenewalDate: string;
+        charged: number;
+        newBalance: number;
+      }>(`/virtual-numbers/rentals/${rentalId}/renew`, {
+        method: 'POST',
+        body: JSON.stringify({ durationDays })
+      }),
+
+    toggleAutoRenew: (rentalId: string, autoRenew: boolean) =>
+      request<{ success: boolean; autoRenew: boolean }>(`/virtual-numbers/rentals/${rentalId}/auto-renew`, {
+        method: 'PATCH',
+        body: JSON.stringify({ autoRenew })
+      }),
+
+    releaseRental: (rentalId: string) =>
+      request<{ success: boolean; message: string }>(`/virtual-numbers/rentals/${rentalId}/release`, {
+        method: 'POST'
+      }),
+
+    getMessages: (params?: { rentalId?: string; phone?: string; limit?: number }) => {
+      const query = new URLSearchParams();
+      if (params?.rentalId) query.set('rentalId', params.rentalId);
+      if (params?.phone) query.set('phone', params.phone);
+      if (params?.limit) query.set('limit', String(params.limit));
+      return request<{ messages: VirtualNumberMessage[] }>(`/virtual-numbers/messages?${query.toString()}`);
+    },
+
+    markMessageRead: (messageId: string) =>
+      request<{ success: boolean }>(`/virtual-numbers/messages/${messageId}/read`, {
+        method: 'PATCH'
+      }),
+
+    getCallLogs: (params?: { rentalId?: string; phone?: string; limit?: number }) => {
+      const query = new URLSearchParams();
+      if (params?.rentalId) query.set('rentalId', params.rentalId);
+      if (params?.phone) query.set('phone', params.phone);
+      if (params?.limit) query.set('limit', String(params.limit));
+      return request<{ calls: VirtualNumberCall[] }>(`/virtual-numbers/calls?${query.toString()}`);
+    },
+
+    getOrderHistory: () =>
+      request<{ orders: VirtualNumberOrder[] }>('/virtual-numbers/orders'),
+
+    getAnalytics: () =>
+      request<{ analytics: VirtualNumberAnalytics }>('/virtual-numbers/analytics'),
+
+    // --- Admin Virtual Numbers API ---
+    getAdminOverview: () =>
+      request<{ overview: any }>('/virtual-numbers/admin/overview'),
+
+    getAdminProviders: () =>
+      request<{ providers: VirtualNumberProviderRecord[] }>('/virtual-numbers/admin/providers'),
+
+    saveAdminProvider: (data: any) =>
+      request<{ success: boolean; id: string }>('/virtual-numbers/admin/providers', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getAdminInventory: (params?: { country?: string; status?: string; limit?: number; offset?: number }) => {
+      const query = new URLSearchParams();
+      if (params?.country) query.set('country', params.country);
+      if (params?.status) query.set('status', params.status);
+      if (params?.limit) query.set('limit', String(params.limit));
+      if (params?.offset) query.set('offset', String(params.offset));
+      return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/inventory?${query.toString()}`);
+    },
+
+    addAdminInventory: (data: any) =>
+      request<{ success: boolean; id: string }>('/virtual-numbers/admin/inventory', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getAdminPricing: () =>
+      request<{ rules: VirtualNumberPricingRule[] }>('/virtual-numbers/admin/pricing'),
+
+    saveAdminPricing: (data: any) =>
+      request<{ success: boolean; id: string }>('/virtual-numbers/admin/pricing', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getAdminRentals: (params?: { status?: string; search?: string; limit?: number; offset?: number }) => {
+      const query = new URLSearchParams();
+      if (params?.status) query.set('status', params.status);
+      if (params?.search) query.set('search', params.search);
+      if (params?.limit) query.set('limit', String(params.limit));
+      if (params?.offset) query.set('offset', String(params.offset));
+      return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/rentals?${query.toString()}`);
+    },
+
+    refundAdminOrder: (orderId: string, reason: string) =>
+      request<{ success: boolean; refundedAmount: number; newBalance: number }>(`/virtual-numbers/admin/orders/${orderId}/refund`, {
+        method: 'POST',
+        body: JSON.stringify({ reason })
       })
   }
 };

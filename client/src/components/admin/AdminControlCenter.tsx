@@ -42,14 +42,16 @@ import {
   Activity,
   FolderX,
   Eraser,
-  StopCircle
+  StopCircle,
+  Phone
 } from 'lucide-react';
+import { AdminVirtualNumbersTab } from './AdminVirtualNumbersTab';
 
 interface AdminControlCenterProps {
   onImpersonated?: () => void;
 }
 
-type AdminSubTab = 'users' | 'sessions' | 'storage' | 'vault' | 'live' | 'capacity';
+type AdminSubTab = 'users' | 'sessions' | 'storage' | 'vault' | 'live' | 'capacity' | 'virtual-numbers';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 B';
@@ -674,6 +676,18 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
         >
           <Server className="w-4 h-4" />
           Server Capacity Guide
+        </button>
+
+        <button
+          onClick={() => setSubTab('virtual-numbers')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+            subTab === 'virtual-numbers'
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Phone className="w-4 h-4" />
+          Virtual Numbers
         </button>
       </div>
 
@@ -1415,6 +1429,11 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB 7: VIRTUAL NUMBERS TELEPHONY */}
+      {subTab === 'virtual-numbers' && (
+        <AdminVirtualNumbersTab />
       )}
 
       {/* MODAL: PARTICULAR USER DATA & MESSAGE HISTORY ERASER */}

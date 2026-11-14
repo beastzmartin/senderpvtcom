@@ -30,6 +30,14 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
   next();
 }
 
+export function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  if (!req.user || req.user.role !== 'admin') {
+    res.status(403).json({ error: 'Access denied. Administrator privileges required.' });
+    return;
+  }
+  next();
+}
+
 /**
  * Optional auth middleware: sets req.user if token is present, continues either way
  */
@@ -45,4 +53,7 @@ export function optionalAuth(req: AuthenticatedRequest, res: Response, next: Nex
   }
   next();
 }
+
+export const authenticateToken = requireAuth;
+
 

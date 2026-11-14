@@ -861,6 +861,164 @@ export interface MarketplaceExtension {
   total_modules_count?: number;
 }
 
+// ==========================================
+// Virtual Number Marketplace & Management Types
+// ==========================================
+
+export interface VirtualNumberCountry {
+  iso_code: string;
+  name: string;
+  dial_code: string;
+  flag_emoji: string;
+  continent?: string;
+  is_active: number;
+  available_count: number;
+}
+
+export interface VirtualNumberItem {
+  id: string;
+  phoneNumber: string;
+  countryCode: string;
+  countryName: string;
+  flagEmoji: string;
+  dialCode: string;
+  numberType: 'mobile' | 'geographic' | 'toll_free' | 'dedicated' | 'temporary';
+  capabilities: string[];
+  whatsappCompatible: boolean;
+  otpCompatible: boolean;
+  pricing: {
+    activationFee: number;
+    monthlyPrice: number;
+    totalFirstCharge: number;
+    renewalPrice: number;
+    currency: string;
+  };
+  status: string;
+}
+
+export interface VirtualNumberRental {
+  id: string;
+  phoneNumber: string;
+  countryCode: string;
+  countryName: string;
+  flagEmoji: string;
+  numberType: string;
+  capabilities: string[];
+  whatsappCompatible: boolean;
+  rentalDuration: string;
+  purchasedAt: string;
+  activatedAt: string;
+  expiresAt: string;
+  renewalDate: string;
+  renewalPrice: number;
+  autoRenew: boolean;
+  status: 'pending' | 'processing' | 'active' | 'renewal_due' | 'expired' | 'suspended' | 'releasing' | 'released' | 'failed';
+  daysRemaining: number;
+  isExpiringSoon: boolean;
+  totalCharges: number;
+}
+
+export interface VirtualNumberOrder {
+  id: string;
+  user_id: string;
+  phone_number: string;
+  country_code: string;
+  country_name?: string;
+  flag_emoji?: string;
+  rental_duration: string;
+  duration_days: number;
+  activation_fee: number;
+  rental_fee: number;
+  total_amount: number;
+  currency: string;
+  wallet_transaction_id?: string;
+  status: 'pending' | 'reserved' | 'allocated' | 'failed' | 'cancelled' | 'refunded';
+  failure_reason?: string;
+  created_at: string;
+}
+
+export interface VirtualNumberMessage {
+  id: string;
+  rental_id: string;
+  phone_number: string;
+  sender: string;
+  message_content: string;
+  is_read: number;
+  received_at: string;
+  country_code?: string;
+}
+
+export interface VirtualNumberCall {
+  id: string;
+  rental_id: string;
+  phone_number: string;
+  caller_number: string;
+  direction: 'inbound' | 'outbound';
+  duration_seconds: number;
+  call_status: string;
+  fee_charged: number;
+  started_at: string;
+  country_code?: string;
+}
+
+export interface VirtualNumberAnalytics {
+  totalPurchased: number;
+  activeNumbers: number;
+  expiringSoon: number;
+  totalRentalExpenditure: number;
+  smsReceivedCount: number;
+  voiceCallsCount: number;
+  walletBalance: number;
+  currency: string;
+}
+
+export interface VirtualNumberProviderRecord {
+  id: string;
+  name: string;
+  slug: string;
+  provider_key?: string;
+  adapter_class?: string;
+  description?: string;
+  api_base_url?: string;
+  base_url?: string;
+  auth_type: string;
+  priority: number;
+  status: string;
+  is_active?: number;
+  is_mock: number;
+  supported_countries: string;
+  capabilities: string;
+  health_status: string;
+  created_at: string;
+}
+
+export interface VirtualNumberPricingRule {
+  id: string;
+  rule_name?: string;
+  provider_id?: string;
+  provider_name?: string;
+  country_code?: string;
+  country_name?: string;
+  flag_emoji?: string;
+  customer_name?: string;
+  pricing_model: string;
+  markup_type?: string;
+  markup_value?: number;
+  base_cost: number;
+  activation_fee: number;
+  fixed_activation_fee?: number;
+  fixed_weekly_fee?: number;
+  fixed_monthly_fee?: number;
+  fixed_annual_fee?: number;
+  minimum_wallet_balance?: number;
+  markup_amount: number;
+  markup_percentage: number;
+  monthly_rental_price: number;
+  renewal_price: number;
+  is_active: number;
+}
+
+
 
 
 

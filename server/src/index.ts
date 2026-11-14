@@ -23,6 +23,8 @@ import extractionJobRoutes from './routes/extractionJobRoutes.js';
 import extensionRoutes from './routes/extensionRoutes.js';
 import walletRoutes from './routes/walletRoutes.js';
 import marketplaceRoutes from './routes/marketplaceRoutes.js';
+import virtualNumberRoutes from './routes/virtualNumberRoutes.js';
+import grizzlyPartnerRoutes from './routes/grizzlyPartnerRoutes.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
@@ -71,6 +73,8 @@ app.use('/api/extraction-jobs', extractionJobRoutes);
 app.use('/api/extension', extensionRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/virtual-numbers', virtualNumberRoutes);
+app.use('/api/virtual-numbers', grizzlyPartnerRoutes);
 
 // Dashboard stats endpoint
 const messageController = new MessageController();

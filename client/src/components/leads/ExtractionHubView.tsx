@@ -62,11 +62,13 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
     const loc = (location || '').trim();
     const combined = kw && loc ? `${kw} in ${loc}` : (kw || loc || 'local businesses');
     const encoded = encodeURIComponent(combined);
-    const hash = `#auto_extract=${count || 50}${jobId ? `&job_id=${jobId}` : ''}`;
+    const parsedCount = parseInt(String(count), 10) || 50;
+    const queryParams = `?auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}`;
+    const hash = `#auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}`;
 
     switch (sourceId) {
       case 'google_maps':
-        return `https://www.google.com/maps/search/${encoded}${hash}`;
+        return `https://www.google.com/maps/search/${encoded}${queryParams}${hash}`;
       case 'justdial':
         return `https://www.justdial.com/${encodeURIComponent(loc || 'Delhi')}/${encodeURIComponent(kw || 'All')}${hash}`;
       case 'indiamart':
@@ -356,7 +358,7 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
                 className="w-24 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500"
               />
               <div className="flex items-center gap-1 overflow-x-auto">
-                {[50, 100, 250, 500, 1000].map((preset) => (
+                {[10, 25, 50, 100, 250, 500, 1000].map((preset) => (
                   <button
                     key={preset}
                     type="button"
@@ -651,7 +653,7 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 mb-2"
                 />
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {[25, 50, 100, 250, 500, 1000, 2500].map((preset) => (
+                  {[10, 25, 50, 100, 250, 500, 1000, 2500].map((preset) => (
                     <button
                       key={preset}
                       type="button"
