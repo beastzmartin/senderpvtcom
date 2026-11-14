@@ -34,7 +34,10 @@ import {
   ShieldCheck,
   UserPlus,
   Building2,
-  Compass
+  Compass,
+  ShoppingBag,
+  Boxes,
+  Wallet
 } from 'lucide-react';
 
 export type AppTab =
@@ -46,6 +49,9 @@ export type AppTab =
   | 'templates'
   | 'leads'
   | 'extractors'
+  | 'marketplace'
+  | 'my-extensions'
+  | 'wallet'
   | 'extractor'
   | 'joiner'
   | 'contacts'
@@ -101,6 +107,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       items: [
         { id: 'leads' as AppTab, label: 'Lead Intelligence CRM', icon: Building2, badge: 'Prospects' },
         { id: 'extractors' as AppTab, label: 'Extraction Hub & Tools', icon: Compass, badge: '12 Sources' }
+      ]
+    },
+    {
+      title: 'EXTENSIONS & MARKETPLACE',
+      items: [
+        { id: 'marketplace' as AppTab, label: 'Extensions Marketplace', icon: ShoppingBag, badge: 'New' },
+        { id: 'my-extensions' as AppTab, label: 'My Extensions & Modules', icon: Boxes },
+        { id: 'wallet' as AppTab, label: 'Wallet & Billing', icon: Wallet, badge: '₹' }
       ]
     },
     {

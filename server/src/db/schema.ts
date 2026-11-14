@@ -445,5 +445,176 @@ CREATE TABLE IF NOT EXISTS extension_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_extension_sessions_user ON extension_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_extension_sessions_token ON extension_sessions(token);
+
+-- =========================================================================
+-- WALLET, EXTENSIONS MARKETPLACE & MODULE-WISE LICENSING TABLES
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS user_wallets (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  balance REAL NOT NULL DEFAULT 0.0,
+  currency TEXT DEFAULT 'INR',
+  reserved_balance REAL NOT NULL DEFAULT 0.0,
+  total_spent REAL NOT NULL DEFAULT 0.0,
+  total_topped_up REAL NOT NULL DEFAULT 0.0,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS wallet_transactions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  workspace_id TEXT,
+  extension_id TEXT,
+  module_id TEXT,
+  transaction_type TEXT NOT NULL CHECK(transaction_type IN ('extension_activation', 'module_activation', 'usage_deduction', 'usage_refund', 'wallet_topup', 'promotional_credit', 'admin_adjustment', 'usage_reservation', 'reservation_release', 'renewal_charge')),
+  amount REAL NOT NULL,
+  currency TEXT DEFAULT 'INR',
+  previous_balance REAL NOT NULL,
+  new_balance REAL NOT NULL,
+  reference_id TEXT,
+  description TEXT,
+  status TEXT DEFAULT 'completed' CHECK(status IN ('pending', 'completed', 'failed', 'refunded', 'reversed')),
+  metadata TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_tx_user ON wallet_transactions(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_wallet_tx_type ON wallet_transactions(transaction_type);
+
+CREATE TABLE IF NOT EXISTS extensions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  category TEXT NOT NULL,
+  short_description TEXT NOT NULL,
+  description TEXT,
+  icon TEXT,
+  logo_url TEXT,
+  screenshots TEXT,
+  features TEXT,
+  supported_browsers TEXT,
+  version TEXT DEFAULT '2.0.0',
+  activation_fee REAL DEFAULT 0.0,
+  pricing_model TEXT DEFAULT 'one_time' CHECK(pricing_model IN ('free', 'one_time', 'recurring_monthly', 'recurring_yearly', 'custom')),
+  is_featured INTEGER DEFAULT 0,
+  is_popular INTEGER DEFAULT 0,
+  is_published INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'active' CHECK(status IN ('active', 'maintenance', 'deprecated', 'unpublished')),
+  rating REAL DEFAULT 4.9,
+  reviews_count INTEGER DEFAULT 128,
+  sort_order INTEGER DEFAULT 0,
+  documentation TEXT,
+  installation_guide TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_extensions_category ON extensions(category);
+CREATE INDEX IF NOT EXISTS idx_extensions_status ON extensions(status);
+
+CREATE TABLE IF NOT EXISTS extension_modules (
+  id TEXT PRIMARY KEY,
+  extension_id TEXT NOT NULL REFERENCES extensions(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  description TEXT,
+  icon TEXT,
+  category TEXT,
+  version TEXT DEFAULT '1.0.0',
+  features TEXT,
+  activation_fee REAL DEFAULT 0.0,
+  usage_charging_model TEXT DEFAULT 'per_record' CHECK(usage_charging_model IN ('free', 'per_record', 'per_request', 'per_api_call', 'per_scan', 'per_enrichment', 'per_job', 'per_thousand_records', 'fixed_fee', 'time_based')),
+  usage_price REAL DEFAULT 0.0,
+  free_quota INTEGER DEFAULT 0,
+  period_quota_limit INTEGER DEFAULT 1000,
+  quota_period TEXT DEFAULT 'monthly' CHECK(quota_period IN ('daily', 'weekly', 'monthly', 'yearly', 'lifetime', 'unlimited', 'custom')),
+  per_job_limit INTEGER DEFAULT 100,
+  status TEXT DEFAULT 'published' CHECK(status IN ('published', 'unpublished', 'active', 'maintenance', 'deprecated')),
+  is_visible INTEGER DEFAULT 1,
+  sort_order INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(extension_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_modules_extension ON extension_modules(extension_id);
+
+CREATE TABLE IF NOT EXISTS extension_activations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  extension_id TEXT NOT NULL REFERENCES extensions(id) ON DELETE CASCADE,
+  status TEXT DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'revoked')),
+  activated_at TEXT DEFAULT (datetime('now')),
+  expires_at TEXT,
+  billing_cycle TEXT DEFAULT 'lifetime',
+  fee_paid REAL DEFAULT 0.0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, extension_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ext_act_user ON extension_activations(user_id);
+
+CREATE TABLE IF NOT EXISTS module_activations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  extension_id TEXT NOT NULL REFERENCES extensions(id) ON DELETE CASCADE,
+  module_id TEXT NOT NULL REFERENCES extension_modules(id) ON DELETE CASCADE,
+  status TEXT DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'revoked', 'limit_reached')),
+  activated_at TEXT DEFAULT (datetime('now')),
+  expires_at TEXT,
+  fee_paid REAL DEFAULT 0.0,
+  custom_quota_override INTEGER,
+  custom_usage_price_override REAL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, module_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mod_act_user ON module_activations(user_id);
+CREATE INDEX IF NOT EXISTS idx_mod_act_module ON module_activations(module_id);
+
+CREATE TABLE IF NOT EXISTS module_usage (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  module_id TEXT NOT NULL REFERENCES extension_modules(id) ON DELETE CASCADE,
+  extension_id TEXT NOT NULL REFERENCES extensions(id) ON DELETE CASCADE,
+  period_start TEXT NOT NULL,
+  period_end TEXT NOT NULL,
+  units_consumed INTEGER DEFAULT 0,
+  total_cost REAL DEFAULT 0.0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, module_id, period_start)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mod_usage_user ON module_usage(user_id, module_id, period_start);
+
+CREATE TABLE IF NOT EXISTS extension_pricing_overrides (
+  id TEXT PRIMARY KEY,
+  target_type TEXT NOT NULL CHECK(target_type IN ('global', 'user', 'workspace', 'plan')),
+  target_id TEXT,
+  extension_id TEXT,
+  module_id TEXT,
+  activation_fee_override REAL,
+  usage_price_override REAL,
+  free_quota_override INTEGER,
+  limit_override INTEGER,
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS extension_audit_logs (
+  id TEXT PRIMARY KEY,
+  admin_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  target_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  details TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ext_audit_date ON extension_audit_logs(created_at);
 `;
 

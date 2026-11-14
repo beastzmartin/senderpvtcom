@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Main elements
   const userDisplayName = document.getElementById('user-display-name');
   const userPlanBadge = document.getElementById('user-plan-badge');
+  const userWalletBadge = document.getElementById('user-wallet-badge');
   const userQuotaVal = document.getElementById('user-quota-val');
   const tabTypeBadge = document.getElementById('tab-type-badge');
   const tabTypeText = document.getElementById('tab-type-text');
@@ -186,6 +187,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const u = state.user || {};
       userDisplayName.textContent = u.name || u.username || 'Authenticated User';
       userPlanBadge.textContent = (u.plan_tier || 'PRO').toUpperCase();
+      if (userWalletBadge) {
+        userWalletBadge.textContent = `₹${Number(u.wallet_balance || 0).toFixed(2)}`;
+      }
 
       const extractedToday = u.leads_extracted_today || 0;
       const dailyLimit = u.daily_extraction_limit || 500;

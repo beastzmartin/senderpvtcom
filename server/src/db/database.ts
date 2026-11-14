@@ -684,6 +684,383 @@ export function initDatabase(): Database.Database {
     console.error('[DB] Error configuring lead intelligence tables:', err);
   }
 
+  // =========================================================================
+  // WALLET, EXTENSIONS MARKETPLACE & DYNAMIC MODULE SEEDING
+  // =========================================================================
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_wallets (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        balance REAL NOT NULL DEFAULT 0.0,
+        currency TEXT DEFAULT 'INR',
+        reserved_balance REAL NOT NULL DEFAULT 0.0,
+        total_spent REAL NOT NULL DEFAULT 0.0,
+        total_topped_up REAL NOT NULL DEFAULT 0.0,
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS wallet_transactions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        workspace_id TEXT,
+        extension_id TEXT,
+        module_id TEXT,
+        transaction_type TEXT NOT NULL CHECK(transaction_type IN ('extension_activation', 'module_activation', 'usage_deduction', 'usage_refund', 'wallet_topup', 'promotional_credit', 'admin_adjustment', 'usage_reservation', 'reservation_release', 'renewal_charge')),
+        amount REAL NOT NULL,
+        currency TEXT DEFAULT 'INR',
+        previous_balance REAL NOT NULL,
+        new_balance REAL NOT NULL,
+        reference_id TEXT,
+        description TEXT,
+        status TEXT DEFAULT 'completed' CHECK(status IN ('pending', 'completed', 'failed', 'refunded', 'reversed')),
+        metadata TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_wallet_tx_user ON wallet_transactions(user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_wallet_tx_type ON wallet_transactions(transaction_type);
+
+      CREATE TABLE IF NOT EXISTS extensions (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT UNIQUE NOT NULL,
+        category TEXT NOT NULL,
+        short_description TEXT NOT NULL,
+        description TEXT,
+        icon TEXT,
+        logo_url TEXT,
+        screenshots TEXT,
+        features TEXT,
+        supported_browsers TEXT,
+        version TEXT DEFAULT '2.0.0',
+        activation_fee REAL DEFAULT 0.0,
+        pricing_model TEXT DEFAULT 'one_time' CHECK(pricing_model IN ('free', 'one_time', 'recurring_monthly', 'recurring_yearly', 'custom')),
+        is_featured INTEGER DEFAULT 0,
+        is_popular INTEGER DEFAULT 0,
+        is_published INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'active' CHECK(status IN ('active', 'maintenance', 'deprecated', 'unpublished')),
+        rating REAL DEFAULT 4.9,
+        reviews_count INTEGER DEFAULT 128,
+        sort_order INTEGER DEFAULT 0,
+        documentation TEXT,
+        installation_guide TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_extensions_category ON extensions(category);
+      CREATE INDEX IF NOT EXISTS idx_extensions_status ON extensions(status);
+
+      CREATE TABLE IF NOT EXISTS extension_modules (
+        id TEXT PRIMARY KEY,
+        extension_id TEXT NOT NULL REFERENCES extensions(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        description TEXT,
+        icon TEXT,
+        category TEXT,
+        version TEXT DEFAULT '1.0.0',
+        features TEXT,
+        activation_fee REAL DEFAULT 0.0,
+        usage_charging_model TEXT DEFAULT 'per_record' CHECK(usage_charging_model IN ('free', 'per_record', 'per_request', 'per_api_call', 'per_scan', 'per_enrichment', 'per_job', 'per_thousand_records', 'fixed_fee', 'time_based')),
+        usage_price REAL DEFAULT 0.0,
+        free_quota INTEGER DEFAULT 0,
+        period_quota_limit INTEGER DEFAULT 1000,
+        quota_period TEXT DEFAULT 'monthly' CHECK(quota_period IN ('daily', 'weekly', 'monthly', 'yearly', 'lifetime', 'unlimited', 'custom')),
+        per_job_limit INTEGER DEFAULT 100,
+        status TEXT DEFAULT 'published' CHECK(status IN ('published', 'unpublished', 'active', 'maintenance', 'deprecated')),
+        is_visible INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(extension_id, slug)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_modules_extension ON extension_modules(extension_id);
+
+      CREATE TABLE IF NOT EXISTS extension_activations (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        extension_id TEXT NOT NULL REFERENCES extensions(id) ON DELETE CASCADE,
+        status TEXT DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'revoked')),
+        activated_at TEXT DEFAULT (datetime('now')),
+        expires_at TEXT,
+        billing_cycle TEXT DEFAULT 'lifetime',
+        fee_paid REAL DEFAULT 0.0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, extension_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ext_act_user ON extension_activations(user_id);
+
+      CREATE TABLE IF NOT EXISTS module_activations (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        extension_id TEXT NOT NULL REFERENCES extensions(id) ON DELETE CASCADE,
+        module_id TEXT NOT NULL REFERENCES extension_modules(id) ON DELETE CASCADE,
+        status TEXT DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'revoked', 'limit_reached')),
+        activated_at TEXT DEFAULT (datetime('now')),
+        expires_at TEXT,
+        fee_paid REAL DEFAULT 0.0,
+        custom_quota_override INTEGER,
+        custom_usage_price_override REAL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, module_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mod_act_user ON module_activations(user_id);
+      CREATE INDEX IF NOT EXISTS idx_mod_act_module ON module_activations(module_id);
+
+      CREATE TABLE IF NOT EXISTS module_usage (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        module_id TEXT NOT NULL REFERENCES extension_modules(id) ON DELETE CASCADE,
+        extension_id TEXT NOT NULL REFERENCES extensions(id) ON DELETE CASCADE,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        units_consumed INTEGER DEFAULT 0,
+        total_cost REAL DEFAULT 0.0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, module_id, period_start)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mod_usage_user ON module_usage(user_id, module_id, period_start);
+
+      CREATE TABLE IF NOT EXISTS extension_pricing_overrides (
+        id TEXT PRIMARY KEY,
+        target_type TEXT NOT NULL CHECK(target_type IN ('global', 'user', 'workspace', 'plan')),
+        target_id TEXT,
+        extension_id TEXT,
+        module_id TEXT,
+        activation_fee_override REAL,
+        usage_price_override REAL,
+        free_quota_override INTEGER,
+        limit_override INTEGER,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS extension_audit_logs (
+        id TEXT PRIMARY KEY,
+        admin_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        target_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        details TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ext_audit_date ON extension_audit_logs(created_at);
+    `);
+
+    // Ensure all existing users have a wallet initialized with initial promotional balance if new
+    const allUsers = db.prepare('SELECT id FROM users').all() as Array<{ id: string }>;
+    const checkWallet = db.prepare('SELECT user_id, balance FROM user_wallets WHERE user_id = ?');
+    const insertWallet = db.prepare(`
+      INSERT INTO user_wallets (user_id, balance, currency, total_topped_up, updated_at)
+      VALUES (?, ?, 'INR', ?, datetime('now'))
+    `);
+    const insertTx = db.prepare(`
+      INSERT INTO wallet_transactions (id, user_id, transaction_type, amount, currency, previous_balance, new_balance, description)
+      VALUES (?, ?, 'promotional_credit', ?, 'INR', 0.0, ?, 'Welcome Promotional Bonus for Extensions Marketplace')
+    `);
+
+    for (const u of allUsers) {
+      const existingWallet = checkWallet.get(u.id) as any;
+      if (!existingWallet) {
+        const welcomeBonus = 250.0; // ₹250 free starter credits
+        insertWallet.run(u.id, welcomeBonus, welcomeBonus);
+        insertTx.run(crypto.randomUUID(), u.id, welcomeBonus, welcomeBonus);
+      }
+    }
+
+    // Seed Extensions and their Modules
+    const extCount = (db.prepare('SELECT COUNT(*) as count FROM extensions').get() as { count: number }).count;
+    if (extCount === 0) {
+      console.log('[DB] Seeding Extensions Marketplace and Module Registry...');
+
+      const insertExt = db.prepare(`
+        INSERT INTO extensions (
+          id, name, slug, category, short_description, description,
+          icon, features, supported_browsers, activation_fee, pricing_model,
+          is_featured, is_popular, is_published, status, sort_order
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?)
+      `);
+
+      const insertMod = db.prepare(`
+        INSERT INTO extension_modules (
+          id, extension_id, name, slug, description, icon, category,
+          features, activation_fee, usage_charging_model, usage_price,
+          free_quota, period_quota_limit, quota_period, per_job_limit, status, sort_order
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'monthly', ?, 'published', ?)
+      `);
+
+      // 1. Google Maps Lead Extractor
+      insertExt.run(
+        'google-maps-extractor',
+        'Google Maps Lead Extractor',
+        'google-maps-extractor',
+        'Google Maps & Local',
+        'Extract high-intent local business leads, phone numbers, ratings, and websites directly from Google Maps.',
+        'Professional prospecting tool engineered for Chromium browsers. Pulls place listings, contact details, reviews, address components, and websites with smart scrolling and anti-bot jitter protection.',
+        'MapPin',
+        JSON.stringify(['Live Maps Feed Parsing', 'Anti-Ban Scroll Jitter', 'Instant Phone & Email Detection', 'Floating In-Page HUD', 'One-Click WhatsApp Dispatch']),
+        JSON.stringify(['Chrome', 'Brave', 'Edge', 'Opera']),
+        199.0, // ₹199 one-time activation
+        'one_time',
+        1, // featured
+        1, // popular
+        1
+      );
+
+      const gmapsModules = [
+        { id: 'gmaps-search', name: 'Google Maps Business Search', slug: 'search', desc: 'Query businesses by niche, keyword, city, and radius.', icon: 'Search', fee: 0.0, price: 0.20, freeQuota: 50, limit: 3000, jobLimit: 100 },
+        { id: 'gmaps-details', name: 'Business Details Extractor', slug: 'details', desc: 'Pulls full operating status, working hours, and coordinates.', icon: 'Building2', fee: 0.0, price: 0.10, freeQuota: 100, limit: 5000, jobLimit: 250 },
+        { id: 'gmaps-website', name: 'Website Information Extractor', slug: 'website', desc: 'Inspects business website URL and normalizes domain names.', icon: 'Globe', fee: 49.0, price: 0.25, freeQuota: 25, limit: 1500, jobLimit: 100 },
+        { id: 'gmaps-email', name: 'Public Email Discovery', slug: 'email-discovery', desc: 'Discovers verified corporate emails associated with the business.', icon: 'Mail', fee: 99.0, price: 0.50, freeQuota: 10, limit: 2000, jobLimit: 50 },
+        { id: 'gmaps-phone', name: 'Phone Number Extractor', slug: 'phone-extractor', desc: 'Cleans international phone numbers into E.164 WhatsApp ready format.', icon: 'Phone', fee: 0.0, price: 0.10, freeQuota: 100, limit: 5000, jobLimit: 250 },
+        { id: 'gmaps-bulk', name: 'Bulk Lead Extraction Engine', slug: 'bulk-extraction', desc: 'Execute large multi-batch extractions with automatic pagination.', icon: 'Layers', fee: 149.0, price: 5.00, freeQuota: 5, limit: 200, jobLimit: 500 },
+        { id: 'gmaps-location', name: 'Advanced Location Search', slug: 'advanced-location', desc: 'Multi-city and postal code proximity lead prospecting.', icon: 'MapPin', fee: 49.0, price: 0.15, freeQuota: 25, limit: 1000, jobLimit: 100 },
+        { id: 'gmaps-export', name: 'Lead Export & CSV Generator', slug: 'export', desc: 'Export leads to formatted CSV, Excel, and CRM ready tables.', icon: 'Download', fee: 0.0, price: 1.00, freeQuota: 10, limit: 500, jobLimit: 50 },
+        { id: 'gmaps-enrich', name: 'Lead Enrichment Engine', slug: 'enrichment', desc: 'Normalize names, validate emails, and detect active web domains.', icon: 'Sparkles', fee: 99.0, price: 0.50, freeQuota: 20, limit: 1000, jobLimit: 100 },
+        { id: 'gmaps-analytics', name: 'Extraction Analytics', slug: 'analytics', desc: 'Visual charts and performance metrics of collected prospects.', icon: 'BarChart', fee: 0.0, price: 0.0, freeQuota: 99999, limit: 99999, jobLimit: 999 }
+      ];
+
+      gmapsModules.forEach((m, idx) => {
+        insertMod.run(
+          m.id,
+          'google-maps-extractor',
+          m.name,
+          m.slug,
+          m.desc,
+          m.icon,
+          'Maps',
+          JSON.stringify([m.name, 'Module-Level Quota Accounting']),
+          m.fee,
+          m.price > 0 ? 'per_record' : 'free',
+          m.price,
+          m.freeQuota,
+          m.limit,
+          m.jobLimit,
+          idx + 1
+        );
+      });
+
+      // 2. Website Lead Extractor
+      insertExt.run(
+        'website-lead-extractor',
+        'Website Lead Extractor',
+        'website-lead-extractor',
+        'Web Scraping & Contacts',
+        'Scan any website or e-commerce shop to detect public emails, phone numbers, and social channels.',
+        'Browser-based scanner that inspects DOM tags, mailto anchors, telephone schemes, OpenGraph metadata, and contact forms.',
+        'Globe',
+        JSON.stringify(['Live Page Scanning', 'Mailto & Regex Email Detection', 'Phone & Tel Extraction', 'Social Links Harvester', 'In-Page Sync Toast']),
+        JSON.stringify(['Chrome', 'Brave', 'Edge']),
+        149.0,
+        'one_time',
+        1,
+        1,
+        2
+      );
+
+      const webModules = [
+        { id: 'web-scanner', name: 'Current Website Scanner', slug: 'scanner', desc: 'Instantly scan active browser tab for company identity.', icon: 'Globe', fee: 0.0, price: 0.25, freeQuota: 50, limit: 2000, jobLimit: 50 },
+        { id: 'web-info', name: 'Business Information Extractor', slug: 'info', desc: 'Extracts official company description, address, and title.', icon: 'Building2', fee: 0.0, price: 0.15, freeQuota: 50, limit: 3000, jobLimit: 100 },
+        { id: 'web-contact', name: 'Public Contact Discovery', slug: 'contact', desc: 'Identifies corporate customer care emails and helplines.', icon: 'Mail', fee: 49.0, price: 0.20, freeQuota: 25, limit: 2000, jobLimit: 100 },
+        { id: 'web-tech', name: 'Website Technology Detector', slug: 'tech', desc: 'Identifies CMS (WordPress, Shopify, Webflow) and frameworks.', icon: 'Code', fee: 79.0, price: 0.30, freeQuota: 20, limit: 1000, jobLimit: 50 },
+        { id: 'web-social', name: 'Social Links Extractor', slug: 'socials', desc: 'Pulls LinkedIn, Twitter/X, Instagram, and Facebook handles.', icon: 'Share2', fee: 0.0, price: 0.10, freeQuota: 100, limit: 4000, jobLimit: 200 },
+        { id: 'web-bulk', name: 'Bulk Website Scanner', slug: 'bulk', desc: 'Crawl lists of domain URLs in automated sequence.', icon: 'Layers', fee: 149.0, price: 10.00, freeQuota: 5, limit: 100, jobLimit: 200 },
+        { id: 'web-export', name: 'Advanced Data Export', slug: 'export', desc: 'Export leads and technology profiles to CSV/JSON.', icon: 'Download', fee: 0.0, price: 1.00, freeQuota: 10, limit: 500, jobLimit: 50 }
+      ];
+
+      webModules.forEach((m, idx) => {
+        insertMod.run(
+          m.id,
+          'website-lead-extractor',
+          m.name,
+          m.slug,
+          m.desc,
+          m.icon,
+          'Web',
+          JSON.stringify([m.name]),
+          m.fee,
+          m.price > 0 ? 'per_scan' : 'free',
+          m.price,
+          m.freeQuota,
+          m.limit,
+          m.jobLimit,
+          idx + 1
+        );
+      });
+
+      // 3. WhatsApp Multi-Channel Prospector
+      insertExt.run(
+        'whatsapp-prospector',
+        'WhatsApp Outreach & Relay Engine',
+        'whatsapp-prospector',
+        'Marketing Automation',
+        'Bridge extracted leads straight into WhatsApp broadcast campaigns, live chats, and scheduled drips.',
+        'Synchronous bridge connecting extracted leads to your WhatsApp multi-device sender with zero manual exports.',
+        'MessageSquare',
+        JSON.stringify(['1-Click Chat Handoff', 'Bulk Phone Relay', 'Status Pipeline Sync', 'Quota Safety Guard']),
+        JSON.stringify(['Chrome', 'Brave', 'Edge', 'Desktop']),
+        99.0,
+        'one_time',
+        0,
+        1,
+        3
+      );
+
+      const waModules = [
+        { id: 'wa-direct-dispatch', name: '1-Click Direct Chat Launch', slug: 'direct-chat', desc: 'Open chat with any extracted lead instantly.', icon: 'Send', fee: 0.0, price: 0.0, freeQuota: 99999, limit: 99999, jobLimit: 999 },
+        { id: 'wa-bulk-relay', name: 'Bulk Queue Relay', slug: 'bulk-relay', desc: 'Transfer 500+ selected leads directly to Bulk Sender.', icon: 'Hash', fee: 49.0, price: 0.05, freeQuota: 100, limit: 10000, jobLimit: 500 },
+        { id: 'wa-status-sync', name: 'Pipeline Auto-Status Sync', slug: 'status-sync', desc: 'Update lead status to Contacted when message sends.', icon: 'CheckCircle2', fee: 0.0, price: 0.0, freeQuota: 99999, limit: 99999, jobLimit: 999 }
+      ];
+
+      waModules.forEach((m, idx) => {
+        insertMod.run(
+          m.id,
+          'whatsapp-prospector',
+          m.name,
+          m.slug,
+          m.desc,
+          m.icon,
+          'WhatsApp',
+          JSON.stringify([m.name]),
+          m.fee,
+          m.price > 0 ? 'per_record' : 'free',
+          m.price,
+          m.freeQuota,
+          m.limit,
+          m.jobLimit,
+          idx + 1
+        );
+      });
+
+      // Grant admin user full activation for all extensions & modules by default
+      if (adminRow) {
+        const adminId = adminRow.id;
+        const allExts = db.prepare('SELECT id FROM extensions').all() as Array<{ id: string }>;
+        const allMods = db.prepare('SELECT id, extension_id FROM extension_modules').all() as Array<{ id: string; extension_id: string }>;
+
+        const actExt = db.prepare("INSERT OR IGNORE INTO extension_activations (id, user_id, extension_id, status, fee_paid) VALUES (?, ?, ?, 'active', 0.0)");
+        const actMod = db.prepare("INSERT OR IGNORE INTO module_activations (id, user_id, extension_id, module_id, status, fee_paid) VALUES (?, ?, ?, ?, 'active', 0.0)");
+
+        for (const e of allExts) actExt.run(crypto.randomUUID(), adminId, e.id);
+        for (const m of allMods) actMod.run(crypto.randomUUID(), adminId, m.extension_id, m.id);
+      }
+
+      console.log('[DB] Extensions Marketplace & 20 Standardized Modules successfully initialized.');
+    }
+  } catch (err) {
+    console.error('[DB] Error configuring wallet and marketplace tables:', err);
+  }
+
   dbInstance = db;
   return dbInstance;
 }

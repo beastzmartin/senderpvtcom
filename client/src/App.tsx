@@ -15,6 +15,9 @@ import { ContactsView } from './components/contacts/ContactsView';
 import { TemplatesView } from './components/templates/TemplatesView';
 import { LeadsDashboardView } from './components/leads/LeadsDashboardView';
 import { ExtractionHubView } from './components/leads/ExtractionHubView';
+import { MarketplaceView } from './components/marketplace/MarketplaceView';
+import { MyExtensionsView } from './components/marketplace/MyExtensionsView';
+import { WalletView } from './components/marketplace/WalletView';
 import { SchedulerView } from './components/scheduler/SchedulerView';
 import { SubscriptionView } from './components/subscription/SubscriptionView';
 import { AdminControlCenter } from './components/admin/AdminControlCenter';
@@ -165,6 +168,29 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
         {activeTab === 'extractors' && (
           <ExtractionHubView
             onNavigateToLeads={() => setActiveTab('leads')}
+          />
+        )}
+
+        {activeTab === 'marketplace' && (
+          <MarketplaceView
+            onNavigateToMyExtensions={() => setActiveTab('my-extensions')}
+            onNavigateToWallet={() => setActiveTab('wallet')}
+            onNavigateToCRM={() => setActiveTab('leads')}
+          />
+        )}
+
+        {activeTab === 'my-extensions' && (
+          <MyExtensionsView
+            onNavigateToMarketplace={() => setActiveTab('marketplace')}
+            onNavigateToWallet={() => setActiveTab('wallet')}
+            onNavigateToCRM={() => setActiveTab('leads')}
+          />
+        )}
+
+        {activeTab === 'wallet' && (
+          <WalletView
+            onNavigateToMarketplace={() => setActiveTab('marketplace')}
+            onNavigateToMyExtensions={() => setActiveTab('my-extensions')}
           />
         )}
 

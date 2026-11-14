@@ -21,6 +21,8 @@ import groupJoinerRoutes from './routes/groupJoinerRoutes.js';
 import leadRoutes from './routes/leadRoutes.js';
 import extractionJobRoutes from './routes/extractionJobRoutes.js';
 import extensionRoutes from './routes/extensionRoutes.js';
+import walletRoutes from './routes/walletRoutes.js';
+import marketplaceRoutes from './routes/marketplaceRoutes.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
@@ -67,6 +69,8 @@ app.use('/api/group-joiner', groupJoinerRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/extraction-jobs', extractionJobRoutes);
 app.use('/api/extension', extensionRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/marketplace', marketplaceRoutes);
 
 // Dashboard stats endpoint
 const messageController = new MessageController();

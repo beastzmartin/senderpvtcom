@@ -29,7 +29,6 @@
   "host_permissions": [
     "*://*.google.com/maps/*",
     "*://*.google.co.in/maps/*",
-    "*://*.google.*/maps/*",
     "*://maps.google.com/*",
     "http://*/*",
     "https://*/*"
@@ -39,7 +38,6 @@
       "matches": [
         "*://*.google.com/maps/*",
         "*://*.google.co.in/maps/*",
-        "*://*.google.*/maps/*",
         "*://maps.google.com/*"
       ],
       "js": ["content/maps-extractor.js"],
@@ -53,7 +51,6 @@
       "exclude_matches": [
         "*://*.google.com/maps/*",
         "*://*.google.co.in/maps/*",
-        "*://*.google.*/maps/*",
         "*://maps.google.com/*"
       ],
       "js": ["content/website-extractor.js"],

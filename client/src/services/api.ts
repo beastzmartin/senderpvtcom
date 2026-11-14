@@ -42,7 +42,11 @@ import {
   ExtractionSourceRecord,
   LeadFilterOptions,
   LeadAnalyticsStats,
-  LeadNoteItem
+  LeadNoteItem,
+  UserWallet,
+  WalletTransaction,
+  MarketplaceExtension,
+  MarketplaceModule
 } from '../types';
 
 const LIVE_BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
@@ -1210,6 +1214,132 @@ export const api = {
       }>('/extension/sync', {
         method: 'POST',
         body: JSON.stringify({ leads, jobId, source })
+      })
+  },
+
+  wallet: {
+    get: () => request<UserWallet>('/wallet'),
+
+    transactions: (limit: number = 50) =>
+      request<WalletTransaction[]>(`/wallet/transactions?limit=${limit}`),
+
+    topUp: (amount: number, description?: string, referenceId?: string) =>
+      request<{
+        success: boolean;
+        newBalance: number;
+        transaction: WalletTransaction;
+      }>('/wallet/topup', {
+        method: 'POST',
+        body: JSON.stringify({ amount, description, referenceId })
+      }),
+
+    adminAdjust: (targetUserId: string, amount: number, reason: string) =>
+      request<{
+        success: boolean;
+        newBalance: number;
+        transaction: WalletTransaction;
+      }>('/wallet/admin/adjust', {
+        method: 'POST',
+        body: JSON.stringify({ targetUserId, amount, reason })
+      })
+  },
+
+  marketplace: {
+    listExtensions: (category?: string, search?: string) => {
+      const params = new URLSearchParams();
+      if (category && category !== 'all') params.append('category', category);
+      if (search) params.append('search', search);
+      const query = params.toString() ? `?${params.toString()}` : '';
+      return request<MarketplaceExtension[]>(`/marketplace/extensions${query}`);
+    },
+
+    getExtension: (id: string) =>
+      request<MarketplaceExtension>(`/marketplace/extensions/${id}`),
+
+    listModules: (extensionId: string) =>
+      request<MarketplaceModule[]>(`/marketplace/extensions/${extensionId}/modules`),
+
+    getMyExtensions: () =>
+      request<{
+        activations: Array<{
+          id: string;
+          extension_id: string;
+          status: string;
+          activated_at: string;
+          expires_at?: string;
+          extension_name: string;
+          extension_slug: string;
+          category: string;
+          icon?: string;
+          version: string;
+        }>;
+        modules: Array<{
+          id: string;
+          module_id: string;
+          extension_id: string;
+          status: string;
+          activated_at: string;
+          expires_at?: string;
+          custom_quota_override?: number;
+          custom_usage_price_override?: number;
+          name: string;
+          slug: string;
+          description: string;
+          icon?: string;
+          category?: string;
+          usage_charging_model: string;
+          usage_price: number;
+          period_quota_limit: number;
+          quota_period: string;
+          per_job_limit: number;
+        }>;
+      }>('/marketplace/my-extensions'),
+
+    activateExtension: (extensionId: string) =>
+      request<{
+        success: boolean;
+        activation: any;
+        newBalance: number;
+      }>(`/marketplace/extensions/${extensionId}/activate`, {
+        method: 'POST'
+      }),
+
+    activateModule: (moduleId: string) =>
+      request<{
+        success: boolean;
+        activation: any;
+        newBalance: number;
+      }>(`/marketplace/modules/${moduleId}/activate`, {
+        method: 'POST'
+      }),
+
+    adminCreateModule: (data: any) =>
+      request<{ success: boolean; module: MarketplaceModule }>('/marketplace/admin/modules', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    adminUpdateModule: (id: string, data: any) =>
+      request<{ success: boolean; module: MarketplaceModule }>(`/marketplace/admin/modules/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    adminDeleteModule: (id: string) =>
+      request<{ success: boolean }>(`/marketplace/admin/modules/${id}`, {
+        method: 'DELETE'
+      }),
+
+    adminSetOverride: (data: {
+      userId: string;
+      moduleId: string;
+      quotaOverride?: number;
+      priceOverride?: number;
+      status?: string;
+    }) =>
+      request<{ success: boolean }>('/marketplace/admin/entitlements/override', {
+        method: 'POST',
+        body: JSON.stringify(data)
       })
   }
 };

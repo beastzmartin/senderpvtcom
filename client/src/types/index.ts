@@ -753,6 +753,115 @@ export interface LeadNoteItem {
   created_at: string;
 }
 
+// =========================================================================
+// WALLET, EXTENSIONS MARKETPLACE & MODULE LICENSING TYPES
+// =========================================================================
+
+export interface UserWallet {
+  user_id: string;
+  balance: number;
+  currency: string;
+  reserved_balance: number;
+  total_spent: number;
+  total_topped_up: number;
+  updated_at: string;
+}
+
+export type WalletTransactionType =
+  | 'extension_activation'
+  | 'module_activation'
+  | 'usage_deduction'
+  | 'usage_refund'
+  | 'wallet_topup'
+  | 'promotional_credit'
+  | 'admin_adjustment'
+  | 'usage_reservation'
+  | 'reservation_release'
+  | 'renewal_charge';
+
+export interface WalletTransaction {
+  id: string;
+  user_id: string;
+  workspace_id?: string | null;
+  extension_id?: string | null;
+  module_id?: string | null;
+  transaction_type: WalletTransactionType;
+  amount: number;
+  currency: string;
+  previous_balance: number;
+  new_balance: number;
+  reference_id?: string | null;
+  description: string;
+  status: 'pending' | 'completed' | 'failed' | 'refunded' | 'reversed';
+  metadata?: any;
+  created_at: string;
+}
+
+export interface MarketplaceModule {
+  id: string;
+  extension_id: string;
+  name: string;
+  slug: string;
+  description: string;
+  icon?: string;
+  category?: string;
+  version: string;
+  features: string[];
+  activation_fee: number;
+  usage_charging_model: 'free' | 'per_record' | 'per_request' | 'per_api_call' | 'per_scan' | 'per_enrichment' | 'per_job' | 'per_thousand_records' | 'fixed_fee' | 'time_based';
+  usage_price: number;
+  free_quota: number;
+  period_quota_limit: number;
+  quota_period: string;
+  per_job_limit: number;
+  status: string;
+  is_visible: boolean;
+  sort_order: number;
+  // User context fields
+  is_activated?: boolean;
+  activation_status?: string;
+  fee_paid?: number;
+  used_in_period?: number;
+  remaining_quota?: number;
+  effective_price?: number;
+  effective_limit?: number;
+  unlimited_quota?: boolean;
+}
+
+export interface MarketplaceExtension {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  short_description: string;
+  description?: string;
+  icon?: string;
+  logo_url?: string;
+  screenshots: string[];
+  features: string[];
+  supported_browsers: string[];
+  version: string;
+  activation_fee: number;
+  pricing_model: 'free' | 'one_time' | 'recurring_monthly' | 'recurring_yearly' | 'custom';
+  is_featured: boolean;
+  is_popular: boolean;
+  is_published: boolean;
+  status: string;
+  rating: number;
+  reviews_count: number;
+  sort_order: number;
+  documentation?: string;
+  installation_guide?: string;
+  modules?: MarketplaceModule[];
+  // User context fields
+  is_activated?: boolean;
+  activated_at?: string;
+  expires_at?: string;
+  active_modules_count?: number;
+  total_modules_count?: number;
+}
+
+
 
 
 

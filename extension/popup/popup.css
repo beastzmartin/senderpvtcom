@@ -137,6 +137,25 @@ body {
   letter-spacing: 0.5px;
 }
 
+.wallet-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+}
+
+.quota-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  padding: 4px 6px 0;
+  color: #64748b;
+}
+
 .user-quota {
   font-size: 11px;
 }

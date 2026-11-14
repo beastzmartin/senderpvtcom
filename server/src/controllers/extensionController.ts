@@ -6,17 +6,23 @@ import { getDatabase } from '../db/database.js';
 import { LeadService } from '../services/leadService.js';
 import { ExtractionJobService } from '../services/extractionJobService.js';
 import { AuthService } from '../services/authService.js';
+import { WalletService } from '../services/walletService.js';
+import { EntitlementService } from '../services/entitlementService.js';
 import { config } from '../config.js';
 
 export class ExtensionController {
   private leadService: LeadService;
   private jobService: ExtractionJobService;
   private authService: AuthService;
+  private walletService: WalletService;
+  private entitlementService: EntitlementService;
 
   constructor() {
     this.leadService = LeadService.getInstance();
     this.jobService = ExtractionJobService.getInstance();
     this.authService = AuthService.getInstance();
+    this.walletService = WalletService.getInstance();
+    this.entitlementService = EntitlementService.getInstance();
   }
 
   /**
@@ -94,6 +100,8 @@ export class ExtensionController {
         SELECT COUNT(*) as count FROM leads WHERE user_id = ?
       `).get(userId) as { count: number }).count;
 
+      const wallet = this.walletService.getOrCreateWallet(userId);
+
       res.json({
         user: {
           id: user.id,
@@ -105,7 +113,9 @@ export class ExtensionController {
           subscription_status: user.subscription_status,
           daily_extraction_limit: user.daily_extraction_limit || 500,
           leads_extracted_today: todayCount,
-          total_leads: totalCount
+          total_leads: totalCount,
+          wallet_balance: wallet.balance,
+          currency: wallet.currency
         }
       });
     } catch (err: any) {
@@ -114,8 +124,8 @@ export class ExtensionController {
   };
 
   /**
-   * Extension batch sync endpoint: receives leads parsed in browser, applies deduplication,
-   * stores to database, updates job progress, and broadcasts in real time.
+   * Extension batch sync endpoint: receives leads parsed in browser, validates module entitlement & wallet,
+   * applies deduplication, stores to database, updates job progress, deducts billable usage, and broadcasts.
    */
   public syncBatch = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
@@ -124,6 +134,20 @@ export class ExtensionController {
 
       if (!Array.isArray(leads) || leads.length === 0) {
         res.status(400).json({ error: 'Payload must contain a non-empty "leads" array.' });
+        return;
+      }
+
+      // Determine module ID from source
+      const moduleId = (source === 'google_maps' || !source) ? 'gmaps-search' : (source === 'website_extractor' ? 'web-scanner' : source);
+
+      // Validate Module Entitlement and Wallet Quota
+      const entitlement = this.entitlementService.validateModuleAccess(userId, moduleId, leads.length);
+      if (!entitlement.allowed) {
+        res.status(403).json({
+          error: entitlement.reason || 'Unauthorized module execution.',
+          code: 'ENTITLEMENT_DENIED',
+          walletBalance: entitlement.walletBalance
+        });
         return;
       }
 
@@ -145,6 +169,12 @@ export class ExtensionController {
       // Save leads
       const result = this.leadService.batchCreateLeads(userId, leads, jobId);
 
+      // Settle usage and wallet deduction based on successfully stored leads
+      const settlement = this.entitlementService.recordUsageAndSettle(userId, moduleId, result.created.length, {
+        jobId,
+        description: `Extracted ${result.created.length} new leads via ${moduleId}`
+      });
+
       // If tied to a job, update progress
       if (jobId) {
         const job = this.jobService.getJobById(userId, jobId);
@@ -157,6 +187,20 @@ export class ExtensionController {
           this.jobService.updateProgress(jobId, progress, totalCollected, totalDuplicates, totalFailed);
         }
       }
+
+      // Record in extension_sessions last active
+      db.prepare(`UPDATE extension_sessions SET last_active_at = datetime('now') WHERE user_id = ?`).run(userId);
+
+      res.json({
+        success: true,
+        syncedCount: result.created.length,
+        duplicates: result.duplicates,
+        failed: result.failed,
+        remainingToday: Math.max(0, dailyLimit - (todayCount + result.created.length)),
+        walletBalance: settlement.newBalance,
+        totalCost: settlement.totalCost,
+        unitsCharged: settlement.unitsCharged
+      });
 
       // Record in extension_sessions last active
       db.prepare(`UPDATE extension_sessions SET last_active_at = datetime('now') WHERE user_id = ?`).run(userId);

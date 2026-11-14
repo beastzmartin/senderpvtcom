@@ -223,7 +223,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               id: tab.id,
               url: tab.url,
               title: tab.title,
-              isGoogleMaps: (tab.url || '').includes('google.com/maps') || (tab.url || '').includes('maps.google.com')
+              isGoogleMaps: /(google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)/.test(tab.url || '')
             };
           }
         } catch {}
