@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lead Intelligence Pro</title>
+  <title>Google Maps Extractor & CRM Sync</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -11,14 +11,15 @@
     <!-- Brand Header -->
     <header class="header">
       <div class="brand">
-        <div class="logo-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        <div class="logo-icon" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
           </svg>
         </div>
         <div>
-          <h1 class="brand-title">Lead Intelligence</h1>
-          <span class="brand-sub">Multi-Source Prospector</span>
+          <h1 class="brand-title">Google Maps Extractor</h1>
+          <span class="brand-sub">Direct Cloud CRM Sync</span>
         </div>
       </div>
       <div class="header-actions">
@@ -67,7 +68,7 @@
       </div>
       <div class="quota-row">
         <span class="quota-label">Daily Extractions:</span>
-        <span class="quota-val" id="user-quota-val">0 / 500</span>
+        <span class="quota-val" id="user-quota-val">0 / 50000</span>
       </div>
 
       <!-- Power Extractor Workspace Launcher Banner -->
@@ -89,19 +90,11 @@
 
       <!-- Active Tab Context Card -->
       <div class="card active-tab-card">
-        <div class="card-header">
-          <div class="tab-type-tag" id="tab-type-badge">
-            <span class="indicator-dot"></span>
-            <span id="tab-type-text">Detecting Page...</span>
-          </div>
-          <span class="tab-domain" id="tab-domain-text"></span>
-        </div>
-
-        <!-- GOOGLE MAPS CONTROLLER -->
+        <!-- GOOGLE MAPS CONTROLLER (When currently on Google Maps tab) -->
         <div id="panel-gmaps" class="tab-panel hidden">
           <div class="panel-header-row">
-            <span class="panel-title-text">📍 Google Maps Extractor</span>
-            <span class="badge-auto">Live Sync</span>
+            <span class="panel-title-text">📍 Live Google Maps Extractor</span>
+            <span class="badge-auto">Active Page</span>
           </div>
           <p class="panel-desc">Scrolls Google Maps results, extracts verified phone numbers, websites, and addresses, and syncs directly to your CRM.</p>
           
@@ -144,57 +137,13 @@
           </div>
         </div>
 
-        <!-- WEBSITE LEAD CONTROLLER -->
-        <div id="panel-website" class="tab-panel hidden">
+        <!-- QUICK LAUNCH & AUTO-EXTRACT (When NOT on Google Maps) -->
+        <div id="panel-unsupported" class="tab-panel">
           <div class="panel-header-row">
-            <span class="panel-title-text">⚡ Instant Web Prospector</span>
-            <span class="badge-auto" id="auto-scan-badge">Auto-Scan Ready</span>
-          </div>
-
-          <!-- Discovered Preview -->
-          <div id="web-preview-box" class="preview-box">
-            <div class="preview-header">
-              <div class="preview-title" id="web-preview-name">Detecting company...</div>
-              <span class="preview-status" id="web-preview-status">Detecting</span>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">Email:</span>
-              <span class="preview-val font-highlight" id="web-preview-email">Searching...</span>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">Phone:</span>
-              <span class="preview-val font-highlight" id="web-preview-phone">Searching...</span>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">Socials:</span>
-              <span class="preview-val" id="web-preview-socials">0 channels</span>
-            </div>
-            <div class="preview-item" id="web-preview-addr-row">
-              <span class="preview-label">Address:</span>
-              <span class="preview-val text-truncate" id="web-preview-address">None</span>
-            </div>
-
-            <div class="auto-sync-opt">
-              <label class="checkbox-container">
-                <input type="checkbox" id="chk-auto-sync" checked />
-                <span class="checkbox-label">Auto-Sync leads directly to CRM</span>
-              </label>
-            </div>
-
-            <div class="btn-group-mt">
-              <button id="btn-save-web-lead" class="btn btn-success w-full">✓ Save to SaaS Dashboard</button>
-              <button id="btn-scan-web" class="btn btn-outline btn-sm w-full mt-1">Re-Scan Webpage</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- QUICK LAUNCH & AUTO-EXTRACT CONTROLLER (When not on target page) -->
-        <div id="panel-unsupported" class="tab-panel hidden">
-          <div class="panel-header-row">
-            <span class="panel-title-text">🚀 Quick Lead Prospector</span>
+            <span class="panel-title-text">🚀 Quick Google Maps Prospector</span>
             <span class="badge-auto">1-Click Auto Launch</span>
           </div>
-          <p class="panel-desc">Enter your target business niche and city. The extension will automatically open Google Maps and extract verified leads immediately.</p>
+          <p class="panel-desc">Enter your target business niche and city. The extension will automatically open Google Maps, start extracting verified leads, and sync them directly to your CRM.</p>
 
           <div class="quick-launch-form">
             <div class="form-group-sm">
@@ -261,4 +210,3 @@
   <script src="popup.js"></script>
 </body>
 </html>
-

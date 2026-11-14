@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Lead Intelligence & Prospecting Pro",
+  "name": "Google Maps Lead Extractor & CRM Sync",
   "version": "2.0.0",
-  "description": "Multi-Source Lead Extraction & Prospecting for Google Maps, Local Businesses, and Company Websites.",
+  "description": "High-Speed Google Maps Lead Extractor, Multi-Keyword Batch Scraper, and Real-Time Cloud CRM Synchronization.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -10,7 +10,7 @@
   },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Lead Intelligence & Prospecting Pro",
+    "default_title": "Google Maps Lead Extractor & CRM Sync",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",
@@ -32,9 +32,7 @@
     "*://*.google.com/maps/*",
     "*://*.google.co.in/maps/*",
     "*://maps.google.com/*",
-    "https://taken-rough-hydrocodone-empirical.trycloudflare.com/*",
-    "http://*/*",
-    "https://*/*"
+    "https://taken-rough-hydrocodone-empirical.trycloudflare.com/*"
   ],
   "content_scripts": [
     {
@@ -45,19 +43,6 @@
       ],
       "js": ["content/maps-extractor.js"],
       "run_at": "document_start"
-    },
-    {
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ],
-      "exclude_matches": [
-        "*://*.google.com/maps/*",
-        "*://*.google.co.in/maps/*",
-        "*://maps.google.com/*"
-      ],
-      "js": ["content/website-extractor.js"],
-      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
@@ -71,4 +56,3 @@
     }
   ]
 }
-

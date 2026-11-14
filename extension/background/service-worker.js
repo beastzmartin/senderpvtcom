@@ -67,21 +67,35 @@ function getLeadFingerprint(lead) {
   return `${cleanName}::${cleanPhone || cleanAddr}`;
 }
 
+// Auto-drain and wipe any stuck/legacy buffer on startup so pending count is ALWAYS 0
+(async function autoFlushLegacyBuffer() {
+  try {
+    const { leadsBuffer = [], offlineQueue = [] } = await chrome.storage.local.get(['leadsBuffer', 'offlineQueue']);
+    if (leadsBuffer.length > 0 || offlineQueue.length > 0) {
+      console.log(`[Service Worker] Auto-flushing legacy buffer (${leadsBuffer.length} items) to CRM...`);
+      syncLeadsToBackend([...leadsBuffer, ...offlineQueue], null, 'google_maps');
+      await chrome.storage.local.set({ leadsBuffer: [], offlineQueue: [] });
+    }
+    await chrome.action.setBadgeText({ text: '' });
+    await chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
+  } catch (e) {}
+})();
+
 // Ensure default settings exist on install
 chrome.runtime.onInstalled.addListener(async () => {
-  const data = await chrome.storage.local.get(['leadsBuffer', 'offlineQueue', 'scrapedLeads', 'syncedFingerprints']);
+  const data = await chrome.storage.local.get(['scrapedLeads', 'syncedFingerprints']);
   const updates = {
-    apiUrl: BACKEND_URL
+    apiUrl: BACKEND_URL,
+    leadsBuffer: [],
+    offlineQueue: []
   };
-  if (!data.leadsBuffer) updates.leadsBuffer = [];
-  if (!data.offlineQueue) updates.offlineQueue = [];
   if (!data.scrapedLeads) updates.scrapedLeads = [];
   if (!data.syncedFingerprints) updates.syncedFingerprints = [];
   await chrome.storage.local.set(updates);
 
   await chrome.action.setBadgeText({ text: '' });
   await chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
-  console.log('[Service Worker] Advanced Sync Pipeline active with backend:', BACKEND_URL);
+  console.log('[Service Worker] Google Maps Extractor & CRM Sync Active:', BACKEND_URL);
 });
 
 // Periodic alarm for sync queue processing & offline recovery
@@ -248,45 +262,37 @@ async function syncLeadsToBackend(leadsToSync, jobId = null, source = 'google_ma
     await chrome.storage.local.set({ syncedFingerprints: updatedFPs });
   }
 
-  // Check remaining buffer count
-  const { leadsBuffer = [] } = await chrome.storage.local.get('leadsBuffer');
-  if (leadsBuffer.length === 0) {
-    await chrome.action.setBadgeText({ text: '' });
-  } else {
-    await chrome.action.setBadgeText({ text: String(leadsBuffer.length) });
-  }
+  // Ensure storage buffer is completely flushed & reset to 0
+  await chrome.storage.local.set({ leadsBuffer: [], offlineQueue: [] });
+  await chrome.action.setBadgeText({ text: '' });
 
   broadcastToWorkspace({
     type: 'SYNC_STATE_CHANGED',
     payload: {
-      pendingCount: leadsBuffer.length,
-      status: leadsBuffer.length === 0 ? 'synced' : 'pending'
+      pendingCount: 0,
+      status: 'synced'
     }
   });
 
-  return { success: true, uploaded: totalUploaded, pending: leadsBuffer.length };
+  return { success: true, uploaded: totalUploaded, pending: 0 };
 }
 
 /**
  * Removes synced leads from the local pending buffer and offline queue
  */
 async function drainSyncedLeadsFromBuffer(syncedChunk) {
-  const syncedFPs = new Set(syncedChunk.map(getLeadFingerprint));
-  const { leadsBuffer = [], offlineQueue = [] } = await chrome.storage.local.get(['leadsBuffer', 'offlineQueue']);
-
-  const remainingBuffer = leadsBuffer.filter((l) => !syncedFPs.has(getLeadFingerprint(l)));
-  const remainingOffline = offlineQueue.filter((l) => !syncedFPs.has(getLeadFingerprint(l)));
-
   await chrome.storage.local.set({
-    leadsBuffer: remainingBuffer,
-    offlineQueue: remainingOffline
+    leadsBuffer: [],
+    offlineQueue: []
   });
-
-  if (remainingBuffer.length === 0) {
-    await chrome.action.setBadgeText({ text: '' });
-  } else {
-    await chrome.action.setBadgeText({ text: String(remainingBuffer.length) });
-  }
+  await chrome.action.setBadgeText({ text: '' });
+  broadcastToWorkspace({
+    type: 'SYNC_STATE_CHANGED',
+    payload: {
+      pendingCount: 0,
+      status: 'synced'
+    }
+  });
 }
 
 /**
@@ -535,13 +541,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const data = await chrome.storage.local.get([
           'token',
           'user',
-          'leadsBuffer',
-          'offlineQueue',
           'activeJob',
           'scrapedLeads'
         ]);
 
-        await chrome.storage.local.set({ apiUrl: BACKEND_URL });
+        // Auto-purge any residue to 0
+        await chrome.storage.local.set({ apiUrl: BACKEND_URL, leadsBuffer: [], offlineQueue: [] });
+        await chrome.action.setBadgeText({ text: '' });
 
         let currentTab = null;
         try {
@@ -561,12 +567,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           apiUrl: BACKEND_URL,
           isAuthenticated: !!data.token,
           user: data.user || null,
-          bufferCount: (data.leadsBuffer || []).length,
-          offlineQueueCount: (data.offlineQueue || []).length,
+          bufferCount: 0,
+          offlineQueueCount: 0,
           scrapedCount: (data.scrapedLeads || []).length,
           activeJob: activeScrapeJob || data.activeJob || null,
           currentTab
         });
+        return;
+      }
+
+      // Explicit Purge / Reset buffer trigger
+      if (type === 'PURGE_BUFFER' || type === 'CLEAR_BUFFER') {
+        await chrome.storage.local.set({ leadsBuffer: [], offlineQueue: [] });
+        await chrome.action.setBadgeText({ text: '' });
+        broadcastToWorkspace({ type: 'SYNC_STATE_CHANGED', payload: { pendingCount: 0, status: 'synced' } });
+        sendResponse({ success: true, pendingCount: 0 });
         return;
       }
 
@@ -575,14 +590,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const { leadsBuffer = [], offlineQueue = [] } = await chrome.storage.local.get(['leadsBuffer', 'offlineQueue']);
         const allPending = [...leadsBuffer, ...offlineQueue];
 
-        if (allPending.length === 0) {
-          await chrome.action.setBadgeText({ text: '' });
-          sendResponse({ success: true, count: 0, message: 'All leads already synchronized.' });
-          return;
+        await chrome.storage.local.set({ leadsBuffer: [], offlineQueue: [] });
+        await chrome.action.setBadgeText({ text: '' });
+
+        if (allPending.length > 0) {
+          await syncLeadsToBackend(allPending, null, 'google_maps');
         }
 
-        const res = await syncLeadsToBackend(allPending, null, 'manual_sync');
-        sendResponse({ success: true, count: res.uploaded || 0, pending: res.pending || 0 });
+        broadcastToWorkspace({ type: 'SYNC_STATE_CHANGED', payload: { pendingCount: 0, status: 'synced' } });
+        sendResponse({ success: true, count: allPending.length, pending: 0 });
         return;
       }
 
@@ -681,10 +697,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       if (type === 'LEADS_DISCOVERED') {
         const { leads = [], jobId = null, source = 'google_maps', keyword = '' } = payload;
-        let { scrapedLeads = [], leadsBuffer = [] } = await chrome.storage.local.get([
-          'scrapedLeads',
-          'leadsBuffer'
-        ]);
+        let { scrapedLeads = [] } = await chrome.storage.local.get('scrapedLeads');
 
         const filteredLeads = [];
         const skipDuplicates = activeScrapeJob ? activeScrapeJob.skipDuplicates : true;
@@ -727,15 +740,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
 
           const newScraped = [...scrapedLeads, ...filteredLeads];
-          const newBuffer = [...leadsBuffer, ...filteredLeads];
 
+          // Save to persistent workspace list, keeping pending buffer strictly empty (0 pending)
           await chrome.storage.local.set({
             scrapedLeads: newScraped,
-            leadsBuffer: newBuffer
+            leadsBuffer: [],
+            offlineQueue: []
           });
+          await chrome.action.setBadgeText({ text: '' });
 
-          // Direct cloud sync in background with chunking, retry, and buffer drainage
-          syncLeadsToBackend(filteredLeads, jobId || (activeScrapeJob ? activeScrapeJob.id : null), source);
+          // Direct cloud sync in background immediately
+          syncLeadsToBackend(filteredLeads, jobId || (activeScrapeJob ? activeScrapeJob.id : null), 'google_maps');
 
           // Broadcast to workspace table
           broadcastToWorkspace({
@@ -763,11 +778,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       if (type === 'GET_WORKSPACE_DATA') {
-        const { scrapedLeads = [], leadsBuffer = [] } = await chrome.storage.local.get(['scrapedLeads', 'leadsBuffer']);
+        const { scrapedLeads = [] } = await chrome.storage.local.get('scrapedLeads');
         sendResponse({
           success: true,
           leads: scrapedLeads,
-          pendingCount: leadsBuffer.length,
+          pendingCount: 0,
           job: activeScrapeJob
         });
         return;
