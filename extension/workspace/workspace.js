@@ -36,6 +36,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const leadsTbody = document.getElementById('leads-tbody');
   const emptyState = document.getElementById('empty-state');
 
+  const btnFilterAll = document.getElementById('filter-all');
+  const btnFilterSynced = document.getElementById('filter-synced');
+  const btnFilterUnsynced = document.getElementById('filter-unsynced');
+  const btnForceSync = document.getElementById('btn-force-sync');
+
   const btnExportCsv = document.getElementById('btn-export-csv');
   const btnExportJson = document.getElementById('btn-export-json');
   const btnClearData = document.getElementById('btn-clear-data');
@@ -45,6 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let leadsList = [];
   let currentJob = null;
   let isPaused = false;
+  let currentFilter = 'all'; // 'all', 'synced', 'unsynced'
 
   // Initialize
   await loadWorkspaceState();
@@ -267,15 +273,77 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `"${str}"`;
   }
 
-  // Filter Search Input
-  searchFilter.addEventListener('input', () => {
-    const q = searchFilter.value.toLowerCase().trim();
+  // Force Cloud Sync Button
+  if (btnForceSync) {
+    btnForceSync.addEventListener('click', () => {
+      btnForceSync.textContent = 'Syncing...';
+      btnForceSync.disabled = true;
+      chrome.runtime.sendMessage({ type: 'SYNC_QUEUE' }, (res) => {
+        btnForceSync.disabled = false;
+        btnForceSync.textContent = '✓ Synced to Cloud';
+        setTimeout(() => {
+          btnForceSync.textContent = '☁️ Sync All';
+        }, 2000);
+        loadWorkspaceState();
+      });
+    });
+  }
+
+  // Filter Tabs
+  function setTableFilter(filter) {
+    currentFilter = filter;
+    [btnFilterAll, btnFilterSynced, btnFilterUnsynced].forEach((b) => {
+      if (b) {
+        b.style.background = 'transparent';
+        b.style.color = 'var(--text-sub)';
+      }
+    });
+
+    if (filter === 'all' && btnFilterAll) {
+      btnFilterAll.style.background = 'rgba(16, 185, 129, 0.2)';
+      btnFilterAll.style.color = '#34d399';
+    } else if (filter === 'synced' && btnFilterSynced) {
+      btnFilterSynced.style.background = 'rgba(16, 185, 129, 0.2)';
+      btnFilterSynced.style.color = '#34d399';
+    } else if (filter === 'unsynced' && btnFilterUnsynced) {
+      btnFilterUnsynced.style.background = 'rgba(16, 185, 129, 0.2)';
+      btnFilterUnsynced.style.color = '#34d399';
+    }
+
+    applyFilters();
+  }
+
+  if (btnFilterAll) btnFilterAll.addEventListener('click', () => setTableFilter('all'));
+  if (btnFilterSynced) btnFilterSynced.addEventListener('click', () => setTableFilter('synced'));
+  if (btnFilterUnsynced) btnFilterUnsynced.addEventListener('click', () => setTableFilter('unsynced'));
+
+  function applyFilters() {
+    const q = (searchFilter.value || '').toLowerCase().trim();
     const rows = leadsTbody.querySelectorAll('tr');
+    let visibleCount = 0;
+
     rows.forEach((row) => {
       const text = row.textContent.toLowerCase();
-      row.style.display = text.includes(q) ? '' : 'none';
+      const isSynced = row.querySelector('.sync-badge') !== null;
+      let matchesFilter = true;
+
+      if (currentFilter === 'synced') {
+        matchesFilter = isSynced;
+      } else if (currentFilter === 'unsynced') {
+        matchesFilter = !isSynced;
+      }
+
+      const matchesSearch = !q || text.includes(q);
+      const show = matchesFilter && matchesSearch;
+      row.style.display = show ? '' : 'none';
+      if (show) visibleCount++;
     });
-  });
+
+    tableCountBadge.textContent = `${visibleCount} Records`;
+  }
+
+  // Filter Search Input
+  searchFilter.addEventListener('input', applyFilters);
 
   // Update UI for Controls
   function updateJobControlsUI() {
@@ -413,6 +481,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (type === 'JOB_STATUS_CHANGED') {
       currentJob = payload;
       updateJobControlsUI();
+    }
+
+    if (type === 'SYNC_STATE_CHANGED') {
+      const pending = payload?.pendingCount || 0;
+      statSynced.textContent = leadsList.length;
+      if (pending === 0 && btnForceSync) {
+        btnForceSync.textContent = '✓ Synced to Cloud';
+      }
+      applyFilters();
     }
   });
 });

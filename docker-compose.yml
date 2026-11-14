@@ -1,21 +1,29 @@
 version: '3.8'
 
 services:
-  backend:
+  pvtsender:
     build:
-      context: ./server
+      context: .
       dockerfile: Dockerfile
-    container_name: whatsapp-sender-backend
+    image: pvtsender:latest
+    container_name: pvtsender-app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     environment:
+      - NODE_ENV=production
       - PORT=3000
-      - CLIENT_URL=http://localhost:5173
-      - JWT_SECRET=whatsapp-sender-production-super-secret-key-change-me
-      - ADMIN_USERNAME=admin
-      - ADMIN_PASSWORD=admin123
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:3000}
+      - JWT_SECRET=${JWT_SECRET:-whatsapp-sender-production-super-secret-key-change-me}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-2000}
     volumes:
-      # Crucial: Persists your SQLite database and WhatsApp login session keys across restarts
-      - ./server/data:/app/data
-
+      # Persists SQLite database and WhatsApp multi-device authentication sessions
+      - ./server/data:/app/server/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
