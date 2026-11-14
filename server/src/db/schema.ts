@@ -325,5 +325,125 @@ CREATE TABLE IF NOT EXISTS group_join_items (
 CREATE INDEX IF NOT EXISTS idx_join_campaigns_user ON group_join_campaigns(user_id);
 CREATE INDEX IF NOT EXISTS idx_join_items_campaign ON group_join_items(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_join_items_status ON group_join_items(status);
+
+-- =========================================================================
+-- LEAD EXTRACTION & PROSPECTING INTELLIGENCE TABLES
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS extraction_sources (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  description TEXT,
+  icon TEXT,
+  badge TEXT,
+  is_active INTEGER DEFAULT 1,
+  supported_fields TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS extraction_jobs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,
+  keyword TEXT,
+  location TEXT,
+  requested_count INTEGER DEFAULT 50,
+  collected_count INTEGER DEFAULT 0,
+  duplicate_count INTEGER DEFAULT 0,
+  failed_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'running', 'paused', 'completed', 'partially_completed', 'failed', 'cancelled')),
+  current_progress REAL DEFAULT 0,
+  settings TEXT,
+  error_message TEXT,
+  started_at TEXT,
+  completed_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_jobs_user ON extraction_jobs(user_id);
+CREATE INDEX IF NOT EXISTS idx_extraction_jobs_status ON extraction_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_extraction_jobs_source ON extraction_jobs(source);
+
+CREATE TABLE IF NOT EXISTS leads (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id TEXT REFERENCES extraction_jobs(id) ON DELETE SET NULL,
+  business_name TEXT NOT NULL,
+  category TEXT,
+  industry TEXT,
+  email TEXT,
+  phone TEXT,
+  website TEXT,
+  address TEXT,
+  city TEXT,
+  state TEXT,
+  country TEXT,
+  postal_code TEXT,
+  latitude REAL,
+  longitude REAL,
+  rating REAL,
+  reviews_count INTEGER DEFAULT 0,
+  operating_status TEXT,
+  place_id TEXT,
+  listing_url TEXT,
+  source TEXT NOT NULL DEFAULT 'google_maps',
+  source_url TEXT,
+  social_profiles TEXT,
+  status TEXT DEFAULT 'new' CHECK(status IN ('new', 'contacted', 'qualified', 'interested', 'converted', 'not_interested', 'archived')),
+  is_verified INTEGER DEFAULT 0,
+  notes TEXT,
+  metadata TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_user ON leads(user_id);
+CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
+CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source);
+CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);
+CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
+CREATE INDEX IF NOT EXISTS idx_leads_business_name ON leads(business_name);
+
+CREATE TABLE IF NOT EXISTS lead_tags (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  color TEXT DEFAULT '#3b82f6',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_tags_user ON lead_tags(user_id);
+
+CREATE TABLE IF NOT EXISTS lead_tag_mappings (
+  lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  tag_id TEXT NOT NULL REFERENCES lead_tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (lead_id, tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS lead_notes (
+  id TEXT PRIMARY KEY,
+  lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_notes_lead ON lead_notes(lead_id);
+
+CREATE TABLE IF NOT EXISTS extension_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token TEXT UNIQUE NOT NULL,
+  name TEXT DEFAULT 'Chrome Extension',
+  browser_info TEXT,
+  last_active_at TEXT,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_extension_sessions_user ON extension_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_extension_sessions_token ON extension_sessions(token);
 `;
 

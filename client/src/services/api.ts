@@ -35,7 +35,14 @@ import {
   AdminSessionItem,
   AdminStorageStats,
   UserDataSummary,
-  LiveCampaignItem
+  LiveCampaignItem,
+  LeadRecord,
+  LeadStatus,
+  ExtractionJobRecord,
+  ExtractionSourceRecord,
+  LeadFilterOptions,
+  LeadAnalyticsStats,
+  LeadNoteItem
 } from '../types';
 
 const LIVE_BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
@@ -1022,6 +1029,187 @@ export const api = {
     deleteCampaign: (id: string) =>
       request<{ success: boolean; message: string }>(`/group-joiner/campaigns/${id}`, {
         method: 'DELETE'
+      })
+  },
+
+  leads: {
+    list: (filters: LeadFilterOptions = {}) => {
+      const params = new URLSearchParams();
+      if (filters.search) params.append('search', filters.search);
+      if (filters.source) params.append('source', filters.source);
+      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+      if (filters.industry) params.append('industry', filters.industry);
+      if (filters.city) params.append('city', filters.city);
+      if (filters.tagId) params.append('tagId', filters.tagId);
+      if (filters.hasPhone) params.append('hasPhone', 'true');
+      if (filters.hasEmail) params.append('hasEmail', 'true');
+      if (filters.hasWebsite) params.append('hasWebsite', 'true');
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.page) params.append('page', String(filters.page));
+      if (filters.limit) params.append('limit', String(filters.limit));
+      if (filters.sortBy) params.append('sortBy', filters.sortBy);
+      if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
+      const query = params.toString();
+      return request<{
+        leads: LeadRecord[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+      }>(`/leads${query ? `?${query}` : ''}`);
+    },
+
+    getStats: () => request<LeadAnalyticsStats>('/leads/stats'),
+
+    getById: (id: string) => request<LeadRecord>(`/leads/${id}`),
+
+    create: (data: Partial<LeadRecord>) =>
+      request<LeadRecord>('/leads', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    batchSync: (leads: Partial<LeadRecord>[], jobId?: string) =>
+      request<{ created: LeadRecord[]; duplicates: number; failed: number }>('/leads/batch', {
+        method: 'POST',
+        body: JSON.stringify({ leads, jobId })
+      }),
+
+    update: (id: string, data: Partial<LeadRecord>) =>
+      request<LeadRecord>(`/leads/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean; message: string }>(`/leads/${id}`, {
+        method: 'DELETE'
+      }),
+
+    bulkDelete: (ids: string[]) =>
+      request<{ success: boolean; deletedCount: number }>('/leads/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids })
+      }),
+
+    bulkUpdateStatus: (ids: string[], status: LeadStatus) =>
+      request<{ success: boolean; updatedCount: number }>('/leads/bulk-status', {
+        method: 'POST',
+        body: JSON.stringify({ ids, status })
+      }),
+
+    enrich: (id: string) =>
+      request<LeadRecord>(`/leads/${id}/enrich`, {
+        method: 'POST'
+      }),
+
+    listTags: () => request<Array<{ id: string; name: string; color: string }>>('/leads/tags'),
+
+    createTag: (name: string, color?: string) =>
+      request<{ id: string; name: string; color: string }>('/leads/tags', {
+        method: 'POST',
+        body: JSON.stringify({ name, color })
+      }),
+
+    tagLead: (leadId: string, tagId: string) =>
+      request<{ success: boolean }>('/leads/tags/assign', {
+        method: 'POST',
+        body: JSON.stringify({ leadId, tagId })
+      }),
+
+    untagLead: (leadId: string, tagId: string) =>
+      request<{ success: boolean }>('/leads/tags/unassign', {
+        method: 'POST',
+        body: JSON.stringify({ leadId, tagId })
+      }),
+
+    listNotes: (leadId: string) => request<LeadNoteItem[]>(`/leads/${leadId}/notes`),
+
+    addNote: (leadId: string, content: string) =>
+      request<LeadNoteItem>(`/leads/${leadId}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ content })
+      })
+  },
+
+  extractionJobs: {
+    list: (limit?: number) =>
+      request<ExtractionJobRecord[]>(`/extraction-jobs${limit ? `?limit=${limit}` : ''}`),
+
+    listSources: () => request<ExtractionSourceRecord[]>('/extraction-jobs/sources/all'),
+
+    getById: (id: string) => request<ExtractionJobRecord>(`/extraction-jobs/${id}`),
+
+    create: (data: {
+      source: string;
+      keyword?: string;
+      location?: string;
+      requested_count?: number;
+      settings?: any;
+    }) =>
+      request<ExtractionJobRecord>('/extraction-jobs', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    start: (id: string) =>
+      request<ExtractionJobRecord>(`/extraction-jobs/${id}/start`, {
+        method: 'POST'
+      }),
+
+    pause: (id: string) =>
+      request<ExtractionJobRecord>(`/extraction-jobs/${id}/pause`, {
+        method: 'POST'
+      }),
+
+    resume: (id: string) =>
+      request<ExtractionJobRecord>(`/extraction-jobs/${id}/resume`, {
+        method: 'POST'
+      }),
+
+    cancel: (id: string) =>
+      request<ExtractionJobRecord>(`/extraction-jobs/${id}/cancel`, {
+        method: 'POST'
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/extraction-jobs/${id}`, {
+        method: 'DELETE'
+      })
+  },
+
+  extension: {
+    ping: () => request<{ status: string; version: string; user: any }>('/extension/ping'),
+
+    getToken: () => request<{ token: string; userId: string; created_at: string }>('/extension/token'),
+
+    getProfile: () =>
+      request<{
+        user: {
+          id: string;
+          username: string;
+          name: string;
+          email?: string;
+          role: string;
+          plan_tier: string;
+          subscription_status: string;
+          daily_extraction_limit: number;
+          leads_extracted_today: number;
+          total_leads: number;
+        };
+      }>('/extension/profile'),
+
+    syncBatch: (leads: Partial<LeadRecord>[], jobId?: string, source?: string) =>
+      request<{
+        success: boolean;
+        syncedCount: number;
+        duplicates: number;
+        failed: number;
+        remainingToday: number;
+      }>('/extension/sync', {
+        method: 'POST',
+        body: JSON.stringify({ leads, jobId, source })
       })
   }
 };

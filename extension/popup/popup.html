@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lead Intelligence Pro</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Brand Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">Lead Intelligence</h1>
+          <span class="brand-sub">Multi-Source Prospector</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div id="connection-pill" class="pill pill-offline">Checking...</div>
+        <button id="btn-settings" class="icon-btn" title="Settings">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- AUTHENTICATION VIEW (When disconnected) -->
+    <div id="view-auth" class="view hidden">
+      <div class="auth-card">
+        <div class="auth-tabs">
+          <button id="tab-btn-token" class="auth-tab active">API Token Pair</button>
+          <button id="tab-btn-login" class="auth-tab">Account Login</button>
+        </div>
+
+        <!-- Token Pair Form -->
+        <div id="form-token" class="auth-form-body">
+          <p class="auth-desc">Paste your personal Extension Session Token from your SaaS Dashboard profile.</p>
+          <input type="password" id="input-token" placeholder="Paste session token here..." class="input-field" />
+          <button id="btn-submit-token" class="btn btn-primary w-full">Connect to Dashboard</button>
+        </div>
+
+        <!-- Login Form -->
+        <div id="form-login" class="auth-form-body hidden">
+          <p class="auth-desc">Enter your SaaS account credentials.</p>
+          <input type="text" id="input-username" placeholder="Username or Email" class="input-field" />
+          <input type="password" id="input-password" placeholder="Password" class="input-field" />
+          <button id="btn-submit-login" class="btn btn-primary w-full">Sign In & Connect</button>
+        </div>
+
+        <div id="auth-error" class="alert-error hidden"></div>
+      </div>
+    </div>
+
+    <!-- MAIN DASHBOARD VIEW (When authenticated) -->
+    <div id="view-main" class="view">
+      <!-- User Profile Ribbon -->
+      <div class="user-ribbon">
+        <div class="user-meta">
+          <span class="user-name" id="user-display-name">Loading...</span>
+          <span class="badge-plan" id="user-plan-badge">PRO</span>
+        </div>
+        <div class="user-quota">
+          <span class="quota-label">Daily Extractions:</span>
+          <span class="quota-val" id="user-quota-val">0 / 500</span>
+        </div>
+      </div>
+
+      <!-- Active Tab Context Card -->
+      <div class="card active-tab-card">
+        <div class="card-header">
+          <div class="tab-type-tag" id="tab-type-badge">
+            <span class="indicator-dot"></span>
+            <span id="tab-type-text">Detecting Page...</span>
+          </div>
+          <span class="tab-domain" id="tab-domain-text"></span>
+        </div>
+
+        <!-- GOOGLE MAPS CONTROLLER -->
+        <div id="panel-gmaps" class="tab-panel hidden">
+          <p class="panel-desc">Google Maps place results detected. Ready to extract business contacts and reviews.</p>
+          
+          <div class="form-row">
+            <label for="maps-max-count">Extraction Limit:</label>
+            <select id="maps-max-count" class="select-field">
+              <option value="25">25 leads</option>
+              <option value="50" selected>50 leads</option>
+              <option value="100">100 leads</option>
+              <option value="250">250 leads</option>
+            </select>
+          </div>
+
+          <div class="progress-box hidden" id="maps-progress-box">
+            <div class="progress-labels">
+              <span>Progress:</span>
+              <span id="maps-progress-count">0 / 50</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="maps-progress-fill" class="progress-bar-fill"></div>
+            </div>
+          </div>
+
+          <div class="action-grid">
+            <button id="btn-maps-start" class="btn btn-primary">Start Extraction</button>
+            <button id="btn-maps-pause" class="btn btn-secondary hidden">Pause</button>
+            <button id="btn-maps-resume" class="btn btn-secondary hidden">Resume</button>
+            <button id="btn-maps-stop" class="btn btn-danger hidden">Stop & Sync</button>
+          </div>
+        </div>
+
+        <!-- WEBSITE LEAD CONTROLLER -->
+        <div id="panel-website" class="tab-panel hidden">
+          <p class="panel-desc">Inspect this webpage to discover verified business emails, phone numbers, and social links.</p>
+
+          <button id="btn-scan-web" class="btn btn-primary w-full">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            Scan & Extract Contacts
+          </button>
+
+          <!-- Discovered Preview -->
+          <div id="web-preview-box" class="preview-box hidden">
+            <div class="preview-title" id="web-preview-name">Company Name</div>
+            <div class="preview-item">
+              <span class="preview-label">Email:</span>
+              <span class="preview-val" id="web-preview-email">None</span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-label">Phone:</span>
+              <span class="preview-val" id="web-preview-phone">None</span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-label">Socials:</span>
+              <span class="preview-val" id="web-preview-socials">0 profiles</span>
+            </div>
+            <button id="btn-save-web-lead" class="btn btn-success w-full mt-2">Save to SaaS Dashboard</button>
+          </div>
+        </div>
+
+        <!-- UNSUPPORTED PAGE PANEL -->
+        <div id="panel-unsupported" class="tab-panel hidden">
+          <div class="empty-state">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <p>Navigate to <strong>Google Maps</strong> or any <strong>Company Website</strong> to start extracting leads.</p>
+            <a href="https://maps.google.com" target="_blank" class="btn btn-outline">Open Google Maps</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sync Queue & Telemetry -->
+      <div class="sync-banner">
+        <div>
+          <span class="sync-count" id="sync-buffer-count">0 leads</span>
+          <span class="sync-status" id="sync-status-msg">Synchronized with SaaS</span>
+        </div>
+        <button id="btn-sync-now" class="btn btn-sm btn-outline">Sync Now</button>
+      </div>
+
+      <!-- Footer Quick Actions -->
+      <footer class="footer">
+        <button id="btn-open-dashboard" class="footer-link">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          Open SaaS Dashboard
+        </button>
+        <button id="btn-logout" class="footer-link text-danger">Disconnect</button>
+      </footer>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

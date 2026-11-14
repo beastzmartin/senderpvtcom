@@ -13,6 +13,8 @@ import { GroupExtractorView } from './components/extractor/GroupExtractorView';
 import { GroupJoinerView } from './components/joiner/GroupJoinerView';
 import { ContactsView } from './components/contacts/ContactsView';
 import { TemplatesView } from './components/templates/TemplatesView';
+import { LeadsDashboardView } from './components/leads/LeadsDashboardView';
+import { ExtractionHubView } from './components/leads/ExtractionHubView';
 import { SchedulerView } from './components/scheduler/SchedulerView';
 import { SubscriptionView } from './components/subscription/SubscriptionView';
 import { AdminControlCenter } from './components/admin/AdminControlCenter';
@@ -144,6 +146,25 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
           <TemplatesView
             onUseInBulkSender={handleUseTemplateInSender}
             onUseInScheduler={handleUseTemplateInScheduler}
+          />
+        )}
+
+        {activeTab === 'leads' && (
+          <LeadsDashboardView
+            onStartWhatsAppChat={(phone) => {
+              setActiveTab('sender');
+            }}
+            onLaunchBulkWhatsApp={(phones) => {
+              setBulkLidsQueue(phones);
+              setActiveTab('bulk');
+            }}
+            onNavigateToHub={() => setActiveTab('extractors')}
+          />
+        )}
+
+        {activeTab === 'extractors' && (
+          <ExtractionHubView
+            onNavigateToLeads={() => setActiveTab('leads')}
           />
         )}
 

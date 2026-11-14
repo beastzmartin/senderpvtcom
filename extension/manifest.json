@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "Lead Intelligence & Prospecting Pro",
+  "version": "2.0.0",
+  "description": "Multi-Source Lead Extraction & Prospecting for Google Maps, Local Businesses, and Company Websites.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Lead Intelligence & Prospecting Pro",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "alarms"
+  ],
+  "host_permissions": [
+    "*://*.google.com/maps/*",
+    "*://*.google.co.in/maps/*",
+    "*://*.google.*/maps/*",
+    "*://maps.google.com/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.google.com/maps/*",
+        "*://*.google.co.in/maps/*",
+        "*://*.google.*/maps/*",
+        "*://maps.google.com/*"
+      ],
+      "js": ["content/maps-extractor.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "exclude_matches": [
+        "*://*.google.com/maps/*",
+        "*://*.google.co.in/maps/*",
+        "*://*.google.*/maps/*",
+        "*://maps.google.com/*"
+      ],
+      "js": ["content/website-extractor.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options/options.html"
+}

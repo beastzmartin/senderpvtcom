@@ -32,7 +32,9 @@ import {
   Edit2,
   MessageCircle,
   ShieldCheck,
-  UserPlus
+  UserPlus,
+  Building2,
+  Compass
 } from 'lucide-react';
 
 export type AppTab =
@@ -42,6 +44,8 @@ export type AppTab =
   | 'bulk'
   | 'scheduler'
   | 'templates'
+  | 'leads'
+  | 'extractors'
   | 'extractor'
   | 'joiner'
   | 'contacts'
@@ -90,6 +94,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         { id: 'bulk' as AppTab, label: 'Bulk LID Sender', icon: Hash, badge: 'Anti-Ban' },
         { id: 'scheduler' as AppTab, label: 'Broadcast Scheduler', icon: Calendar, badge: 'Drip' },
         { id: 'templates' as AppTab, label: 'Template Library', icon: FileText }
+      ]
+    },
+    {
+      title: 'LEAD PROSPECTING & INTELLIGENCE',
+      items: [
+        { id: 'leads' as AppTab, label: 'Lead Intelligence CRM', icon: Building2, badge: 'Prospects' },
+        { id: 'extractors' as AppTab, label: 'Extraction Hub & Tools', icon: Compass, badge: '12 Sources' }
       ]
     },
     {

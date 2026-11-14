@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extension Settings - Lead Intelligence Pro</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+    .settings-card {
+      width: 100%;
+      max-width: 520px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 16px;
+    }
+    .icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+    h1 { font-size: 16px; font-weight: 700; color: #0f172a; }
+    p.desc { font-size: 12px; color: #64748b; }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label { font-size: 12px; font-weight: 600; color: #334155; }
+    input[type="text"] {
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+    }
+    input[type="text"]:focus {
+      border-color: #10b981;
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+    }
+    .btn {
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #059669; color: white; }
+    .btn-primary:hover { background: #047857; }
+    .btn-outline { background: #f8fafc; border: 1px solid #cbd5e1; color: #334155; }
+    .btn-outline:hover { background: #e2e8f0; }
+    .btn-row { display: flex; gap: 8px; }
+    .status-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+    }
+    .alert { padding: 10px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+    .alert-success { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+    .alert-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="settings-card">
+    <div class="header">
+      <div class="icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </div>
+      <div>
+        <h1>Lead Intelligence Pro Settings</h1>
+        <p class="desc">Configure SaaS Dashboard connection and synchronization preferences.</p>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="api-url">SaaS Dashboard Backend API URL</label>
+      <input type="text" id="api-url" placeholder="http://localhost:3000" />
+      <span class="desc">Specify your self-hosted backend address or live cloud domain.</span>
+    </div>
+
+    <div class="btn-row">
+      <button id="btn-test" class="btn btn-outline">Test Connection</button>
+      <button id="btn-save" class="btn btn-primary">Save Settings</button>
+    </div>
+
+    <div id="test-result" class="alert hidden"></div>
+
+    <div class="status-box">
+      <strong>Active Connection Status:</strong>
+      <p id="account-status" style="margin-top: 4px; color: #64748b;">Loading...</p>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

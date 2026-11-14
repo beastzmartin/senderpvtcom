@@ -18,6 +18,9 @@ import schedulerRoutes from './routes/schedulerRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import groupJoinerRoutes from './routes/groupJoinerRoutes.js';
+import leadRoutes from './routes/leadRoutes.js';
+import extractionJobRoutes from './routes/extractionJobRoutes.js';
+import extensionRoutes from './routes/extensionRoutes.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
@@ -61,6 +64,9 @@ app.use('/api/scheduler', schedulerRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/group-joiner', groupJoinerRoutes);
+app.use('/api/leads', leadRoutes);
+app.use('/api/extraction-jobs', extractionJobRoutes);
+app.use('/api/extension', extensionRoutes);
 
 // Dashboard stats endpoint
 const messageController = new MessageController();
