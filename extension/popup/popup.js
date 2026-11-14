@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Google Maps elements
   const mapsMaxCount = document.getElementById('maps-max-count');
+  const mapsCountPreview = document.getElementById('maps-count-preview');
   const mapsProgressBox = document.getElementById('maps-progress-box');
   const mapsProgressCount = document.getElementById('maps-progress-count');
   const mapsProgressFill = document.getElementById('maps-progress-fill');
@@ -45,6 +46,76 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnMapsPause = document.getElementById('btn-maps-pause');
   const btnMapsResume = document.getElementById('btn-maps-resume');
   const btnMapsStop = document.getElementById('btn-maps-stop');
+
+  // Preset chips for Google Maps custom count
+  const presetBtns = document.querySelectorAll('.preset-btn');
+  presetBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      presetBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const val = parseInt(btn.getAttribute('data-val') || '50', 10);
+      if (mapsMaxCount) mapsMaxCount.value = val;
+      if (mapsCountPreview) mapsCountPreview.textContent = `${val} Leads`;
+    });
+  });
+
+  if (mapsMaxCount) {
+    mapsMaxCount.addEventListener('input', () => {
+      const val = parseInt(mapsMaxCount.value, 10) || 1;
+      if (mapsCountPreview) mapsCountPreview.textContent = `${val} Leads`;
+      presetBtns.forEach((b) => {
+        if (b.getAttribute('data-val') === String(val)) {
+          b.classList.add('active');
+        } else {
+          b.classList.remove('active');
+        }
+      });
+    });
+  }
+
+  // Quick Launch Elements
+  const qlKeyword = document.getElementById('ql-keyword');
+  const qlLocation = document.getElementById('ql-location');
+  const qlCount = document.getElementById('ql-count');
+  const qlCountPreview = document.getElementById('ql-count-preview');
+  const btnQlLaunchMaps = document.getElementById('btn-ql-launch-maps');
+  const qlPresetBtns = document.querySelectorAll('.ql-preset-btn');
+
+  qlPresetBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      qlPresetBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const val = parseInt(btn.getAttribute('data-val') || '50', 10);
+      if (qlCount) qlCount.value = val;
+      if (qlCountPreview) qlCountPreview.textContent = `${val} Leads`;
+    });
+  });
+
+  if (qlCount) {
+    qlCount.addEventListener('input', () => {
+      const val = parseInt(qlCount.value, 10) || 1;
+      if (qlCountPreview) qlCountPreview.textContent = `${val} Leads`;
+      qlPresetBtns.forEach((b) => {
+        if (b.getAttribute('data-val') === String(val)) {
+          b.classList.add('active');
+        } else {
+          b.classList.remove('active');
+        }
+      });
+    });
+  }
+
+  if (btnQlLaunchMaps) {
+    btnQlLaunchMaps.addEventListener('click', () => {
+      const kw = qlKeyword?.value?.trim() || '';
+      const loc = qlLocation?.value?.trim() || '';
+      const count = parseInt(qlCount?.value, 10) || 50;
+      const query = (kw && loc ? `${kw} in ${loc}` : (kw || loc || 'local businesses')).trim();
+      const targetUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}#auto_extract=${count}`;
+      chrome.tabs.create({ url: targetUrl });
+      window.close();
+    });
+  }
 
   // Website elements
   const btnScanWeb = document.getElementById('btn-scan-web');
@@ -59,11 +130,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnSaveWebLead = document.getElementById('btn-save-web-lead');
 
   // Sync & Footer
+  const syncStatusDot = document.getElementById('sync-status-dot');
   const syncBufferCount = document.getElementById('sync-buffer-count');
   const syncStatusMsg = document.getElementById('sync-status-msg');
   const btnSyncNow = document.getElementById('btn-sync-now');
   const btnOpenDashboard = document.getElementById('btn-open-dashboard');
   const btnLogout = document.getElementById('btn-logout');
+  const btnLaunchWorkspace = document.getElementById('btn-launch-workspace');
+
+  if (btnLaunchWorkspace) {
+    btnLaunchWorkspace.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('workspace/index.html') });
+    });
+  }
 
   let currentTab = null;
   let scannedWebLead = null;

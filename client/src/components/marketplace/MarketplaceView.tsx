@@ -22,6 +22,8 @@ import { MarketplaceExtension, UserWallet } from '../../types';
 import { api } from '../../services/api';
 import { ExtensionDetailModal } from './ExtensionDetailModal';
 import { WalletTopUpModal } from './WalletTopUpModal';
+import { AdminMarketplaceModal } from './AdminMarketplaceModal';
+import { useAuth } from '../../context/AuthContext';
 
 interface MarketplaceViewProps {
   onNavigateToMyExtensions?: () => void;
@@ -42,6 +44,10 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
   const [selectedExtension, setSelectedExtension] = useState<MarketplaceExtension | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
   const categories = [
     { id: 'all', label: 'All Extensions' },
@@ -150,24 +156,36 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
         </div>
 
         {/* Quick Nav Pills */}
-        <div className="flex items-center gap-3 mt-6 pt-5 border-t border-white/10 text-xs">
-          <span className="text-slate-400 font-medium">Quick Views:</span>
-          {onNavigateToMyExtensions && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-6 pt-5 border-t border-white/10 text-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-slate-400 font-medium">Quick Views:</span>
+            {onNavigateToMyExtensions && (
+              <button
+                onClick={onNavigateToMyExtensions}
+                className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <Layers className="w-3.5 h-3.5 text-indigo-300" />
+                <span>My Active Extensions & Modules</span>
+              </button>
+            )}
+            {onNavigateToCRM && (
+              <button
+                onClick={onNavigateToCRM}
+                className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <Globe className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Lead Intelligence CRM</span>
+              </button>
+            )}
+          </div>
+
+          {isAdmin && (
             <button
-              onClick={onNavigateToMyExtensions}
-              className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white font-semibold flex items-center gap-1.5 transition-colors"
+              onClick={() => setIsAdminModalOpen(true)}
+              className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/30 rounded-lg font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Layers className="w-3.5 h-3.5 text-indigo-300" />
-              <span>My Active Extensions & Modules</span>
-            </button>
-          )}
-          {onNavigateToCRM && (
-            <button
-              onClick={onNavigateToCRM}
-              className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white font-semibold flex items-center gap-1.5 transition-colors"
-            >
-              <Globe className="w-3.5 h-3.5 text-emerald-300" />
-              <span>Lead Intelligence CRM</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Admin: Manage Modules & Overrides</span>
             </button>
           )}
         </div>
@@ -339,6 +357,16 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
           fetchData();
         }}
       />
+
+      {/* Admin Marketplace & Modules Modal */}
+      {isAdmin && (
+        <AdminMarketplaceModal
+          isOpen={isAdminModalOpen}
+          onClose={() => setIsAdminModalOpen(false)}
+          extensions={extensions.map((e) => ({ id: e.id, name: e.name }))}
+          onRefresh={fetchData}
+        />
+      )}
     </div>
   );
 };

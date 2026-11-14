@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Power Extractor Pro - Multi-Keyword Google Maps Scraper</title>
+  <link rel="stylesheet" href="workspace.css">
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="top-nav">
+    <div class="brand-wrap">
+      <div class="brand-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+          <circle cx="12" cy="10" r="3"></circle>
+        </svg>
+      </div>
+      <div class="brand-info">
+        <h1>
+          Power Extractor Pro
+          <span class="badge-tag">Enterprise 2.0</span>
+        </h1>
+        <p>Automated Multi-Source Lead Intelligence & Google Maps Extractor</p>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <div class="status-pill" id="cloud-status-pill">
+        <span class="status-dot"></span>
+        <span id="cloud-status-text">Cloud SaaS Sync Active</span>
+      </div>
+      <button id="btn-open-saas" class="btn btn-outline" style="padding: 6px 12px; font-size: 11px;">
+        Open SaaS Dashboard ↗
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="main-container">
+
+    <!-- Configuration & Command Center -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          Automation Command Center
+        </h2>
+        <span style="font-size: 11px; color: var(--text-sub);">Multi-Keyword Batch Scraping</span>
+      </div>
+
+      <div class="control-grid">
+        <!-- Keywords Input Section -->
+        <div class="form-group">
+          <div class="form-label">
+            <span>ENTER KEYWORDS (Comma or Line Separated)</span>
+            <a href="javascript:void(0)" id="btn-clear-keywords" style="color: #38bdf8; text-decoration: none; font-size: 11px;">Clear List</a>
+          </div>
+          <textarea
+            id="keywords-input"
+            class="textarea-keywords"
+            placeholder="Dentists in New York, Plumbers in Chicago, Real Estate in Miami, Gyms in Los Angeles..."
+          ></textarea>
+
+          <div class="chips-row">
+            <span style="font-size: 11px; color: var(--text-sub); margin-right: 4px;">Suggestions:</span>
+            <button class="chip-btn" data-kw="Dentists in New York">Dentists in New York</button>
+            <button class="chip-btn" data-kw="Real Estate in Miami">Real Estate in Miami</button>
+            <button class="chip-btn" data-kw="Software Companies in Bangalore">Tech Companies in Bangalore</button>
+            <button class="chip-btn" data-kw="Gyms in London">Gyms in London</button>
+          </div>
+
+          <!-- File Upload Row -->
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; background: var(--bg-card-sub); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 11px; font-weight: 600; color: var(--text-sub);">Upload Keywords File:</span>
+              <input type="file" id="keywords-file" accept=".txt,.csv" style="font-size: 11px; color: var(--text-sub);" />
+            </div>
+            <a href="javascript:void(0)" id="btn-sample-file" style="color: #10b981; font-size: 11px; text-decoration: none;">Download Sample .txt</a>
+          </div>
+        </div>
+
+        <!-- Scraping Settings Section -->
+        <div class="settings-box">
+          <div class="toggle-item">
+            <div class="toggle-info">
+              <span class="toggle-title">Remove Duplicates</span>
+              <span class="toggle-desc">Skip already collected businesses</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-duplicates" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-item">
+            <div class="toggle-info">
+              <span class="toggle-title">Skip Without Phone</span>
+              <span class="toggle-desc">Only collect leads with verified numbers</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-no-phone" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-item">
+            <div class="toggle-info">
+              <span class="toggle-title">Deep Email & Social Hunter</span>
+              <span class="toggle-desc">Fetch website to discover corporate emails</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-emails" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--border-color);">
+            <span style="font-size: 12px; font-weight: 600;">Scrape Limit / Keyword:</span>
+            <select id="select-limit" class="select-input">
+              <option value="25">25 leads</option>
+              <option value="50" selected>50 leads</option>
+              <option value="100">100 leads</option>
+              <option value="250">250 leads</option>
+              <option value="500">500 leads</option>
+              <option value="0">Unlimited (All)</option>
+            </select>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600;">Anti-Ban Delay:</span>
+            <select id="select-speed" class="select-input">
+              <option value="1">Fast (1s jitter)</option>
+              <option value="2" selected>Balanced (2s jitter)</option>
+              <option value="4">Safe & Stealth (4s jitter)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="action-controls-bar">
+        <div class="job-indicator">
+          <div class="status-pill" id="engine-status-pill" style="background: rgba(148, 163, 184, 0.1); color: #94a3b8; border-color: rgba(148, 163, 184, 0.2);">
+            <span class="status-dot" id="engine-status-dot" style="background: #94a3b8; box-shadow: none;"></span>
+            <span id="engine-status-text">Engine Ready</span>
+          </div>
+          <span class="indicator-text" id="engine-progress-text">Enter keywords and click Start Scraping</span>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <button id="btn-pause-scraping" class="btn btn-pause" style="display: none;">
+            ⏸ Pause
+          </button>
+          <button id="btn-stop-scraping" class="btn btn-danger" style="display: none;">
+            ⏹ Stop Job
+          </button>
+          <button id="btn-start-scraping" class="btn btn-primary">
+            🚀 Start Scraping
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Metric Stats Row -->
+    <div class="stats-grid">
+      <div class="stat-box">
+        <span class="stat-label">Total Leads</span>
+        <span class="stat-value highlight-green" id="stat-total">0</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">With Phone Number</span>
+        <span class="stat-value highlight-blue" id="stat-phone">0</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Emails Discovered</span>
+        <span class="stat-value highlight-purple" id="stat-email">0</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Websites Found</span>
+        <span class="stat-value" id="stat-website">0</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Cloud Synced</span>
+        <span class="stat-value highlight-green" id="stat-synced">0</span>
+      </div>
+    </div>
+
+    <!-- Data Report Table Card -->
+    <div class="card" style="padding: 16px;">
+      <div class="table-header-bar">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <h3 class="card-title" style="margin-bottom: 0;">
+            Real-Time Data Report
+          </h3>
+          <span class="badge-tag" id="table-count-badge">0 Records</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input
+            type="text"
+            id="search-filter"
+            class="search-input"
+            placeholder="Filter by name, phone, city, category..."
+          />
+          <button id="btn-export-csv" class="btn btn-outline" style="padding: 7px 12px; font-size: 11px;">
+            ⬇ Export CSV
+          </button>
+          <button id="btn-export-json" class="btn btn-outline" style="padding: 7px 12px; font-size: 11px;">
+            ⬇ Export JSON
+          </button>
+          <button id="btn-clear-data" class="btn btn-outline" style="padding: 7px 12px; font-size: 11px; color: #ef4444;">
+            🗑 Clear Data
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable Table -->
+      <div class="table-responsive">
+        <table id="leads-table">
+          <thead>
+            <tr>
+              <th style="width: 40px;">#</th>
+              <th>Category</th>
+              <th>Business Name</th>
+              <th>Phone Number</th>
+              <th>Email Address</th>
+              <th>Website</th>
+              <th>Address / Location</th>
+              <th>Rating & Reviews</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="leads-tbody">
+            <!-- Populated via workspace.js -->
+          </tbody>
+        </table>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="empty-state">
+          <div class="empty-icon">📍</div>
+          <h4 style="font-weight: 700; color: #ffffff;">No Leads Extracted Yet</h4>
+          <p style="font-size: 12px; margin-top: 4px;">Enter your target business keywords above and click Start Scraping to stream leads into this table.</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="workspace.js"></script>
+</body>
+</html>
+

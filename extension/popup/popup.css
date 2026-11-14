@@ -471,6 +471,100 @@ body {
   white-space: nowrap;
 }
 
+/* Custom Count & Preset Chips */
+.form-row-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.form-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.count-badge {
+  font-size: 10px;
+  font-weight: 800;
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.input-field-number {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.input-field-number:focus {
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+}
+
+.preset-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.preset-btn, .ql-preset-btn {
+  flex: 1;
+  padding: 4px 2px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.preset-btn:hover, .ql-preset-btn:hover {
+  background: #e2e8f0;
+}
+
+.preset-btn.active, .ql-preset-btn.active {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #059669;
+}
+
+/* Quick Launch Form */
+.quick-launch-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.form-group-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.form-label-sm {
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
 /* Empty State */
 .empty-state {
   text-align: center;

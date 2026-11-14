@@ -47,8 +47,44 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
   const [jobKeyword, setJobKeyword] = useState<string>('');
   const [jobLocation, setJobLocation] = useState<string>('');
   const [jobCount, setJobCount] = useState<number>(50);
+  const [autoLaunchBrowser, setAutoLaunchBrowser] = useState<boolean>(true);
   const [isSubmittingJob, setIsSubmittingJob] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const buildTargetExtractionUrl = (
+    sourceId: string,
+    keyword: string,
+    location: string,
+    count: number,
+    jobId?: string
+  ) => {
+    const kw = (keyword || '').trim();
+    const loc = (location || '').trim();
+    const combined = kw && loc ? `${kw} in ${loc}` : (kw || loc || 'local businesses');
+    const encoded = encodeURIComponent(combined);
+    const hash = `#auto_extract=${count || 50}${jobId ? `&job_id=${jobId}` : ''}`;
+
+    switch (sourceId) {
+      case 'google_maps':
+        return `https://www.google.com/maps/search/${encoded}${hash}`;
+      case 'justdial':
+        return `https://www.justdial.com/${encodeURIComponent(loc || 'Delhi')}/${encodeURIComponent(kw || 'All')}${hash}`;
+      case 'indiamart':
+        return `https://dir.indiamart.com/search.mp?ss=${encoded}${hash}`;
+      case 'yellowpages':
+        return `https://www.yellowpages.com/search?search_terms=${encodeURIComponent(kw)}&geo_location_terms=${encodeURIComponent(loc)}${hash}`;
+      case 'yelp':
+        return `https://www.yelp.com/search?find_desc=${encodeURIComponent(kw)}&find_loc=${encodeURIComponent(loc)}${hash}`;
+      case 'linkedin_sales':
+        return `https://www.linkedin.com/search/results/companies/?keywords=${encoded}`;
+      case 'website_extractor':
+        if (kw.startsWith('http://') || kw.startsWith('https://')) return kw;
+        if (kw.includes('.')) return `https://${kw}`;
+        return `https://www.google.com/search?q=${encoded}`;
+      default:
+        return `https://www.google.com/maps/search/${encoded}${hash}`;
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -107,11 +143,23 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
         source: selectedSourceId,
         keyword: jobKeyword.trim(),
         location: jobLocation.trim(),
-        requested_count: jobCount
+        requested_count: Number(jobCount) || 50
       });
 
       setJobs([created, ...jobs]);
       setIsCreateJobOpen(false);
+
+      if (autoLaunchBrowser) {
+        const targetUrl = buildTargetExtractionUrl(
+          selectedSourceId,
+          jobKeyword,
+          jobLocation,
+          jobCount,
+          created.id
+        );
+        window.open(targetUrl, '_blank');
+      }
+
       setJobKeyword('');
       setJobLocation('');
     } catch (err: any) {
@@ -265,19 +313,23 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
                 </div>
               </div>
 
-              <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+              <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
                 <button
-                  onClick={() => setIsPairingOpen(true)}
-                  className="text-xs font-semibold text-slate-500 hover:text-emerald-600 flex items-center gap-1"
+                  onClick={() => {
+                    const sampleUrl = buildTargetExtractionUrl(src.id, '', '', 50);
+                    window.open(sampleUrl, '_blank');
+                  }}
+                  className="text-xs font-semibold text-slate-500 hover:text-emerald-600 flex items-center gap-1 shrink-0"
+                  title="Directly open source website in new tab"
                 >
-                  <Chrome className="w-3.5 h-3.5" /> Extension Mode
+                  <ExternalLink className="w-3.5 h-3.5" /> Open
                 </button>
 
                 <button
                   onClick={() => handleLaunchModalForSource(src.id)}
-                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm ml-auto"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Launch Job
+                  <Plus className="w-3.5 h-3.5 text-emerald-400" /> Launch & Extract
                 </button>
               </div>
             </div>
@@ -385,6 +437,31 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
 
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => {
+                              const targetUrl = buildTargetExtractionUrl(
+                                job.source,
+                                job.keyword || '',
+                                job.location || '',
+                                job.requested_count,
+                                job.id
+                              );
+                              window.open(targetUrl, '_blank');
+                            }}
+                            className="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 hover:text-emerald-700 transition"
+                            title="Open & Auto-Extract in Browser"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </button>
+                          {onNavigateToLeads && (
+                            <button
+                              onClick={onNavigateToLeads}
+                              className="p-1.5 hover:bg-slate-100 rounded-lg text-blue-600 hover:text-blue-700 transition"
+                              title="View Extracted Leads in CRM"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          )}
                           {job.status === 'pending' && (
                             <button
                               onClick={() => handleStartJob(job.id)}
@@ -501,18 +578,54 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 mb-1 block">Requested Lead Count</label>
-                <select
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">Requested Lead Count</label>
+                  <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                    {jobCount} leads target
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={10000}
                   value={jobCount}
-                  onChange={(e) => setJobCount(parseInt(e.target.value, 10))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold bg-white text-slate-800 outline-none focus:border-emerald-500"
-                >
-                  <option value={25}>25 leads</option>
-                  <option value={50}>50 leads</option>
-                  <option value={100}>100 leads</option>
-                  <option value={250}>250 leads</option>
-                  <option value={500}>500 leads</option>
-                </select>
+                  onChange={(e) => setJobCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                  placeholder="Enter custom count, e.g. 150"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 mb-2"
+                />
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[25, 50, 100, 250, 500, 1000, 2500].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setJobCount(preset)}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                        jobCount === preset
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-1">
+                <label className="flex items-start gap-2.5 cursor-pointer bg-slate-50 p-2.5 rounded-xl border border-slate-200 hover:bg-emerald-50/50 hover:border-emerald-200 transition">
+                  <input
+                    type="checkbox"
+                    checked={autoLaunchBrowser}
+                    onChange={(e) => setAutoLaunchBrowser(e.target.checked)}
+                    className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 border-slate-300"
+                  />
+                  <div className="text-xs">
+                    <span className="font-bold text-slate-800 block">Auto-Launch & Extract Immediately</span>
+                    <span className="text-slate-500 text-[11px]">
+                      Opens Google Maps / target platform in a new tab with your search criteria and automatically starts lead extraction.
+                    </span>
+                  </div>
+                </label>
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">

@@ -70,6 +70,23 @@
         <span class="quota-val" id="user-quota-val">0 / 500</span>
       </div>
 
+      <!-- Power Extractor Workspace Launcher Banner -->
+      <div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); border: 1px solid #059669; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 16px;">🚀</span>
+            <strong style="color: #ffffff; font-size: 12px;">Power Extractor Pro</strong>
+          </div>
+          <span style="font-size: 9px; font-weight: 800; background: #10b981; color: #022c22; padding: 2px 6px; border-radius: 999px;">BATCH MODE</span>
+        </div>
+        <p style="font-size: 11px; color: #a7f3d0; margin: 0; line-height: 1.4;">
+          Scrape multiple keywords at once, view real-time data table, export CSV, and hunter emails.
+        </p>
+        <button id="btn-launch-workspace" style="background: #10b981; color: #022c22; border: none; border-radius: 8px; padding: 8px 12px; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.2s;">
+          <span>⚡ Open Extractor Workspace</span>
+        </button>
+      </div>
+
       <!-- Active Tab Context Card -->
       <div class="card active-tab-card">
         <div class="card-header">
@@ -88,14 +105,20 @@
           </div>
           <p class="panel-desc">Scrolls Google Maps results, extracts verified phone numbers, websites, and addresses, and syncs directly to your CRM.</p>
           
-          <div class="form-row">
-            <label for="maps-max-count">Target Leads:</label>
-            <select id="maps-max-count" class="select-field">
-              <option value="25">25 leads</option>
-              <option value="50" selected>50 leads</option>
-              <option value="100">100 leads</option>
-              <option value="250">250 leads</option>
-            </select>
+          <div class="form-row-custom">
+            <div class="form-label-row">
+              <label for="maps-max-count">Requested Lead Count:</label>
+              <span class="count-badge" id="maps-count-preview">50 Leads</span>
+            </div>
+            <input type="number" id="maps-max-count" min="1" max="10000" value="50" class="input-field-number" placeholder="Enter custom count (e.g. 150)" />
+            <div class="preset-chips">
+              <button type="button" class="preset-btn" data-val="25">25</button>
+              <button type="button" class="preset-btn active" data-val="50">50</button>
+              <button type="button" class="preset-btn" data-val="100">100</button>
+              <button type="button" class="preset-btn" data-val="250">250</button>
+              <button type="button" class="preset-btn" data-val="500">500</button>
+              <button type="button" class="preset-btn" data-val="1000">1000</button>
+            </div>
           </div>
 
           <div class="progress-box hidden" id="maps-progress-box">
@@ -165,27 +188,58 @@
           </div>
         </div>
 
-        <!-- UNSUPPORTED PAGE PANEL -->
+        <!-- QUICK LAUNCH & AUTO-EXTRACT CONTROLLER (When not on target page) -->
         <div id="panel-unsupported" class="tab-panel hidden">
-          <div class="empty-state">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-            <p>Navigate to <strong>Google Maps</strong> or any <strong>Company Website</strong> to start extracting leads.</p>
-            <a href="https://maps.google.com" target="_blank" class="btn btn-outline">Open Google Maps</a>
+          <div class="panel-header-row">
+            <span class="panel-title-text">🚀 Quick Lead Prospector</span>
+            <span class="badge-auto">1-Click Auto Launch</span>
+          </div>
+          <p class="panel-desc">Enter your target business niche and city. The extension will automatically open Google Maps and extract verified leads immediately.</p>
+
+          <div class="quick-launch-form">
+            <div class="form-group-sm">
+              <label class="form-label-sm">Search Keyword / Category</label>
+              <input type="text" id="ql-keyword" placeholder="e.g. Dental Clinic, Real Estate, Gym" class="input-field" />
+            </div>
+
+            <div class="form-group-sm">
+              <label class="form-label-sm">Target City / Location</label>
+              <input type="text" id="ql-location" placeholder="e.g. Dubai, Mumbai, London, New York" class="input-field" />
+            </div>
+
+            <div class="form-group-sm">
+              <div class="form-label-row">
+                <label class="form-label-sm">Requested Lead Count:</label>
+                <span class="count-badge" id="ql-count-preview">50 Leads</span>
+              </div>
+              <input type="number" id="ql-count" min="1" max="10000" value="50" class="input-field-number" placeholder="Enter custom count (e.g. 150)" />
+              <div class="preset-chips">
+                <button type="button" class="ql-preset-btn" data-val="25">25</button>
+                <button type="button" class="ql-preset-btn active" data-val="50">50</button>
+                <button type="button" class="ql-preset-btn" data-val="100">100</button>
+                <button type="button" class="ql-preset-btn" data-val="250">250</button>
+                <button type="button" class="ql-preset-btn" data-val="500">500</button>
+                <button type="button" class="ql-preset-btn" data-val="1000">1000</button>
+              </div>
+            </div>
+
+            <button id="btn-ql-launch-maps" class="btn btn-primary w-full mt-2 flex items-center justify-center gap-1.5">
+              <span>🚀 Open Google Maps & Auto-Extract</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- Sync Queue & Telemetry -->
-      <div class="sync-banner">
-        <div>
-          <span class="sync-count" id="sync-buffer-count">0 leads</span>
-          <span class="sync-status" id="sync-status-msg">Synchronized with SaaS</span>
+      <!-- Cloud Sync Telemetry Banner -->
+      <div class="sync-banner" id="sync-banner-wrap" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="status-dot" id="sync-status-dot" style="width: 7px; height: 7px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
+            <span class="sync-status" id="sync-status-msg" style="font-weight: 600; font-size: 11px; color: #0f172a;">All leads synced to Cloud CRM</span>
+          </div>
+          <span class="sync-count hidden" id="sync-buffer-count" style="font-size: 10px; color: #f59e0b; font-weight: 600;"></span>
         </div>
-        <button id="btn-sync-now" class="btn btn-sm btn-outline">Sync Now</button>
+        <button id="btn-sync-now" class="btn btn-sm btn-outline hidden" style="padding: 4px 10px; font-size: 11px;">Sync Now</button>
       </div>
 
       <!-- Footer Quick Actions -->
