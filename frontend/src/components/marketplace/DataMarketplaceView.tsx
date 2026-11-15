@@ -55,7 +55,15 @@ interface JobItem {
   finished_at?: string;
 }
 
-export const DataMarketplaceView: React.FC = () => {
+interface DataMarketplaceViewProps {
+  onNavigateToExtensions?: () => void;
+  onNavigateToWallet?: () => void;
+}
+
+export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
+  onNavigateToExtensions,
+  onNavigateToWallet
+}) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'catalog' | 'jobs'>('catalog');
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -260,6 +268,28 @@ export const DataMarketplaceView: React.FC = () => {
               <Clock className="w-4 h-4" />
               <span>My Extraction Jobs</span>
             </button>
+
+            {onNavigateToExtensions && (
+              <button
+                onClick={onNavigateToExtensions}
+                className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-white/10 text-white hover:bg-white/15"
+                title="View extensions and modules store"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Extensions & Modules</span>
+              </button>
+            )}
+
+            {onNavigateToWallet && (
+              <button
+                onClick={onNavigateToWallet}
+                className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-white/10 text-white hover:bg-white/15"
+                title="View platform wallet and balance"
+              >
+                <Wallet className="w-4 h-4" />
+                <span>Platform Wallet</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

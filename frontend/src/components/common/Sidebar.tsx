@@ -40,7 +40,8 @@ import {
   ShoppingBag,
   Boxes,
   Wallet,
-  Globe
+  Globe,
+  Database
 } from 'lucide-react';
 
 export type AppTab =
@@ -52,6 +53,7 @@ export type AppTab =
   | 'leads'
   | 'extractors'
   | 'marketplace'
+  | 'extensions'
   | 'my-extensions'
   | 'wallet'
   | 'virtual-numbers'
@@ -98,6 +100,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       ]
     },
     {
+      title: 'DATA EXTRACTION & MARKETPLACE',
+      items: [
+        { id: 'marketplace' as AppTab, label: 'Marketplace', icon: ShoppingBag, badge: 'Studio' },
+        { id: 'extractors' as AppTab, label: 'Google Maps Extractor', icon: MapPin, badge: 'Live Scraper' },
+        { id: 'leads' as AppTab, label: 'Extracted Leads CRM', icon: Building2, badge: 'Prospects' }
+      ]
+    },
+    {
       title: 'MESSAGING & DISPATCH',
       items: [
         { id: 'sender' as AppTab, label: 'Direct Sender', icon: Send },
@@ -107,25 +117,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       ]
     },
     {
-      title: 'GOOGLE MAPS LEAD EXTRACTOR',
-      items: [
-        { id: 'extractors' as AppTab, label: 'Google Maps Extractor', icon: MapPin, badge: 'Live Scraper' },
-        { id: 'leads' as AppTab, label: 'Extracted Leads CRM', icon: Building2, badge: 'Prospects' }
-      ]
-    },
-    {
-      title: 'VIRTUAL NUMBERS',
+      title: 'VIRTUAL NUMBERS & BILLING',
       items: [
         { id: 'virtual-numbers' as AppTab, label: 'Virtual Numbers', icon: Phone, badge: 'Marketplace' },
         { id: 'wallet' as AppTab, label: 'Platform Wallet', icon: Wallet }
       ]
     },
     {
-      title: 'AUDIENCE & EXTRACTOR',
+      title: 'AUDIENCE & COMMUNITY',
       items: [
         { id: 'extractor' as AppTab, label: 'Group Extractor', icon: Layers },
         { id: 'joiner' as AppTab, label: 'Group & Community Joiner', icon: UserPlus, badge: 'Auto' },
         { id: 'contacts' as AppTab, label: 'Contacts Directory', icon: Users }
+      ]
+    },
+    {
+      title: 'EXTENSIONS & ADDONS',
+      items: [
+        { id: 'extensions' as AppTab, label: 'Extensions Store', icon: Boxes },
+        { id: 'my-extensions' as AppTab, label: 'Installed Addons', icon: Check }
       ]
     },
     {

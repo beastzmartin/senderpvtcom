@@ -15,6 +15,7 @@ import { ContactsView } from './components/contacts/ContactsView';
 import { TemplatesView } from './components/templates/TemplatesView';
 import { LeadsDashboardView } from './components/leads/LeadsDashboardView';
 import { ExtractionHubView } from './components/leads/ExtractionHubView';
+import { DataMarketplaceView } from './components/marketplace/DataMarketplaceView';
 import { MarketplaceView } from './components/marketplace/MarketplaceView';
 import { MyExtensionsView } from './components/marketplace/MyExtensionsView';
 import { WalletView } from './components/marketplace/WalletView';
@@ -165,6 +166,13 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
         )}
 
         {activeTab === 'marketplace' && (
+          <DataMarketplaceView
+            onNavigateToExtensions={() => setActiveTab('extensions')}
+            onNavigateToWallet={() => setActiveTab('wallet')}
+          />
+        )}
+
+        {activeTab === 'extensions' && (
           <MarketplaceView
             onNavigateToMyExtensions={() => setActiveTab('my-extensions')}
             onNavigateToWallet={() => setActiveTab('wallet')}
