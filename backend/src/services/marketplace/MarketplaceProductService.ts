@@ -11,6 +11,7 @@ import { MarketplacePricingService } from './MarketplacePricingService.js';
 import { WhiteLabelSanitizer } from './WhiteLabelSanitizer.js';
 import { LinkParser, ParsedActorRef } from './LinkParser.js';
 import { DraftProductGenerator, DriftDetectionResult } from './DraftProductGenerator.js';
+import { ActorProfileService } from './ActorProfileService.js';
 
 export class MarketplaceProductService {
   private static instance: MarketplaceProductService | null = null;
@@ -49,6 +50,12 @@ export class MarketplaceProductService {
 
     return rows.map((r) => {
       const def: ProductDefinition = JSON.parse(r.definition_json);
+      if (r.profile_json && !def.profile) {
+        try { def.profile = JSON.parse(r.profile_json); } catch {}
+      }
+      if (r.pinned_build && !def.pinned_build) {
+        def.pinned_build = r.pinned_build;
+      }
       return {
         id: r.id,
         slug: r.slug,
@@ -66,18 +73,27 @@ export class MarketplaceProductService {
   }
 
   /**
-   * Get single product by slug
+   * Get single product by slug or id
    */
   public getProductBySlug(slug: string, isAdmin: boolean = false): MarketplaceProductRecord | null {
     const db = getDatabase();
-    const query = isAdmin
-      ? 'SELECT * FROM extraction_marketplace_products WHERE slug = ?'
-      : "SELECT * FROM extraction_marketplace_products WHERE slug = ? AND status = 'active'";
+    const cleanSlug = (slug || '').trim();
+    if (!cleanSlug) return null;
 
-    const row = db.prepare(query).get(slug) as any;
+    const query = isAdmin
+      ? 'SELECT * FROM extraction_marketplace_products WHERE slug = ? OR id = ? OR lower(slug) = lower(?) OR lower(id) = lower(?) LIMIT 1'
+      : "SELECT * FROM extraction_marketplace_products WHERE (slug = ? OR id = ? OR lower(slug) = lower(?) OR lower(id) = lower(?)) AND status = 'active' LIMIT 1";
+
+    const row = db.prepare(query).get(cleanSlug, cleanSlug, cleanSlug, cleanSlug) as any;
     if (!row) return null;
 
     const def: ProductDefinition = JSON.parse(row.definition_json);
+    if (row.profile_json && !def.profile) {
+      try { def.profile = JSON.parse(row.profile_json); } catch {}
+    }
+    if (row.pinned_build && !def.pinned_build) {
+      def.pinned_build = row.pinned_build;
+    }
     return {
       id: row.id,
       slug: row.slug,
@@ -222,13 +238,15 @@ export class MarketplaceProductService {
 
     const currentGates: ProductWizardGates = product.definition.wizard_gates || {
       link_imported: true,
+      actor_profile_approved: true,
       schema_mapped: true,
       whitelabel_passed: true,
       pricing_validated: true,
       test_run_passed: false,
       output_reviewed: false,
       compliance_set: true,
-      studio_preview_verified: false
+      studio_preview_verified: false,
+      multi_customer_risk_decided: true
     };
 
     currentGates[gateKey] = value;
@@ -261,6 +279,17 @@ export class MarketplaceProductService {
       console.warn(`[Marketplace Warning] Product "${slug}" sell price (₹${est.sellPrice}) is below provider cost (₹${est.providerCostConverted}).`);
     }
 
+    // Activation gate check
+    if (productDef.status === 'active') {
+      if (productDef.profile?.compatibility?.classification === 'UNSUPPORTED') {
+        const reasons = productDef.profile.compatibility.reasons?.join('; ') || 'Unsupported by capability detector';
+        throw new Error(`Cannot activate product "${slug}": compatibility classification is UNSUPPORTED. (${reasons})`);
+      }
+    }
+
+    const profileJson = productDef.profile ? JSON.stringify(productDef.profile) : null;
+    const pinnedBuild = productDef.pinned_build || null;
+
     if (existing) {
       // Audit pricing history if pricing changed
       const oldDef: ProductDefinition = JSON.parse(existing.definition_json);
@@ -287,6 +316,8 @@ export class MarketplaceProductService {
             icon = ?,
             status = ?,
             definition_json = ?,
+            profile_json = ?,
+            pinned_build = ?,
             updated_at = datetime('now')
         WHERE id = ?
       `).run(
@@ -297,6 +328,8 @@ export class MarketplaceProductService {
         productDef.icon || null,
         productDef.status,
         JSON.stringify(productDef),
+        profileJson,
+        pinnedBuild,
         existing.id
       );
 
@@ -305,9 +338,9 @@ export class MarketplaceProductService {
       const id = slug;
       db.prepare(`
         INSERT INTO extraction_marketplace_products (
-          id, slug, display_name, tagline, description_md, category, icon, status, definition_json, created_at, updated_at
+          id, slug, display_name, tagline, description_md, category, icon, status, definition_json, profile_json, pinned_build, created_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
         )
       `).run(
         id,
@@ -318,11 +351,50 @@ export class MarketplaceProductService {
         productDef.category,
         productDef.icon || null,
         productDef.status,
-        JSON.stringify(productDef)
+        JSON.stringify(productDef),
+        profileJson,
+        pinnedBuild
       );
 
       return this.getProductBySlug(slug, true)!;
     }
+  }
+
+  /**
+   * Admin: Override ActorProfile classification with audit trail
+   */
+  public overrideClassification(
+    slug: string,
+    newClassification: any,
+    adminUserId: string,
+    reason: string
+  ): MarketplaceProductRecord {
+    const product = this.getProductBySlug(slug, true);
+    if (!product) {
+      throw new Error(`Product not found: ${slug}`);
+    }
+
+    if (!product.definition.profile) {
+      throw new Error(`Product has no ActorProfile to override.`);
+    }
+
+    const updatedProfile = ActorProfileService.applyAdminOverride(
+      product.definition.profile,
+      newClassification,
+      adminUserId,
+      reason
+    );
+
+    const updatedDef: ProductDefinition = {
+      ...product.definition,
+      profile: updatedProfile
+    };
+
+    return this.saveProduct(
+      updatedDef,
+      adminUserId,
+      `Classification overridden to ${newClassification}: ${reason}`
+    );
   }
 
   /**

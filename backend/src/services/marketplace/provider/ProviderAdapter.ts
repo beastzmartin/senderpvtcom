@@ -6,6 +6,7 @@
 export interface ProviderActorInfo {
   actorId: string;
   name: string;
+  username?: string;
   title?: string;
   description?: string;
   pricingModel?: string;
@@ -14,6 +15,8 @@ export interface ProviderActorInfo {
     usdPer1000Items?: number;
     usdPerRunStart?: number;
     monthlyRentalUsd?: number;
+    pricingPerEvent?: any;
+    rawPricingInfos?: any[];
   };
   inputSchema?: {
     title?: string;
@@ -22,6 +25,14 @@ export interface ProviderActorInfo {
     properties?: Record<string, any>;
     required?: string[];
   };
+  datasetSchema?: any;
+  actorDefinition?: any;
+  readme?: string;
+  categories?: string[];
+  stats?: any;
+  permissions?: any;
+  mode?: string;
+  buildNumber?: string;
   defaultMemoryMbytes?: number;
   defaultTimeoutSecs?: number;
 }
@@ -96,6 +107,21 @@ export interface ProviderAdapter {
     datasetId: string,
     options?: { offset?: number; limit?: number }
   ): Promise<ProviderDatasetResult>;
+
+  /**
+   * Fetch list of keys/files from default key-value store
+   */
+  fetchKeyValueRecords?(
+    keyValueStoreId: string
+  ): Promise<Array<{ key: string; size?: number; contentType?: string }>>;
+
+  /**
+   * Download a single record/file from default key-value store
+   */
+  fetchKeyValueRecordBuffer?(
+    keyValueStoreId: string,
+    recordKey: string
+  ): Promise<{ buffer: Buffer; contentType: string } | null>;
 
   /**
    * Verify inbound webhook authenticity

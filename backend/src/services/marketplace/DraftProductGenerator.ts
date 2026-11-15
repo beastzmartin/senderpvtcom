@@ -12,6 +12,7 @@ import { WhiteLabelSanitizer } from './WhiteLabelSanitizer.js';
 import { MarketplacePricingService } from './MarketplacePricingService.js';
 import { ProviderActorInfo } from './provider/ProviderAdapter.js';
 import { ParsedActorRef } from './LinkParser.js';
+import { ActorProfileService } from './ActorProfileService.js';
 
 export interface DriftDetectionResult {
   hasDrift: boolean;
@@ -23,7 +24,7 @@ export interface DriftDetectionResult {
 
 export class DraftProductGenerator {
   /**
-   * Generates a fully compliant draft ProductDefinition v1 from provider metadata & schema
+   * Generates a fully compliant draft ProductDefinition v2 from provider metadata & schema
    */
   public static generateDraft(
     ref: ParsedActorRef,
@@ -33,6 +34,29 @@ export class DraftProductGenerator {
     const pricingService = MarketplacePricingService.getInstance();
     const inputSchema = schemaOverride || info.inputSchema || {};
     const schemaMapping = SchemaMapper.mapSchema(inputSchema);
+
+    // Build ActorProfile with CapabilityDetector & CompatibilityClassifier
+    const actorProfile = ActorProfileService.buildProfile({
+      id: info.actorId,
+      name: info.name,
+      username: ref.username,
+      title: info.title,
+      description: info.description,
+      inputSchema,
+      datasetSchema: info.datasetSchema,
+      actorDefinition: info.actorDefinition,
+      readme: info.readme,
+      pricingInfos: info.pricingInfo?.rawPricingInfos || [],
+      defaultRunOptions: {
+        memoryMbytes: info.defaultMemoryMbytes,
+        timeoutSecs: info.defaultTimeoutSecs
+      },
+      permissions: info.permissions,
+      mode: info.mode,
+      categories: info.categories,
+      stats: info.stats,
+      taggedBuilds: { latest: { buildNumber: info.buildNumber } }
+    });
 
     // Compute schema hash for drift detection
     const schemaHash = crypto
@@ -159,19 +183,23 @@ export class DraftProductGenerator {
       },
       sync: {
         provider_schema_hash: schemaHash,
-        provider_build_number: 'latest',
+        provider_build_number: info.buildNumber || 'latest',
         last_synced_at: new Date().toISOString(),
         sync_status: 'IN_SYNC'
       },
+      profile: actorProfile,
+      pinned_build: info.buildNumber || 'latest',
       wizard_gates: {
         link_imported: true,
-        schema_mapped: schemaMapping.fields.length > 0,
+        actor_profile_approved: actorProfile.compatibility.classification === 'FULLY_SUPPORTED' || actorProfile.compatibility.classification === 'SUPPORTED_WITH_LIMITS',
+        schema_mapped: schemaMapping.fields.length > 0 && schemaMapping.unmappedFieldCount === 0,
         whitelabel_passed: true,
         pricing_validated: suggestedSellInr > 0,
         test_run_passed: false,
-        output_reviewed: false,
+        output_reviewed: actorProfile.capabilities.dataset_views.length > 0 || actorProfile.capabilities.output_kinds.includes('dataset'),
         compliance_set: true,
-        studio_preview_verified: false
+        studio_preview_verified: false,
+        multi_customer_risk_decided: schemaMapping.multiCustomerRiskFields.length === 0
       }
     };
   }
@@ -229,11 +257,23 @@ export class DraftProductGenerator {
       }
     }
 
+    // Check permission escalation or mode changes
+    if (freshInfo.permissions === 'full' && existing.profile?.capabilities?.permission_level !== 'full') {
+      status = 'SCHEMA_CHANGED';
+      diffNotes.push('CRITICAL: Provider permissions escalated to "full". Auto-pause recommended to prevent multi-tenant data risk.');
+    }
+
+    if (freshInfo.mode === 'standby' && existing.profile?.capabilities?.mode !== 'standby') {
+      status = 'SCHEMA_CHANGED';
+      diffNotes.push('Actor mode switched to standby/HTTP mode. Standby actors cannot be automated.');
+    }
+
     return {
       hasDrift: status !== 'IN_SYNC',
       status,
       diffNotes,
-      freshSchemaHash
+      freshSchemaHash,
+      freshBuildNumber: freshInfo.buildNumber
     };
   }
 }

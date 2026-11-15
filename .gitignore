@@ -25,6 +25,7 @@ server/data/*
 
 # Temporary scratch test files
 scratch/
+data/
 
 # Logs
 *.log

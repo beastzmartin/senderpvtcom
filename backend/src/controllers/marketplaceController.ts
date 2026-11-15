@@ -8,6 +8,8 @@ import { MarketplacePresetService } from '../services/marketplace/MarketplacePre
 import { ProviderRegistry } from '../services/marketplace/provider/ProviderRegistry.js';
 import { ApifyAdapter } from '../services/marketplace/provider/ApifyAdapter.js';
 import { MarketplaceService } from '../services/marketplaceService.js';
+import { MarketplaceFileService } from '../services/marketplace/MarketplaceFileService.js';
+import { SchemaMapper } from '../services/marketplace/SchemaMapper.js';
 import { getDatabase } from '../db/database.js';
 
 export class MarketplaceController {
@@ -15,6 +17,7 @@ export class MarketplaceController {
   private jobService = MarketplaceJobService.getInstance();
   private pricingService = MarketplacePricingService.getInstance();
   private presetService = MarketplacePresetService.getInstance();
+  private fileService = MarketplaceFileService.getInstance();
   private extensionMarketplaceService = MarketplaceService.getInstance();
 
   // =========================================================================
@@ -304,21 +307,23 @@ export class MarketplaceController {
 
   /**
    * POST /api/marketplace/jobs
-   * Customer: launch an extraction job
+   * Customer / Admin: launch an extraction job
    */
   public createJob = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
+      const isAdmin = req.user?.role === 'admin';
       const slug = req.body.slug || req.body.productSlug;
       const input = req.body.input || req.body.inputValues;
       const requestedItems = req.body.requestedItems;
+      const isTestRun = Boolean(req.body.isTestRun);
 
       if (!slug) {
         res.status(400).json({ error: 'Product slug is required.' });
         return;
       }
 
-      const job = await this.jobService.createJob(userId, slug, input || {}, requestedItems);
+      const job = await this.jobService.createJob(userId, slug, input || {}, requestedItems, isTestRun, isAdmin);
       res.status(201).json({ success: true, job });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to create extraction job.' });
@@ -345,13 +350,14 @@ export class MarketplaceController {
 
   /**
    * GET /api/marketplace/jobs/:id
-   * Customer: get job status, item count and charge breakdown
+   * Customer / Admin: get job status, item count and charge breakdown
    */
   public getJob = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
+      const isAdmin = req.user?.role === 'admin';
       const jobId = String(req.params.id);
-      const job = this.jobService.getJobById(jobId, userId);
+      const job = this.jobService.getJobById(jobId, userId, isAdmin);
       res.json({ success: true, job });
     } catch (err: any) {
       res.status(404).json({ error: err.message || 'Job not found' });
@@ -360,16 +366,17 @@ export class MarketplaceController {
 
   /**
    * GET /api/marketplace/jobs/:id/results
-   * Customer: preview extracted results
+   * Customer / Admin: preview extracted results
    */
   public getJobResults = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
+      const isAdmin = req.user?.role === 'admin';
       const jobId = String(req.params.id);
       const page = parseInt(req.query.page as string, 10) || 1;
       const limit = parseInt(req.query.limit as string, 10) || 50;
 
-      const results = this.jobService.getJobResults(jobId, userId, { page, limit });
+      const results = this.jobService.getJobResults(jobId, userId, { page, limit }, isAdmin);
       res.json({ success: true, ...results });
     } catch (err: any) {
       res.status(404).json({ error: err.message || 'Failed to fetch job results' });
@@ -378,15 +385,16 @@ export class MarketplaceController {
 
   /**
    * GET /api/marketplace/jobs/:id/export
-   * Customer: download results as CSV, XLSX, or JSON
+   * Customer / Admin: download results as CSV, XLSX, or JSON
    */
   public exportJob = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
+      const isAdmin = req.user?.role === 'admin';
       const jobId = String(req.params.id);
       const format = ((req.query.format as string) || 'csv').toLowerCase() as 'csv' | 'xlsx' | 'json';
 
-      const exp = await this.jobService.exportJobResults(jobId, userId, format);
+      const exp = await this.jobService.exportJobResults(jobId, userId, format, isAdmin);
       res.setHeader('Content-Type', exp.contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${exp.filename}"`);
       res.send(exp.data);
@@ -397,16 +405,112 @@ export class MarketplaceController {
 
   /**
    * POST /api/marketplace/jobs/:id/abort
-   * Customer: abort running extraction
+   * Customer / Admin: abort running extraction
    */
   public abortJob = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
+      const isAdmin = req.user?.role === 'admin';
       const jobId = String(req.params.id);
-      const success = await this.jobService.abortJob(jobId, userId);
+      const success = await this.jobService.abortJob(jobId, userId, isAdmin);
       res.json({ success });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to abort job' });
+    }
+  };
+
+  /**
+   * GET /api/marketplace/jobs/:id/files
+   * List output files for a job
+   */
+  public listJobFiles = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = req.user?.role === 'admin';
+      const jobId = String(req.params.id);
+      const files = this.fileService.listFilesForJob(jobId, userId, isAdmin);
+      res.json({ success: true, files });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to list job files' });
+    }
+  };
+
+  /**
+   * GET /api/marketplace/files/:id/download
+   * Download a stored job output file (screenshot, PDF, zip, HTML)
+   */
+  public downloadJobFile = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const fileId = String(req.params.id);
+      const token = req.query.token as string | undefined;
+      const userId = (req as any).user?.id;
+      const isAdmin = (req as any).user?.role === 'admin';
+
+      const fileInfo = this.fileService.getFileForDownload(fileId, token, userId, isAdmin);
+      res.setHeader('Content-Type', fileInfo.contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${fileInfo.fileName}"`);
+      res.sendFile(fileInfo.filePath);
+    } catch (err: any) {
+      res.status(404).json({ error: err.message || 'File not found or link expired.' });
+    }
+  };
+
+  /**
+   * GET /api/marketplace/products/:slug/currency-matrix
+   * Auto multi-currency estimate table
+   */
+  public getProductCurrencyMatrix = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const slug = String(req.params.slug);
+      const product = this.productService.getProductBySlug(slug, true);
+      if (!product) {
+        res.status(404).json({ error: 'Product not found.' });
+        return;
+      }
+      const matrix = this.pricingService.generateMultiCurrencyMatrix(product.definition);
+      res.json({ success: true, matrix });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to calculate currency matrix' });
+    }
+  };
+
+  /**
+   * POST /api/marketplace/parse-bulk-input
+   * Bulk keyword/URL or CSV/TXT parser with syntax & deduplication reporting
+   */
+  public parseBulkInput = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { text, mode, maxLimit } = req.body;
+      const result = SchemaMapper.parseBulkTextOrCsv(
+        text || '',
+        mode === 'url' ? 'url' : 'string',
+        maxLimit ? Number(maxLimit) : 10000
+      );
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to parse bulk input' });
+    }
+  };
+
+  /**
+   * POST /api/marketplace/admin/products/:slug/override-classification
+   * Admin classification override with required reason
+   */
+  public adminOverrideClassification = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const adminUserId = req.user!.id;
+      const slug = String(req.params.slug);
+      const { classification, reason } = req.body;
+
+      if (!classification || !reason) {
+        res.status(400).json({ error: 'Both classification and written justification reason are required.' });
+        return;
+      }
+
+      const updated = this.productService.overrideClassification(slug, classification, adminUserId, reason);
+      res.json({ success: true, product: updated });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to override classification.' });
     }
   };
 
@@ -609,7 +713,7 @@ export class MarketplaceController {
       const slug = String(req.params.slug);
       const { input } = req.body;
 
-      const job = await this.jobService.createJob(adminUserId, slug, input || {}, 5);
+      const job = await this.jobService.createJob(adminUserId, slug, input || {}, 5, true, true);
       res.json({ success: true, job });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Test run failed.' });

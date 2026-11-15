@@ -5,6 +5,9 @@ import { ProductDefinition, MarketplaceJobRecord } from '../../types/marketplace
 import { ProviderRegistry } from './provider/ProviderRegistry.js';
 import { MarketplaceChargingService } from './MarketplaceChargingService.js';
 import { WhiteLabelSanitizer } from './WhiteLabelSanitizer.js';
+import { MarketplaceCircuitBreakerService } from './MarketplaceCircuitBreakerService.js';
+import { MarketplaceFileService } from './MarketplaceFileService.js';
+import { MarketplaceProductService } from './MarketplaceProductService.js';
 
 export class MarketplaceJobWorker {
   private static instance: MarketplaceJobWorker | null = null;
@@ -54,6 +57,15 @@ export class MarketplaceJobWorker {
     const prodRow = db.prepare('SELECT definition_json FROM extraction_marketplace_products WHERE id = ?').get(job.product_id) as any;
     if (!prodRow) {
       this.chargingService.refundFailedJob(jobId, 'Product specification missing');
+      return;
+    }
+
+    // Circuit Breaker check
+    const cb = MarketplaceCircuitBreakerService.getStatus(job.product_slug);
+    if (cb.state === 'OPEN') {
+      const err = `CIRCUIT_BREAKER_OPEN: Service temporarily paused for maintenance. ${cb.tripReason || ''}`;
+      this.chargingService.refundFailedJob(jobId, err);
+      this.emitJobUpdate(job.user_id, jobId, 'FAILED', err);
       return;
     }
 
@@ -153,6 +165,20 @@ export class MarketplaceJobWorker {
         console.warn(`[Marketplace Worker] Error polling run ${job.provider_run_id}:`, err);
       }
     }
+
+    // Reconcile and refund stuck orphan jobs (queued > 1 hour without provider run or running > 4 hours)
+    try {
+      const stuckJobs = db.prepare(`
+        SELECT id FROM marketplace_jobs
+        WHERE (status = 'QUEUED' AND created_at < datetime('now', '-1 hour'))
+           OR (status = 'RUNNING' AND started_at < datetime('now', '-4 hours'))
+        LIMIT 10
+      `).all() as any[];
+
+      for (const stuck of stuckJobs) {
+        this.chargingService.refundFailedJob(stuck.id, 'Extraction run expired and was reconciled automatically.');
+      }
+    } catch {}
   }
 
   /**
@@ -177,10 +203,13 @@ export class MarketplaceJobWorker {
           ? 'Extraction timed out before completing.'
           : 'Extraction failed during execution.';
 
+      MarketplaceCircuitBreakerService.recordFailure(job.product_slug, errorMsg);
       this.chargingService.refundFailedJob(jobId, errorMsg);
       this.emitJobUpdate(job.user_id, jobId, 'FAILED', errorMsg);
       return;
     }
+
+    MarketplaceCircuitBreakerService.recordSuccess(job.product_slug);
 
     const prodRow = db.prepare('SELECT definition_json FROM extraction_marketplace_products WHERE id = ?').get(job.product_id) as any;
     if (!prodRow) {
@@ -214,6 +243,35 @@ export class MarketplaceJobWorker {
         }
       } catch (err) {
         console.error(`[Marketplace Worker] Error fetching dataset items for job ${jobId}:`, err);
+      }
+    }
+
+    // 1.5 Fetch Key-Value Store files (if actor produces files)
+    const storedFileRecords: any[] = [];
+    if (adapter.fetchKeyValueRecords && adapter.fetchKeyValueRecordBuffer) {
+      try {
+        const kvStoreId = (adapter as any).getRunKeyValueStoreId?.(job.provider_run_id) || targetDatasetId;
+        const kvRecords = await adapter.fetchKeyValueRecords(kvStoreId);
+        for (const rec of kvRecords) {
+          // Ignore internal system keys
+          if (rec.key.startsWith('INPUT') || rec.key.startsWith('OUTPUT') || rec.key.startsWith('__')) {
+            continue;
+          }
+          const bufObj = await adapter.fetchKeyValueRecordBuffer(kvStoreId, rec.key);
+          if (bufObj) {
+            const savedFile = MarketplaceFileService.getInstance().saveJobFile({
+              jobId,
+              userId: job.user_id,
+              fileName: rec.key,
+              buffer: bufObj.buffer,
+              contentType: bufObj.contentType || rec.contentType || 'application/octet-stream',
+              recordKey: rec.key
+            });
+            storedFileRecords.push(savedFile);
+          }
+        }
+      } catch (fileErr) {
+        console.warn(`[Marketplace Worker] Note: Key-value store file ingestion skipped for ${jobId}:`, fileErr);
       }
     }
 
@@ -275,9 +333,32 @@ export class MarketplaceJobWorker {
 
     saveBatchTx();
 
+    // Calculate runtime seconds
+    const startedMs = job.started_at ? new Date(job.started_at).getTime() : Date.now();
+    const runtimeSeconds = Math.max(0, Number(((Date.now() - startedMs) / 1000).toFixed(1)));
+
+    db.prepare(`
+      UPDATE marketplace_jobs
+      SET runtime_seconds = ?,
+          output_files_json = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      runtimeSeconds,
+      storedFileRecords.length > 0 ? JSON.stringify(storedFileRecords) : null,
+      jobId
+    );
+
     // 4. Settle actual charges & release remaining reserve
     const deliveredCount = transformedItems.length;
     this.chargingService.settleJob(jobId, deliveredCount, usageTotalUsd);
+
+    // If ADMIN_TEST run, automatically satisfy test_run_passed gate
+    if (job.is_test_run === 1 || job.job_type === 'ADMIN_TEST') {
+      try {
+        MarketplaceProductService.getInstance().updateWizardGate(job.product_slug, 'test_run_passed', true);
+      } catch {}
+    }
 
     const finalStatus = deliveredCount >= job.requested_items ? 'COMPLETED' : deliveredCount > 0 ? 'PARTIAL' : 'COMPLETED';
     this.emitJobUpdate(job.user_id, jobId, finalStatus);

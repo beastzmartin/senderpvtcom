@@ -66,6 +66,8 @@ export interface ProviderCostReference {
   model: ProviderCostModel;
   usd_per_1000_items?: number | null;
   usd_per_run_start?: number | null;
+  monthly_rental_usd?: number | null;
+  pricing_per_event?: any;
   notes?: string;
 }
 
@@ -136,8 +138,97 @@ export interface ProductSyncInfo {
   diff_notes?: string;
 }
 
+export type CompatibilityClassification =
+  | 'FULLY_SUPPORTED'
+  | 'SUPPORTED_WITH_LIMITS'
+  | 'ADMIN_REVIEW_REQUIRED'
+  | 'UNSUPPORTED';
+
+export type InputKind =
+  | 'keyword'
+  | 'url_list'
+  | 'id_list'
+  | 'file_refs'
+  | 'location'
+  | 'date_range'
+  | 'filters'
+  | 'toggles'
+  | 'nested_objects'
+  | 'json';
+
+export type OutputKind = 'dataset' | 'key_value_files' | 'multiple_outputs' | 'none';
+export type RuntimeClass = 'quick' | 'medium' | 'long' | 'unknown';
+
+export interface DatasetViewDefinition {
+  title: string;
+  description?: string;
+  fields: string[];
+  display_component?: string;
+  properties?: Record<string, { format?: string; label?: string }>;
+}
+
+export interface KVCollectionDefinition {
+  key_prefix?: string;
+  key?: string;
+  content_types?: string[];
+}
+
+export interface OutputLinkDefinition {
+  template: string;
+  label: string;
+}
+
+export interface ActorCapabilities {
+  input_kinds: InputKind[];
+  supports_max_items: boolean;
+  pricing_model: 'free_usage' | 'rental' | 'pay_per_result' | 'pay_per_event' | 'unknown';
+  output_kinds: OutputKind[];
+  dataset_views: DatasetViewDefinition[];
+  kv_collections: KVCollectionDefinition[];
+  output_links: OutputLinkDefinition[];
+  runtime_class: RuntimeClass;
+  has_custom_code_inputs: boolean;
+  has_credentials_inputs: boolean;
+  has_proxy_input: boolean;
+  has_account_state: boolean;
+  mode: 'normal' | 'standby';
+  permission_level: 'limited' | 'full';
+  stateful_or_interactive: boolean;
+}
+
+export interface CompatibilityEvidence {
+  check: string;
+  detail: string;
+  field?: string;
+}
+
+export interface CompatibilityOverride {
+  original_classification: CompatibilityClassification;
+  overridden_by: string;
+  reason: string;
+  overridden_at: string;
+}
+
+export interface ActorCompatibility {
+  classification: CompatibilityClassification;
+  reasons: string[];
+  evidence: CompatibilityEvidence[];
+  admin_override?: CompatibilityOverride;
+}
+
+export interface ActorProfile {
+  actor_id: string;
+  title: string;
+  name: string;
+  build_number?: string;
+  capabilities: ActorCapabilities;
+  compatibility: ActorCompatibility;
+  detected_at: string;
+}
+
 export interface ProductWizardGates {
   link_imported: boolean;
+  actor_profile_approved?: boolean;
   schema_mapped: boolean;
   whitelabel_passed: boolean;
   pricing_validated: boolean;
@@ -145,10 +236,11 @@ export interface ProductWizardGates {
   output_reviewed: boolean;
   compliance_set: boolean;
   studio_preview_verified: boolean;
+  multi_customer_risk_decided?: boolean;
 }
 
 /**
- * Exact ProductDefinition Schema (v1 + Addendum v2 Strict)
+ * Exact ProductDefinition Schema (v2 Master Universal Studio)
  */
 export interface ProductDefinition {
   slug: string;
@@ -174,6 +266,8 @@ export interface ProductDefinition {
   ui?: ProductUiConfig;
   whitelabel?: ProductWhiteLabelConfig;
   sync?: ProductSyncInfo;
+  profile?: ActorProfile;
+  pinned_build?: string;
   wizard_gates?: ProductWizardGates;
 }
 
@@ -227,6 +321,7 @@ export interface MarketplaceJobRecord {
   input_data: Record<string, any>;
   requested_items: number;
   status: JobStatus;
+  job_type?: 'STANDARD' | 'ADMIN_TEST';
   provider_type: ProviderType;
   provider_run_id?: string | null;
   provider_dataset_id?: string | null;
@@ -242,8 +337,25 @@ export interface MarketplaceJobRecord {
   error_message?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
+  runtime_seconds?: number;
+  output_files_json?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface MarketplaceJobFileRecord {
+  id: string;
+  job_id: string;
+  user_id: string;
+  file_name: string;
+  content_type: string;
+  byte_size: number;
+  storage_path: string;
+  record_key?: string;
+  signature_token: string;
+  expires_at?: string;
+  created_at: string;
+  download_url?: string;
 }
 
 export interface MarketplaceJobResultItem {

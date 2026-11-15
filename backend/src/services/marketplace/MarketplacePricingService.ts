@@ -83,13 +83,38 @@ export class MarketplacePricingService {
     const finalSellPrice = Number(Math.max(rawSellPrice, minCharge).toFixed(2));
 
     // 2. Calculate estimated provider cost in USD
-    const ref = pricing.provider_cost_reference;
+    const ref = pricing.provider_cost_reference || { model: 'pay_per_result', usd_per_1000_items: 0 };
     let providerCostUsd = 0;
-    if (ref.usd_per_1000_items) {
-      providerCostUsd += (items / 1000) * ref.usd_per_1000_items;
-    }
-    if (ref.usd_per_run_start) {
-      providerCostUsd += ref.usd_per_run_start;
+
+    if (ref && ref.model === 'pay_per_event') {
+      // PPE Worst-Case Estimator
+      const runStart = ref.usd_per_run_start || 0;
+      let eventSum = 0;
+      if (ref.pricing_per_event?.actorChargeEvents) {
+        for (const evt of Object.values(ref.pricing_per_event.actorChargeEvents as Record<string, any>)) {
+          const price = Number(evt.eventPriceUsd || evt.eventTieredPricingUsd?.FREE?.tieredEventPriceUsd || 0);
+          eventSum += (evt.isPrimaryEvent ? items * price : 1 * price);
+        }
+      } else if (ref.usd_per_1000_items) {
+        eventSum = (items / 1000) * ref.usd_per_1000_items;
+      }
+      providerCostUsd = runStart + eventSum;
+    } else if (ref.model === 'rental') {
+      // Rental fixed monthly cost (usage is flat)
+      providerCostUsd = 0; // Marginal run cost is zero
+    } else if (ref.model === 'free_usage_based') {
+      // Platform compute usage cost estimator: (memory/1024) * (expectedDurationSecs/3600) * $0.25/GB-hr
+      const memGb = (product.limits?.memory_mb || 1024) / 1024;
+      const expectedSecs = Math.min(product.limits?.timeout_secs || 300, 300); // 5 min conservative estimate
+      providerCostUsd = Number(((memGb * (expectedSecs / 3600) * 0.25) + 0.01).toFixed(4));
+    } else {
+      // Default: pay_per_result
+      if (ref.usd_per_1000_items) {
+        providerCostUsd += (items / 1000) * ref.usd_per_1000_items;
+      }
+      if (ref.usd_per_run_start) {
+        providerCostUsd += ref.usd_per_run_start;
+      }
     }
     providerCostUsd = Number(providerCostUsd.toFixed(4));
 
@@ -244,6 +269,55 @@ export class MarketplacePricingService {
       expiresAt,
       minChargeApplied: est.minChargeApplied,
       signature
+    };
+  }
+
+  /**
+   * Universal Multi-Currency Estimate Table Generator:
+   * Generates a matrix of estimated sell prices for 100, 1,000, 10,000 items
+   * across all active enabled currencies in the platform.
+   */
+  public generateMultiCurrencyMatrix(
+    product: ProductDefinition
+  ): Record<string, { [items: number]: number }> {
+    const currencies = this.currencyService.getAllCurrencies(true).map((c: any) => c.code);
+    const itemSteps = [100, 1000, 10000];
+    const matrix: Record<string, { [items: number]: number }> = {};
+
+    for (const curr of currencies) {
+      matrix[curr] = {};
+      for (const count of itemSteps) {
+        const est = this.calculateEstimatedPrice(product, count, curr);
+        matrix[curr][count] = est.sellPrice;
+      }
+    }
+
+    return matrix;
+  }
+
+  /**
+   * Rental Break-Even Calculator:
+   * Estimates required subscriber volume to offset upstream monthly rental cost
+   */
+  public calculateRentalBreakEven(
+    monthlyRentalUsd: number,
+    platformSubscriptionPrice: number,
+    targetCurrency?: string
+  ): {
+    rentalCostConverted: number;
+    breakEvenSubscribers: number;
+    currency: string;
+  } {
+    const currency = targetCurrency || 'INR';
+    const rentalCostConverted = this.convertUsdToPlatform(monthlyRentalUsd, currency);
+    const breakEven = platformSubscriptionPrice > 0
+      ? Math.ceil(rentalCostConverted / platformSubscriptionPrice)
+      : 0;
+
+    return {
+      rentalCostConverted,
+      breakEvenSubscribers: breakEven,
+      currency
     };
   }
 }

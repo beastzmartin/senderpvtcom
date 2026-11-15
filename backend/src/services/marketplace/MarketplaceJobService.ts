@@ -10,6 +10,7 @@ import { MarketplaceChargingService } from './MarketplaceChargingService.js';
 import { ProviderRegistry } from './provider/ProviderRegistry.js';
 import { MarketplacePricingService } from './MarketplacePricingService.js';
 import { WhiteLabelSanitizer } from './WhiteLabelSanitizer.js';
+import { OutputFlattener } from './OutputFlattener.js';
 
 export class MarketplaceJobService {
   private static instance: MarketplaceJobService | null = null;
@@ -124,46 +125,99 @@ export class MarketplaceJobService {
     userId: string,
     productSlug: string,
     rawInput: Record<string, any>,
-    requestedItems?: number
+    requestedItems?: number,
+    isTestRun: boolean = false,
+    isAdminParam?: boolean
   ): Promise<MarketplaceJobRecord> {
     const db = getDatabase();
 
-    // 1. Fetch product definition
+    const cleanSlug = (productSlug || '').trim();
+    if (!cleanSlug) {
+      throw new Error('PRODUCT_NOT_FOUND: Product identifier is required.');
+    }
+
+    // 1. Fetch product definition (case-insensitive, slug or id)
     const prodRow = db.prepare(`
-      SELECT * FROM extraction_marketplace_products WHERE slug = ? AND status = 'active'
-    `).get(productSlug) as any;
+      SELECT * FROM extraction_marketplace_products
+      WHERE slug = ? OR id = ? OR lower(slug) = lower(?) OR lower(id) = lower(?)
+      LIMIT 1
+    `).get(cleanSlug, cleanSlug, cleanSlug, cleanSlug) as any;
 
     if (!prodRow) {
-      throw new Error('PRODUCT_NOT_FOUND: The requested extraction product is not available.');
+      throw new Error(`PRODUCT_NOT_FOUND: The requested extraction product "${cleanSlug}" is not available.`);
     }
 
     const product: ProductDefinition = JSON.parse(prodRow.definition_json);
 
-    // 2. Subscription check
-    this.verifySubscriptionAccess(userId, product);
+    // Determine admin status
+    let isAdmin = isAdminParam;
+    if (isAdmin === undefined) {
+      const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as any;
+      isAdmin = userRow?.role === 'admin';
+    }
 
-    // 3. Concurrency check
-    const activeRuns = (db.prepare(`
-      SELECT count(*) as count FROM marketplace_jobs
-      WHERE user_id = ? AND status IN ('QUEUED', 'RUNNING')
-    `).get(userId) as any)?.count || 0;
+    // Status permission check
+    if (prodRow.status === 'disabled' && !isAdmin) {
+      throw new Error('PRODUCT_DISABLED: This extraction product is currently disabled by administrator.');
+    }
+    if (prodRow.status === 'draft' && !isAdmin && !isTestRun) {
+      throw new Error('PRODUCT_NOT_AVAILABLE: This extraction product is currently in review/draft and not yet published.');
+    }
 
-    const maxConcurrency = product.limits?.max_concurrent_runs_per_user || 2;
-    if (activeRuns >= maxConcurrency) {
-      throw new Error(`CONCURRENCY_LIMIT_REACHED: You currently have ${activeRuns} active extraction job(s). Maximum allowed is ${maxConcurrency}.`);
+    // 2. Subscription check (bypassed for admins and test runs)
+    if (!isAdmin && !isTestRun) {
+      this.verifySubscriptionAccess(userId, product);
+    }
+
+    // 3. Concurrency check (bypassed for test runs)
+    if (!isTestRun) {
+      const activeRuns = (db.prepare(`
+        SELECT count(*) as count FROM marketplace_jobs
+        WHERE user_id = ? AND status IN ('QUEUED', 'RUNNING')
+      `).get(userId) as any)?.count || 0;
+
+      const maxConcurrency = product.limits?.max_concurrent_runs_per_user || 2;
+      if (activeRuns >= maxConcurrency) {
+        throw new Error(`CONCURRENCY_LIMIT_REACHED: You currently have ${activeRuns} active extraction job(s). Maximum allowed is ${maxConcurrency}.`);
+      }
     }
 
     // 4. Validate items count against product limits
     const minItems = product.limits?.min_items || 1;
     const maxItems = product.limits?.max_items_per_run || 1000;
-    const items = Math.max(minItems, Math.min(requestedItems || 50, maxItems));
+    const items = isTestRun
+      ? Math.min(requestedItems || 5, 20)
+      : Math.max(minItems, Math.min(requestedItems || 50, maxItems));
 
     // 5. Validate input fields
     const validatedInput = this.validateInput(product, rawInput);
 
     // 6. Pre-reserve funds from user wallet (Step 4 & 5)
     const jobId = `job_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
-    const reservation = this.chargingService.reserveForJob(userId, product, items, jobId);
+    let reservation: {
+      reservationId: string;
+      reservedAmount: number;
+      providerCostUsd: number;
+      providerCostConverted: number;
+      currency: string;
+    };
+
+    if (isTestRun) {
+      try {
+        reservation = this.chargingService.reserveForJob(userId, product, items, jobId);
+      } catch {
+        // Zero-charge fallback for admin test runs
+        reservation = {
+          reservationId: `test_res_${Date.now()}`,
+          reservedAmount: 0.0,
+          providerCostUsd: 0.0,
+          providerCostConverted: 0.0,
+          currency: 'INR'
+        };
+      }
+    } else {
+      reservation = this.chargingService.reserveForJob(userId, product, items, jobId);
+    }
 
     // 7. Persist initial queued job
     db.prepare(`
@@ -172,13 +226,13 @@ export class MarketplaceJobService {
         input_json, requested_items, status, provider_type,
         items_delivered, reserved_amount, charged_amount,
         provider_cost_usd, provider_cost_converted, currency,
-        reservation_tx_id, created_at, updated_at
+        reservation_tx_id, is_test_run, job_type, created_at, updated_at
       ) VALUES (
         ?, ?, ?, ?, ?,
         ?, ?, 'QUEUED', ?,
         0, ?, 0.0,
         ?, ?, ?,
-        ?, datetime('now'), datetime('now')
+        ?, ?, ?, datetime('now'), datetime('now')
       )
     `).run(
       jobId,
@@ -193,10 +247,12 @@ export class MarketplaceJobService {
       reservation.providerCostUsd,
       reservation.providerCostConverted,
       reservation.currency,
-      reservation.reservationId
+      reservation.reservationId,
+      isTestRun ? 1 : 0,
+      isTestRun ? 'ADMIN_TEST' : 'STANDARD'
     );
 
-    const createdJob = this.getJobById(jobId, userId);
+    const createdJob = this.getJobById(jobId, userId, isAdmin);
 
     // Trigger async execution worker
     setImmediate(async () => {
@@ -212,14 +268,20 @@ export class MarketplaceJobService {
   }
 
   /**
-   * Retrieve single job record for user
+   * Retrieve single job record for user or admin
    */
-  public getJobById(jobId: string, userId?: string): MarketplaceJobRecord {
+  public getJobById(jobId: string, userId?: string, isAdmin: boolean = false): MarketplaceJobRecord {
     const db = getDatabase();
-    const query = userId
+    let effectiveAdmin = isAdmin;
+    if (!effectiveAdmin && userId) {
+      const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as any;
+      if (user?.role === 'admin') effectiveAdmin = true;
+    }
+
+    const query = (!effectiveAdmin && userId)
       ? 'SELECT * FROM marketplace_jobs WHERE id = ? AND user_id = ?'
       : 'SELECT * FROM marketplace_jobs WHERE id = ?';
-    const params = userId ? [jobId, userId] : [jobId];
+    const params = (!effectiveAdmin && userId) ? [jobId, userId] : [jobId];
     const row = db.prepare(query).get(...params) as any;
 
     if (!row) {
@@ -295,10 +357,11 @@ export class MarketplaceJobService {
   public getJobResults(
     jobId: string,
     userId: string,
-    options?: { page?: number; limit?: number }
+    options?: { page?: number; limit?: number },
+    isAdmin: boolean = false
   ): { items: Record<string, any>[]; total: number; page: number; limit: number } {
-    // Verify ownership
-    this.getJobById(jobId, userId);
+    // Verify ownership or admin
+    this.getJobById(jobId, userId, isAdmin);
 
     const db = getDatabase();
     const page = Math.max(1, options?.page || 1);
@@ -324,9 +387,10 @@ export class MarketplaceJobService {
   public async exportJobResults(
     jobId: string,
     userId: string,
-    format: 'csv' | 'xlsx' | 'json'
+    format: 'csv' | 'xlsx' | 'json' | 'jsonl',
+    isAdmin: boolean = false
   ): Promise<{ filename: string; contentType: string; data: string | Buffer }> {
-    const job = this.getJobById(jobId, userId);
+    const job = this.getJobById(jobId, userId, isAdmin);
     const db = getDatabase();
 
     const rows = db.prepare(`
@@ -347,7 +411,15 @@ export class MarketplaceJobService {
       };
     }
 
-    // Generate CSV
+    if (format === 'jsonl') {
+      return {
+        filename: `${safeSlug}_${jobId}_${timestamp}.jsonl`,
+        contentType: 'application/x-ndjson',
+        data: items.map((it) => JSON.stringify(it)).join('\n')
+      };
+    }
+
+    // Generate CSV / XLSX with Formula Injection protection
     const headersSet = new Set<string>();
     items.forEach((item) => {
       Object.keys(item).forEach((k) => headersSet.add(k));
@@ -356,8 +428,9 @@ export class MarketplaceJobService {
 
     const escapeCsv = (val: any) => {
       if (val === null || val === undefined) return '';
-      const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      const sanitized = OutputFlattener.sanitizeForCsvFormulaInjection(val);
+      const str = typeof sanitized === 'object' ? JSON.stringify(sanitized) : String(sanitized);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
         return `"${str.replace(/"/g, '""')}"`;
       }
       return str;
@@ -368,18 +441,23 @@ export class MarketplaceJobService {
       ...items.map((row) => headers.map((h) => escapeCsv(row[h])).join(','))
     ];
 
+    // Prepend UTF-8 Byte Order Mark (\uFEFF) so Excel immediately parses UTF-8 encoding accurately
+    const csvContent = '\uFEFF' + csvLines.join('\n');
+    const ext = format === 'xlsx' ? 'xlsx' : 'csv';
+    const mime = format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv; charset=utf-8';
+
     return {
-      filename: `${safeSlug}_${jobId}_${timestamp}.csv`,
-      contentType: 'text/csv',
-      data: csvLines.join('\n')
+      filename: `${safeSlug}_${jobId}_${timestamp}.${ext}`,
+      contentType: mime,
+      data: csvContent
     };
   }
 
   /**
    * Abort a running job
    */
-  public async abortJob(jobId: string, userId: string): Promise<boolean> {
-    const job = this.getJobById(jobId, userId);
+  public async abortJob(jobId: string, userId: string, isAdmin: boolean = false): Promise<boolean> {
+    const job = this.getJobById(jobId, userId, isAdmin);
     if (job.status !== 'RUNNING' && job.status !== 'QUEUED') {
       return false;
     }

@@ -15,7 +15,7 @@ export class LinkParser {
   /**
    * Parse and normalize a single Apify link, slug, or ID
    */
-  public static parseActorRef(input: string): ParsedActorRef {
+  public static parseActorRef(input: string, checkDb: boolean = false): ParsedActorRef {
     const raw = (input || '').trim();
     if (!raw) {
       return {
@@ -100,14 +100,19 @@ export class LinkParser {
         actorName = a;
       }
 
-      // Check duplicate in database
-      const db = getDatabase();
-      const existing = db.prepare(`
-        SELECT slug FROM extraction_marketplace_products 
-        WHERE json_extract(definition_json, '$.provider.actor_id') = ?
-           OR slug = ?
-           OR json_extract(definition_json, '$.provider.actor_id') LIKE ?
-      `).get(cleaned, cleaned, `%${cleaned}%`) as { slug: string } | undefined;
+      // Check duplicate in database if requested
+      let existing: { slug: string } | undefined;
+      if (checkDb) {
+        try {
+          const db = getDatabase();
+          existing = db.prepare(`
+            SELECT slug FROM extraction_marketplace_products 
+            WHERE json_extract(definition_json, '$.provider.actor_id') = ?
+               OR slug = ?
+               OR json_extract(definition_json, '$.provider.actor_id') LIKE ?
+          `).get(cleaned, cleaned, `%${cleaned}%`) as { slug: string } | undefined;
+        } catch {}
+      }
 
       return {
         originalInput: raw,

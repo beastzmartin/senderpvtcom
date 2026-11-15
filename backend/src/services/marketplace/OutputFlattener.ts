@@ -108,4 +108,18 @@ export class OutputFlattener {
     }
     return flat;
   }
+
+  /**
+   * Neutralize CSV Formula Injection vulnerabilities
+   * In Excel/Calc, values beginning with '=', '+', '-', '@', '\t', '\r' are treated as executable formulas.
+   * Prefixing with a single quote "'" safely renders the value as a plain text string.
+   */
+  public static sanitizeForCsvFormulaInjection(val: any): string {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (/^[=+\-@\t\r]/.test(str)) {
+      return `'${str}`;
+    }
+    return str;
+  }
 }

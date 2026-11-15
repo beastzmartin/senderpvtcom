@@ -166,6 +166,8 @@ export class ApifyAdapter implements ProviderAdapter {
     let pricingModel = 'free_usage_based';
     let usdPer1000Items: number | undefined;
     let usdPerRunStart: number | undefined;
+    let monthlyRentalUsd: number | undefined;
+    let pricingPerEvent: any = undefined;
 
     const pricingInfos = data.pricingInfos || [];
     if (pricingInfos.length > 0) {
@@ -177,7 +179,11 @@ export class ApifyAdapter implements ProviderAdapter {
       if (activePricing.pricePerRunUsd) {
         usdPerRunStart = Number(activePricing.pricePerRunUsd);
       }
+      if (activePricing.monthlyRentalUsd || activePricing.priceUsd) {
+        monthlyRentalUsd = Number(activePricing.monthlyRentalUsd || activePricing.priceUsd);
+      }
       // Check event tiered pricing (e.g. pay per lead or pay per dataset item)
+      pricingPerEvent = activePricing.pricingPerEvent;
       const events = activePricing.pricingPerEvent?.actorChargeEvents;
       if (events) {
         for (const [evtKey, evtVal] of Object.entries(events as Record<string, any>)) {
@@ -191,15 +197,28 @@ export class ApifyAdapter implements ProviderAdapter {
       }
     }
 
-    // Try fetching the input schema from latest build or versions
+    // Try fetching the input schema, dataset schema, actor definition, readme from latest build or versions
     let inputSchema: any = undefined;
+    let datasetSchema: any = undefined;
+    let actorDefinition: any = undefined;
+    let readme: string | undefined = undefined;
+    let buildNumber = data.taggedBuilds?.latest?.buildNumber;
+
     if (data.taggedBuilds?.latest?.buildId) {
       try {
         const buildRes = await this.safeRequest<any>(`/actor-builds/${data.taggedBuilds.latest.buildId}`, { method: 'GET' }, true);
-        if (buildRes?.data?.inputSchema) {
-          inputSchema = typeof buildRes.data.inputSchema === 'string'
-            ? JSON.parse(buildRes.data.inputSchema)
-            : buildRes.data.inputSchema;
+        const bData = buildRes?.data || {};
+        if (bData.inputSchema) {
+          inputSchema = typeof bData.inputSchema === 'string' ? JSON.parse(bData.inputSchema) : bData.inputSchema;
+        }
+        if (bData.datasetSchema) {
+          datasetSchema = typeof bData.datasetSchema === 'string' ? JSON.parse(bData.datasetSchema) : bData.datasetSchema;
+        }
+        if (bData.actorDefinition) {
+          actorDefinition = typeof bData.actorDefinition === 'string' ? JSON.parse(bData.actorDefinition) : bData.actorDefinition;
+        }
+        if (bData.readme) {
+          readme = bData.readme;
         }
       } catch {}
     }
@@ -208,28 +227,59 @@ export class ApifyAdapter implements ProviderAdapter {
       for (const ver of data.versions) {
         try {
           const versionRes = await this.safeRequest<any>(`/acts/${cleanId}/versions/${ver.versionNumber}`, { method: 'GET' }, true);
-          if (versionRes?.data?.inputSchema) {
-            inputSchema = typeof versionRes.data.inputSchema === 'string'
-              ? JSON.parse(versionRes.data.inputSchema)
-              : versionRes.data.inputSchema;
-            break;
+          const vData = versionRes?.data || {};
+          if (vData.inputSchema) {
+            inputSchema = typeof vData.inputSchema === 'string' ? JSON.parse(vData.inputSchema) : vData.inputSchema;
           }
+          if (vData.datasetSchema && !datasetSchema) {
+            datasetSchema = typeof vData.datasetSchema === 'string' ? JSON.parse(vData.datasetSchema) : vData.datasetSchema;
+          }
+          if (vData.actorDefinition && !actorDefinition) {
+            actorDefinition = typeof vData.actorDefinition === 'string' ? JSON.parse(vData.actorDefinition) : vData.actorDefinition;
+          }
+          if (vData.readme && !readme) {
+            readme = vData.readme;
+          }
+          if (inputSchema) break;
         } catch {}
       }
+    }
+
+    if (!readme) {
+      try {
+        const readmeRes = await this.safeRequest<any>(`/acts/${cleanId}/readme`, { method: 'GET' }, true);
+        if (typeof readmeRes === 'string') {
+          readme = readmeRes;
+        } else if (readmeRes?.data?.readme) {
+          readme = readmeRes.data.readme;
+        }
+      } catch {}
     }
 
     return {
       actorId: data.id || actorId,
       name: data.name || actorId,
+      username: data.username,
       title: data.title || data.name,
       description: data.description || '',
       pricingModel,
       pricingInfo: {
         model: (pricingModel as any) || 'free_usage_based',
         usdPer1000Items,
-        usdPerRunStart
+        usdPerRunStart,
+        monthlyRentalUsd,
+        pricingPerEvent,
+        rawPricingInfos: pricingInfos
       },
       inputSchema,
+      datasetSchema,
+      actorDefinition,
+      readme,
+      categories: data.categories || [],
+      stats: data.stats || {},
+      permissions: data.permissions || (data.isPublic ? 'limited' : undefined),
+      mode: data.mode || (data.actorStandbyConfig ? 'standby' : 'normal'),
+      buildNumber,
       defaultMemoryMbytes: data.defaultRunOptions?.memoryMbytes || 1024,
       defaultTimeoutSecs: data.defaultRunOptions?.timeoutSecs || 3600
     };
@@ -354,6 +404,53 @@ export class ApifyAdapter implements ProviderAdapter {
       offset,
       limit
     };
+  }
+
+  /**
+   * Fetch list of keys/files in a key-value store
+   */
+  public async fetchKeyValueRecords(
+    keyValueStoreId: string
+  ): Promise<Array<{ key: string; size?: number; contentType?: string }>> {
+    const cleanId = encodeURIComponent(keyValueStoreId.trim());
+    try {
+      const res = await this.safeRequest<any>(`/key-value-stores/${cleanId}/keys`, { method: 'GET' }, true);
+      const items = res?.data?.items || [];
+      return items.map((it: any) => ({
+        key: it.key,
+        size: it.size,
+        contentType: it.contentType
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Fetch a single binary/text file from key-value store
+   */
+  public async fetchKeyValueRecordBuffer(
+    keyValueStoreId: string,
+    recordKey: string
+  ): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const cleanStoreId = encodeURIComponent(keyValueStoreId.trim());
+    const cleanKey = encodeURIComponent(recordKey.trim());
+    const token = this.getToken();
+    const url = new URL(`${this.baseUrl}/key-value-stores/${cleanStoreId}/records/${cleanKey}`);
+    url.searchParams.set('token', token);
+
+    try {
+      const res = await fetch(url.toString());
+      if (!res.ok) return null;
+      const arrayBuffer = await res.arrayBuffer();
+      const contentType = res.headers.get('content-type') || 'application/octet-stream';
+      return {
+        buffer: Buffer.from(arrayBuffer),
+        contentType
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**

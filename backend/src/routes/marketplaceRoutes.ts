@@ -30,6 +30,8 @@ router.post('/admin/entitlements/override', requireAuth, controller.adminSetOver
 // -------------------------------------------------------------------------
 router.get('/products', WhiteLabelSanitizer.middleware(), controller.listProducts);
 router.get('/products/:slug', WhiteLabelSanitizer.middleware(), controller.getProduct);
+router.get('/products/:slug/currency-matrix', WhiteLabelSanitizer.middleware(), controller.getProductCurrencyMatrix);
+router.post('/parse-bulk-input', WhiteLabelSanitizer.middleware(), controller.parseBulkInput);
 router.post('/estimate', WhiteLabelSanitizer.middleware(), controller.estimatePrice);
 router.post('/quote', WhiteLabelSanitizer.middleware(), controller.createQuote);
 
@@ -41,6 +43,8 @@ router.post('/jobs', requireAuth, WhiteLabelSanitizer.middleware(), controller.c
 router.get('/jobs', requireAuth, WhiteLabelSanitizer.middleware(), controller.listUserJobs);
 router.get('/jobs/:id', requireAuth, WhiteLabelSanitizer.middleware(), controller.getJob);
 router.get('/jobs/:id/results', requireAuth, WhiteLabelSanitizer.middleware(), controller.getJobResults);
+router.get('/jobs/:id/files', requireAuth, WhiteLabelSanitizer.middleware(), controller.listJobFiles);
+router.get('/files/:id/download', controller.downloadJobFile);
 router.get('/jobs/:id/export', requireAuth, controller.exportJob);
 router.post('/jobs/:id/abort', requireAuth, WhiteLabelSanitizer.middleware(), controller.abortJob);
 
@@ -53,6 +57,7 @@ router.post('/admin/import-provider', requireAuth, requireAdmin, controller.admi
 router.post('/admin/bulk-import', requireAuth, requireAdmin, controller.adminBulkImport);
 router.post('/admin/products/:slug/drift', requireAuth, requireAdmin, controller.adminCheckDrift);
 router.post('/admin/products/:slug/gates', requireAuth, requireAdmin, controller.adminUpdateWizardGate);
+router.post('/admin/products/:slug/override-classification', requireAuth, requireAdmin, controller.adminOverrideClassification);
 router.post('/admin/products/:slug/duplicate', requireAuth, requireAdmin, controller.adminDuplicateProduct);
 router.delete('/admin/products/:slug', requireAuth, requireAdmin, controller.adminDeleteProduct);
 router.post('/admin/products/:slug/test-run', requireAuth, requireAdmin, controller.adminTestRun);

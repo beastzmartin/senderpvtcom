@@ -110,6 +110,35 @@ CREATE TABLE IF NOT EXISTS marketplace_user_presets (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mkt_presets_user_slug ON marketplace_user_presets(user_id, product_slug);
+
+-- Stored Output Files for Key-Value Store artifacts (Screenshots, PDFs, Zips, HTML)
+CREATE TABLE IF NOT EXISTS marketplace_job_files (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES marketplace_jobs(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  storage_path TEXT NOT NULL,
+  record_key TEXT,
+  signature_token TEXT NOT NULL,
+  expires_at TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mkt_files_job ON marketplace_job_files(job_id);
+CREATE INDEX IF NOT EXISTS idx_mkt_files_user ON marketplace_job_files(user_id);
+CREATE INDEX IF NOT EXISTS idx_mkt_files_token ON marketplace_job_files(signature_token);
+
+-- Circuit Breakers per Product to protect against runaway upstream failures
+CREATE TABLE IF NOT EXISTS product_circuit_breakers (
+  product_slug TEXT PRIMARY KEY,
+  failure_count INTEGER DEFAULT 0,
+  last_failure_at TEXT,
+  state TEXT DEFAULT 'CLOSED' CHECK(state IN ('CLOSED', 'OPEN', 'HALF_OPEN')),
+  trip_reason TEXT,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 /**
@@ -250,10 +279,21 @@ Extract high-fidelity verified business leads, domain contacts, decision-maker n
 export function initMarketplaceSchema(db: Database.Database): void {
   db.exec(MARKETPLACE_SCHEMA_SQL);
 
-  // Safe migrations for newer columns
-  try {
-    db.prepare('ALTER TABLE marketplace_jobs ADD COLUMN is_test_run INTEGER DEFAULT 0').run();
-  } catch {}
+  // Safe migrations for newer columns (reversible and idempotent)
+  const migrations = [
+    'ALTER TABLE marketplace_jobs ADD COLUMN is_test_run INTEGER DEFAULT 0',
+    'ALTER TABLE marketplace_jobs ADD COLUMN job_type TEXT DEFAULT "STANDARD"',
+    'ALTER TABLE marketplace_jobs ADD COLUMN output_files_json TEXT',
+    'ALTER TABLE marketplace_jobs ADD COLUMN runtime_seconds REAL DEFAULT 0.0',
+    'ALTER TABLE extraction_marketplace_products ADD COLUMN profile_json TEXT',
+    'ALTER TABLE extraction_marketplace_products ADD COLUMN pinned_build TEXT'
+  ];
+
+  for (const m of migrations) {
+    try {
+      db.prepare(m).run();
+    } catch {}
+  }
 
   // Seed default settings if not exists
   const defaultSettings: Record<string, string> = {

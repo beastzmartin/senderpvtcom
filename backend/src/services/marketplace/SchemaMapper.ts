@@ -226,6 +226,94 @@ export class SchemaMapper {
   }
 
   /**
+   * Universal Bulk Input Parser:
+   * Parses bulk multi-line text, comma-separated tokens, or CSV/TXT files
+   * Extracts clean tokens, deduplicates, and reports row-by-row syntax errors
+   */
+  public static parseBulkTextOrCsv(
+    rawText: string,
+    mode: 'string' | 'url' = 'string',
+    maxItemsLimit: number = 10000
+  ): {
+    items: string[];
+    duplicatesRemoved: number;
+    invalidRows: Array<{ line: number; text: string; error: string }>;
+    totalParsed: number;
+  } {
+    if (!rawText || !rawText.trim()) {
+      return { items: [], duplicatesRemoved: 0, invalidRows: [], totalParsed: 0 };
+    }
+
+    const lines = rawText.split(/\r?\n/);
+    const seen = new Set<string>();
+    const validItems: string[] = [];
+    const invalidRows: Array<{ line: number; text: string; error: string }> = [];
+    let duplicatesRemoved = 0;
+
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const lineNum = lineIdx + 1;
+      const rawLine = lines[lineIdx].trim();
+      if (!rawLine) continue;
+
+      // Split line on comma, semicolon or tab if not enclosed in quotes
+      const tokens: string[] = [];
+      if (rawLine.includes(',') || rawLine.includes(';') || rawLine.includes('\t')) {
+        // Simple CSV splitter
+        const parts = rawLine.split(/[,;\t]+/).map((t) => t.replace(/^["']|["']$/g, '').trim());
+        tokens.push(...parts.filter(Boolean));
+      } else {
+        tokens.push(rawLine.replace(/^["']|["']$/g, '').trim());
+      }
+
+      for (const token of tokens) {
+        if (!token) continue;
+
+        if (mode === 'url') {
+          try {
+            const parsed = new URL(token.startsWith('http') ? token : `https://${token}`);
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+              invalidRows.push({ line: lineNum, text: token, error: 'Must use http: or https: protocol' });
+              continue;
+            }
+            const cleanUrl = parsed.toString();
+            if (seen.has(cleanUrl)) {
+              duplicatesRemoved++;
+            } else {
+              seen.add(cleanUrl);
+              validItems.push(cleanUrl);
+            }
+          } catch {
+            invalidRows.push({ line: lineNum, text: token, error: 'Invalid URL syntax' });
+          }
+        } else {
+          // String mode
+          if (seen.has(token)) {
+            duplicatesRemoved++;
+          } else {
+            seen.add(token);
+            validItems.push(token);
+          }
+        }
+
+        if (validItems.length >= maxItemsLimit) {
+          break;
+        }
+      }
+
+      if (validItems.length >= maxItemsLimit) {
+        break;
+      }
+    }
+
+    return {
+      items: validItems,
+      duplicatesRemoved,
+      invalidRows,
+      totalParsed: validItems.length + duplicatesRemoved + invalidRows.length
+    };
+  }
+
+  /**
    * Server-side input payload builder & validator
    * Transforms customer submitted form values into provider-compatible payload
    */
@@ -297,6 +385,23 @@ export class SchemaMapper {
           } else if (field.type === 'string_list' || field.type === 'url_list') {
             if (typeof val === 'string') {
               val = val.split('\n').map((s) => s.trim()).filter(Boolean);
+            }
+            if (!Array.isArray(val)) {
+              val = [];
+            }
+            // Deduplicate items
+            val = Array.from(new Set(val));
+          } else if (field.type === 'json' || field.type === 'object') {
+            if (typeof val === 'string' && val.trim()) {
+              try {
+                val = JSON.parse(val);
+              } catch {
+                errors.push(`Field "${field.label}" must be valid JSON.`);
+              }
+            }
+          } else if (field.type === 'multiselect') {
+            if (typeof val === 'string') {
+              val = [val];
             }
             if (!Array.isArray(val)) {
               val = [];

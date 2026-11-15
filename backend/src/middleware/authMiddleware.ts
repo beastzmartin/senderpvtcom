@@ -11,13 +11,19 @@ export interface AuthenticatedRequest extends Request {
 
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
+  let token: string | undefined;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.query.token && typeof req.query.token === 'string') {
+    token = req.query.token;
+  }
+
+  if (!token) {
     res.status(401).json({ error: 'Authentication required. Please log in.' });
     return;
   }
 
-  const token = authHeader.split(' ')[1];
   const authService = AuthService.getInstance();
   const payload = authService.verifyToken(token);
 
@@ -43,8 +49,15 @@ export function requireAdmin(req: AuthenticatedRequest, res: Response, next: Nex
  */
 export function optionalAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
+  let token: string | undefined;
+
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
+    token = authHeader.split(' ')[1];
+  } else if (req.query.token && typeof req.query.token === 'string') {
+    token = req.query.token;
+  }
+
+  if (token) {
     const authService = AuthService.getInstance();
     const payload = authService.verifyToken(token);
     if (payload) {

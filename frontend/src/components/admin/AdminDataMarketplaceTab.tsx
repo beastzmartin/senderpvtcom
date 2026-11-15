@@ -22,7 +22,11 @@ import {
   ArrowRight,
   Key,
   Eye,
-  EyeOff
+  EyeOff,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Filter
 } from 'lucide-react';
 
 export const AdminDataMarketplaceTab: React.FC = () => {
@@ -54,6 +58,39 @@ export const AdminDataMarketplaceTab: React.FC = () => {
   // Drift Check State
   const [driftResult, setDriftResult] = useState<{ slug: string; data: any } | null>(null);
   const [driftCheckingSlug, setDriftCheckingSlug] = useState<string | null>(null);
+
+  // Jobs Monitor Inspection & Results Viewer State
+  const [selectedJobForResults, setSelectedJobForResults] = useState<any | null>(null);
+  const [jobResults, setJobResults] = useState<any[]>([]);
+  const [resultsTotal, setResultsTotal] = useState(0);
+  const [resultsPage, setResultsPage] = useState(1);
+  const [loadingResults, setLoadingResults] = useState(false);
+  const [resultsSearch, setResultsSearch] = useState('');
+  const [jobStatusFilter, setJobStatusFilter] = useState('all');
+  const [jobSearchTerm, setJobSearchTerm] = useState('');
+
+  const handleOpenJobResults = async (job: any, page = 1) => {
+    setSelectedJobForResults(job);
+    setResultsPage(page);
+    setLoadingResults(true);
+    setResultsSearch('');
+    try {
+      const res = await api.dataMarketplace.getJobResults(job.id, { page, limit: 50 });
+      if (res.success) {
+        setJobResults(res.items || []);
+        setResultsTotal(res.total || 0);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to load extracted job results');
+    } finally {
+      setLoadingResults(false);
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (!selectedJobForResults || newPage < 1) return;
+    handleOpenJobResults(selectedJobForResults, newPage);
+  };
 
   // Apify Provider Settings & Live Test State
   const [showToken, setShowToken] = useState(false);
@@ -846,51 +883,372 @@ export const AdminDataMarketplaceTab: React.FC = () => {
       )}
 
       {/* =====================================================================
-          SUB-TAB 2: JOBS MONITOR
+          SUB-TAB 2: JOBS MONITOR & EXTRACTED DATA VIEWER
          ===================================================================== */}
       {subTab === 'jobs' && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="font-bold text-sm text-slate-900">Global Extraction Jobs Monitor</h3>
-            <button onClick={loadData} className="px-3 py-1 bg-slate-100 text-slate-700 rounded text-xs font-semibold">
-              Refresh
-            </button>
+        <div className="space-y-4">
+          {/* Controls Bar: Search & Status Filter */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by Job ID, Product, or User..."
+                  value={jobSearchTerm}
+                  onChange={(e) => setJobSearchTerm(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <select
+                value={jobStatusFilter}
+                onChange={(e) => setJobStatusFilter(e.target.value)}
+                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              >
+                <option value="all">All Statuses</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="RUNNING">Running</option>
+                <option value="QUEUED">Queued</option>
+                <option value="PARTIAL">Partial</option>
+                <option value="FAILED">Failed</option>
+                <option value="ABORTED">Aborted</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+              <span className="text-xs text-slate-500">
+                {jobs.filter((j) => (jobStatusFilter === 'all' || j.status === jobStatusFilter)).length} Job(s) Recorded
+              </span>
+              <button
+                onClick={loadData}
+                disabled={loading}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
-                  <th className="py-3 px-4">Job ID</th>
-                  <th className="py-3 px-4">User</th>
-                  <th className="py-3 px-4">Product</th>
-                  <th className="py-3 px-4">Delivered</th>
-                  <th className="py-3 px-4">Charged (Sell)</th>
-                  <th className="py-3 px-4">Provider Cost</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {jobs.map((j) => (
-                  <tr key={j.id} className="hover:bg-slate-50">
-                    <td className="py-3 px-4 font-mono font-bold text-slate-900">{j.id}</td>
-                    <td className="py-3 px-4 text-slate-700">{j.username || j.user_id}</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">{j.product_name}</td>
-                    <td className="py-3 px-4 font-bold">{j.items_delivered} / {j.requested_items}</td>
-                    <td className="py-3 px-4 font-bold text-slate-900">₹{Number(j.charged_amount || 0).toFixed(2)}</td>
-                    <td className="py-3 px-4 text-slate-500">₹{Number(j.provider_cost_converted || 0).toFixed(2)} (${Number(j.provider_cost_usd || 0).toFixed(4)})</td>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
-                        {j.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-400">{j.created_at}</td>
+          {/* Jobs Table */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
+                    <th className="py-3 px-4">Job ID</th>
+                    <th className="py-3 px-4">User</th>
+                    <th className="py-3 px-4">Product</th>
+                    <th className="py-3 px-4">Delivered</th>
+                    <th className="py-3 px-4">Charged (Sell)</th>
+                    <th className="py-3 px-4">Provider Cost</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {jobs
+                    .filter((j) => {
+                      if (jobStatusFilter !== 'all' && j.status !== jobStatusFilter) return false;
+                      if (jobSearchTerm.trim()) {
+                        const q = jobSearchTerm.toLowerCase();
+                        const matchId = (j.id || '').toLowerCase().includes(q);
+                        const matchProduct = (j.product_name || j.product_slug || '').toLowerCase().includes(q);
+                        const matchUser = (j.username || j.user_id || '').toLowerCase().includes(q);
+                        return matchId || matchProduct || matchUser;
+                      }
+                      return true;
+                    })
+                    .map((j) => {
+                      const delivered = Number(j.items_delivered || 0);
+                      return (
+                        <tr key={j.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900">{j.id}</td>
+                          <td className="py-3 px-4 text-slate-700">
+                            <div className="font-semibold">{j.username || 'System User'}</div>
+                            <div className="text-[10px] text-slate-400 font-mono truncate max-w-[120px]">{j.user_id}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-semibold text-slate-800">{j.product_name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">{j.product_slug}</div>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-800">
+                            <span className={delivered > 0 ? 'text-emerald-700' : 'text-slate-500'}>
+                              {delivered}
+                            </span>
+                            <span className="text-slate-400"> / {j.requested_items} items</span>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900">
+                            ₹{Number(j.charged_amount || 0).toFixed(2)}
+                          </td>
+                          <td className="py-3 px-4 text-slate-500">
+                            ₹{Number(j.provider_cost_converted || 0).toFixed(2)} (${Number(j.provider_cost_usd || 0).toFixed(4)})
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
+                                j.status === 'COMPLETED'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : j.status === 'RUNNING'
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200 animate-pulse'
+                                  : j.status === 'PARTIAL'
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : j.status === 'QUEUED'
+                                  ? 'bg-slate-100 text-slate-700'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              }`}
+                            >
+                              {j.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-400 whitespace-nowrap">
+                            {j.created_at ? new Date(j.created_at).toLocaleString() : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
+                            <button
+                              onClick={() => handleOpenJobResults(j)}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg font-semibold text-xs transition inline-flex items-center gap-1"
+                              title="View Extracted Data Table"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>View Data ({delivered})</span>
+                            </button>
+
+                            {delivered > 0 && (
+                              <>
+                                <a
+                                  href={api.dataMarketplace.getExportUrl(j.id, 'csv')}
+                                  download
+                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition"
+                                  title="Export CSV"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>CSV</span>
+                                </a>
+                                <a
+                                  href={api.dataMarketplace.getExportUrl(j.id, 'xlsx')}
+                                  download
+                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition"
+                                  title="Export Excel (.xlsx)"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>XLSX</span>
+                                </a>
+                                <a
+                                  href={api.dataMarketplace.getExportUrl(j.id, 'json')}
+                                  download
+                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition"
+                                  title="Export JSON"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>JSON</span>
+                                </a>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+
+              {jobs.length === 0 && (
+                <div className="p-12 text-center text-slate-400 text-xs">
+                  No extraction jobs have been executed yet.
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* =====================================================================
+              MODAL: EXTRACTED RECORDS VIEWER & DATA INSPECTION
+             ===================================================================== */}
+          {selectedJobForResults && (
+            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-6xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                {/* Modal Header */}
+                <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-slate-900">Extracted Records Viewer</span>
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-mono text-[10px] font-bold rounded">
+                        {selectedJobForResults.id}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-slate-700">{selectedJobForResults.product_name}</span>
+                      <span>•</span>
+                      <span>User: {selectedJobForResults.username || selectedJobForResults.user_id}</span>
+                      <span>•</span>
+                      <span className="font-bold text-emerald-700">{resultsTotal} Records Collected</span>
+                    </div>
+                  </div>
+
+                  {/* Export Options & Close */}
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={api.dataMarketplace.getExportUrl(selectedJobForResults.id, 'csv')}
+                      download
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Download CSV</span>
+                    </a>
+                    <a
+                      href={api.dataMarketplace.getExportUrl(selectedJobForResults.id, 'xlsx')}
+                      download
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Excel (.xlsx)</span>
+                    </a>
+                    <a
+                      href={api.dataMarketplace.getExportUrl(selectedJobForResults.id, 'json')}
+                      download
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5 text-slate-600" />
+                      <span>JSON</span>
+                    </a>
+                    <button
+                      onClick={() => setSelectedJobForResults(null)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition ml-2"
+                      title="Close"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sub-header Filter inside Modal */}
+                <div className="p-3 border-b border-slate-100 bg-white flex items-center justify-between gap-3">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Filter records in current view..."
+                      value={resultsSearch}
+                      onChange={(e) => setResultsSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1 bg-slate-50 border border-slate-200 rounded-md text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Showing Page {resultsPage} (Total {resultsTotal} items)
+                  </div>
+                </div>
+
+                {/* Modal Table Body */}
+                <div className="p-4 overflow-auto flex-1 bg-slate-50/50">
+                  {loadingResults ? (
+                    <div className="p-12 text-center text-slate-500">
+                      <RefreshCw className="w-6 h-6 animate-spin mx-auto text-emerald-600 mb-2" />
+                      <span className="text-xs">Fetching extracted records from storage...</span>
+                    </div>
+                  ) : jobResults.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <Database className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                      <p className="text-xs font-semibold">No records extracted for this job.</p>
+                      <p className="text-[11px] text-slate-400 mt-1">Status: {selectedJobForResults.status}</p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                      <div className="overflow-x-auto max-h-[55vh]">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold sticky top-0 z-10">
+                              <th className="py-2.5 px-3 w-12 text-center font-mono text-[10px] text-slate-400">#</th>
+                              {Array.from(
+                                new Set(jobResults.flatMap((item) => Object.keys(item || {})))
+                              ).map((headerKey) => (
+                                <th key={headerKey} className="py-2.5 px-3 uppercase tracking-wider text-[11px] whitespace-nowrap">
+                                  {headerKey.replace(/_/g, ' ')}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {jobResults
+                              .filter((item) => {
+                                if (!resultsSearch.trim()) return true;
+                                const q = resultsSearch.toLowerCase();
+                                return Object.values(item).some((v) =>
+                                  String(v ?? '').toLowerCase().includes(q)
+                                );
+                              })
+                              .map((item, idx) => {
+                                const allHeaders = Array.from(
+                                  new Set(jobResults.flatMap((it) => Object.keys(it || {})))
+                                );
+                                return (
+                                  <tr key={idx} className="hover:bg-slate-50/80 transition">
+                                    <td className="py-2.5 px-3 text-center font-mono text-[10px] text-slate-400 bg-slate-50/50">
+                                      {(resultsPage - 1) * 50 + idx + 1}
+                                    </td>
+                                    {allHeaders.map((header) => {
+                                      const val = item[header];
+                                      const isObj = val && typeof val === 'object';
+                                      return (
+                                        <td key={header} className="py-2.5 px-3 text-slate-700 max-w-xs truncate font-mono text-[11px]">
+                                          {isObj ? (
+                                            <span className="text-[10px] text-slate-500 bg-slate-100 px-1 py-0.5 rounded">
+                                              {JSON.stringify(val)}
+                                            </span>
+                                          ) : val !== null && val !== undefined && val !== '' ? (
+                                            String(val)
+                                          ) : (
+                                            <span className="text-slate-300">-</span>
+                                          )}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer with Pagination */}
+                <div className="p-3 border-t border-slate-100 bg-white flex items-center justify-between">
+                  <div className="text-xs text-slate-500">
+                    Total: <strong className="text-slate-800">{resultsTotal}</strong> records
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handlePageChange(resultsPage - 1)}
+                      disabled={resultsPage <= 1 || loadingResults}
+                      className="px-2.5 py-1 border border-slate-200 rounded text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition flex items-center gap-1"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>Prev</span>
+                    </button>
+                    <span className="text-xs text-slate-600 font-semibold px-2">
+                      Page {resultsPage} of {Math.max(1, Math.ceil(resultsTotal / 50))}
+                    </span>
+                    <button
+                      onClick={() => handlePageChange(resultsPage + 1)}
+                      disabled={resultsPage >= Math.ceil(resultsTotal / 50) || loadingResults}
+                      className="px-2.5 py-1 border border-slate-200 rounded text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition flex items-center gap-1"
+                    >
+                      <span>Next</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setSelectedJobForResults(null)}
+                      className="ml-3 px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
