@@ -34,8 +34,22 @@ import {
   Star,
   Info,
   DollarSign,
-  ArrowRight
+  ArrowRight,
+  Globe,
+  ChevronDown,
+  X,
+  Filter
 } from 'lucide-react';
+import {
+  getServiceMetadata,
+  resolveCountryIso,
+  getCountryFlag,
+  formatDialCode,
+  resolveCountryDisplayName,
+  POPULAR_SERVICES_LIST,
+  POPULAR_COUNTRIES_LIST,
+  SERVICE_CATEGORIES
+} from './virtualNumberAssets';
 
 interface VirtualNumbersViewProps {
   onNavigateToWallet?: () => void;
@@ -55,10 +69,13 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
   const [selectedProduct, setSelectedProduct] = useState<string>('whatsapp');
   const [selectedOperator, setSelectedOperator] = useState<string>('any');
 
-  // Search & Filter
+  // Search & Filter & Modals
   const [countrySearch, setCountrySearch] = useState<string>('');
   const [productSearch, setProductSearch] = useState<string>('');
-  const [productCategory, setProductCategory] = useState<string>('all');
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState<boolean>(false);
+  const [isCountryModalOpen, setIsCountryModalOpen] = useState<boolean>(false);
+  const [serviceCategoryFilter, setServiceCategoryFilter] = useState<string>('all');
+  const [countryRegionFilter, setCountryRegionFilter] = useState<string>('all');
 
   // Rates & Stock state
   const [operatorRates, setOperatorRates] = useState<NumberOperatorRate[]>([]);
@@ -346,19 +363,59 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
   const currentSellPrice = selectedOperatorObj?.sell_price || 0;
   const isBalanceSufficient = (wallet?.balance || 0) >= currentSellPrice && currentSellPrice > 0;
 
-  // Popular service shortcuts
-  const popularServices = [
-    { slug: 'whatsapp', name: 'WhatsApp', flag: '💬' },
-    { slug: 'telegram', name: 'Telegram', flag: '✈️' },
-    { slug: 'google', name: 'Google / Gmail', flag: '🔴' },
-    { slug: 'openai', name: 'ChatGPT / OpenAI', flag: '🤖' },
-    { slug: 'instagram', name: 'Instagram', flag: '📸' },
-    { slug: 'facebook', name: 'Facebook', flag: '👥' },
-    { slug: 'tiktok', name: 'TikTok', flag: '🎵' },
-    { slug: 'twitter', name: 'Twitter / X', flag: '🐦' },
-    { slug: 'amazon', name: 'Amazon', flag: '🛒' },
-    { slug: 'tinder', name: 'Tinder', flag: '🔥' }
-  ];
+  // Active selection metadata
+  const activeServiceMeta = getServiceMetadata(selectedProduct);
+  const activeCountryObj = countries.find((c) => c.slug === selectedCountry);
+  const activeCountryIso = resolveCountryIso(selectedCountry, activeCountryObj?.iso);
+  const activeCountryFlag = getCountryFlag(activeCountryIso);
+  const activeCountryName = resolveCountryDisplayName(selectedCountry, activeCountryObj?.name);
+  const activeCountryDialCode = formatDialCode(activeCountryObj?.prefix);
+
+  // Filter products by search and category
+  const filteredProducts = products.filter((p) => {
+    const meta = getServiceMetadata(p.slug, p.name);
+    if (serviceCategoryFilter !== 'all') {
+      if (serviceCategoryFilter === 'popular') {
+        if (!POPULAR_SERVICES_LIST.includes(p.slug)) return false;
+      } else if (meta.category !== serviceCategoryFilter) {
+        return false;
+      }
+    }
+    if (productSearch) {
+      const q = productSearch.toLowerCase().trim();
+      return (
+        meta.displayName.toLowerCase().includes(q) ||
+        meta.slug.toLowerCase().includes(q) ||
+        (p.name && p.name.toLowerCase().includes(q))
+      );
+    }
+    return true;
+  });
+
+  // Filter countries by search and region
+  const filteredCountries = countries.filter((c) => {
+    const iso = resolveCountryIso(c.slug, c.iso);
+    const name = resolveCountryDisplayName(c.slug, c.name);
+    const dial = formatDialCode(c.prefix);
+
+    if (countryRegionFilter === 'popular') {
+      const isPop = POPULAR_COUNTRIES_LIST.some((pop) => pop.slug === c.slug);
+      if (!isPop) return false;
+    }
+
+    if (countrySearch) {
+      const q = countrySearch.toLowerCase().trim();
+      const dialDigits = q.replace(/[^\d]/g, '');
+      return (
+        name.toLowerCase().includes(q) ||
+        c.slug.toLowerCase().includes(q) ||
+        iso.includes(q) ||
+        (dial && dial.includes(q)) ||
+        (dialDigits && c.prefix.includes(dialDigits))
+      );
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6 pb-12">
@@ -462,86 +519,178 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
             </p>
           </div>
 
-          {/* Popular Services Quick-Pills */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 block">Popular Platforms</label>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {popularServices.map((srv) => (
+          {/* Visual Showcase Hub: Service & Country */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 1. Target Service Visual Card */}
+            <div className="bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-sky-700 bg-sky-100/80 px-2 py-0.5 rounded-full border border-sky-200/60 flex items-center gap-1">
+                  <span>🎯</span>
+                  <span>Target Service</span>
+                </span>
                 <button
-                  key={srv.slug}
                   type="button"
-                  onClick={() => setSelectedProduct(srv.slug)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
-                    selectedProduct === srv.slug
-                      ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                  }`}
+                  onClick={() => {
+                    setProductSearch('');
+                    setIsServiceModalOpen(true);
+                  }}
+                  className="text-xs font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1 hover:underline transition"
                 >
-                  <span>{srv.flag}</span>
-                  <span>{srv.name}</span>
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Browse All ({products.length})</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Selectors Grid: Service Dropdown + Country Dropdown */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Service Search & Picker */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 block">All Services ({products.length})</label>
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="Search service name..."
-                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-sky-500"
-                />
               </div>
 
-              <select
-                value={selectedProduct}
-                onChange={(e) => setSelectedProduct(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-sky-500/20"
+              {/* Selected Service Hero */}
+              <div
+                onClick={() => {
+                  setProductSearch('');
+                  setIsServiceModalOpen(true);
+                }}
+                className="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-3 cursor-pointer hover:border-sky-300 hover:shadow-xs transition group"
               >
-                {products
-                  .filter((p) => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.slug.toLowerCase().includes(productSearch.toLowerCase()))
-                  .map((p) => (
-                    <option key={p.slug} value={p.slug}>
-                      {p.name} ({p.slug})
-                    </option>
-                  ))}
-              </select>
-            </div>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${activeServiceMeta.gradient} text-white flex items-center justify-center text-lg font-black shadow-xs shrink-0 group-hover:scale-105 transition`}>
+                    {activeServiceMeta.iconChar}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="text-sm font-black text-slate-900 truncate">
+                        {activeServiceMeta.displayName}
+                      </h3>
+                      {activeServiceMeta.badge && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 shrink-0">
+                          {activeServiceMeta.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-mono truncate">
+                      slug: {activeServiceMeta.slug}
+                    </p>
+                  </div>
+                </div>
 
-            {/* Country Search & Picker */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 block">Country / Jurisdiction ({countries.length})</label>
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={countrySearch}
-                  onChange={(e) => setCountrySearch(e.target.value)}
-                  placeholder="Search country or dial code..."
-                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-sky-500"
-                />
+                <span className="px-2.5 py-1 bg-slate-100 group-hover:bg-sky-50 text-slate-600 group-hover:text-sky-700 text-xs font-bold rounded-lg border border-slate-200 shrink-0 flex items-center gap-1 transition">
+                  <span>Change</span>
+                  <ChevronRight className="w-3 h-3" />
+                </span>
               </div>
 
-              <select
-                value={selectedCountry}
-                onChange={(e) => setSelectedCountry(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-sky-500/20"
+              {/* Quick Popular Services Row */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Quick Select
+                </span>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                  {POPULAR_SERVICES_LIST.map((slug) => {
+                    const meta = getServiceMetadata(slug);
+                    const isSelected = selectedProduct === slug;
+                    return (
+                      <button
+                        key={slug}
+                        type="button"
+                        onClick={() => setSelectedProduct(slug)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1.5 border ${
+                          isSelected
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded bg-gradient-to-br ${meta.gradient} text-white flex items-center justify-center text-[9px] font-bold`}>
+                          {meta.iconChar}
+                        </span>
+                        <span className="truncate max-w-[80px]">{meta.displayName.split(' ')[0]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Target Country Visual Card */}
+            <div className="bg-gradient-to-br from-slate-50 to-emerald-50/30 border border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-200/60 flex items-center gap-1">
+                  <span>🌍</span>
+                  <span>Jurisdiction / Country</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCountrySearch('');
+                    setIsCountryModalOpen(true);
+                  }}
+                  className="text-xs font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 hover:underline transition"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Browse All ({countries.length})</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Selected Country Hero */}
+              <div
+                onClick={() => {
+                  setCountrySearch('');
+                  setIsCountryModalOpen(true);
+                }}
+                className="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-3 cursor-pointer hover:border-emerald-300 hover:shadow-xs transition group"
               >
-                {countries
-                  .filter((c) => !countrySearch || c.name.toLowerCase().includes(countrySearch.toLowerCase()) || c.slug.toLowerCase().includes(countrySearch.toLowerCase()) || c.prefix.includes(countrySearch))
-                  .map((c) => (
-                    <option key={c.slug} value={c.slug}>
-                      {c.name} ({c.prefix || c.slug})
-                    </option>
-                  ))}
-              </select>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-2xl shadow-xs shrink-0 group-hover:scale-105 transition">
+                    {activeCountryFlag}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="text-sm font-black text-slate-900 truncate">
+                        {activeCountryName}
+                      </h3>
+                      {activeCountryDialCode && (
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 shrink-0">
+                          {activeCountryDialCode}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-mono truncate">
+                      slug: {selectedCountry}
+                    </p>
+                  </div>
+                </div>
+
+                <span className="px-2.5 py-1 bg-slate-100 group-hover:bg-emerald-50 text-slate-600 group-hover:text-emerald-800 text-xs font-bold rounded-lg border border-slate-200 shrink-0 flex items-center gap-1 transition">
+                  <span>Change</span>
+                  <ChevronRight className="w-3 h-3" />
+                </span>
+              </div>
+
+              {/* Quick Popular Countries Row */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Quick Select
+                </span>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                  {POPULAR_COUNTRIES_LIST.map((c) => {
+                    const isSelected = selectedCountry === c.slug;
+                    return (
+                      <button
+                        key={c.slug}
+                        type="button"
+                        onClick={() => setSelectedCountry(c.slug)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1 border ${
+                          isSelected
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        <span>{c.flag}</span>
+                        <span>{c.name.split(' ')[0]}</span>
+                        <span className="text-[9px] opacity-70 font-mono">{c.code}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1112,6 +1261,282 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                     <span>Confirm & Pay</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: VISUAL SERVICE SELECTOR (1,346 SERVICES) */}
+      {/* ========================================================================= */}
+      {isServiceModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-sky-600" />
+                    <span>Choose Target Service</span>
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-100 text-sky-800 border border-sky-200">
+                    {filteredProducts.length} Services
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Select the application or website you wish to verify via SMS.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsServiceModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search Input & Category Filters */}
+            <div className="p-4 bg-slate-50/70 border-b border-slate-100 space-y-3">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  placeholder="Search service name, e.g. WhatsApp, OpenAI, Telegram, Steam, Bank..."
+                  className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/30"
+                />
+                {productSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setProductSearch('')}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                {SERVICE_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setServiceCategoryFilter(cat.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 border ${
+                      serviceCategoryFilter === cat.id
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                        : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    <span>{cat.icon}</span>
+                    <span>{cat.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Grid of Visual Service Cards */}
+            <div className="p-5 overflow-y-auto flex-1 max-h-[55vh] scrollbar-thin">
+              {filteredProducts.length === 0 ? (
+                <div className="py-16 text-center space-y-2">
+                  <div className="text-3xl">🔍</div>
+                  <p className="text-sm font-bold text-slate-700">No services found matching "{productSearch}"</p>
+                  <p className="text-xs text-slate-400">Try a different keyword or switch to "All Services"</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {filteredProducts.map((p) => {
+                    const meta = getServiceMetadata(p.slug, p.name);
+                    const isSelected = selectedProduct === p.slug;
+                    return (
+                      <button
+                        key={p.slug}
+                        type="button"
+                        onClick={() => {
+                          setSelectedProduct(p.slug);
+                          setIsServiceModalOpen(false);
+                        }}
+                        className={`p-3 rounded-2xl border text-left transition flex items-center gap-3 relative group ${
+                          isSelected
+                            ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 shadow-xs'
+                            : 'bg-white hover:bg-slate-50 hover:border-slate-300 border-slate-200'
+                        }`}
+                      >
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${meta.gradient} text-white flex items-center justify-center text-sm font-bold shrink-0 shadow-2xs group-hover:scale-105 transition`}>
+                          {meta.iconChar}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs font-bold text-slate-900 truncate">{meta.displayName}</h4>
+                          <p className="text-[10px] text-slate-400 font-mono truncate">{meta.slug}</p>
+                        </div>
+                        {isSelected && (
+                          <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span>Showing {filteredProducts.length} of {products.length} services</span>
+              <button
+                type="button"
+                onClick={() => setIsServiceModalOpen(false)}
+                className="px-4 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: VISUAL COUNTRY SELECTOR (153 COUNTRIES) */}
+      {/* ========================================================================= */}
+      {isCountryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-emerald-600" />
+                    <span>Choose Country / Jurisdiction</span>
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    {filteredCountries.length} Jurisdictions
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Select the mobile carrier region to acquire numbers from.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCountryModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search Input & Quick Regions */}
+            <div className="p-4 bg-slate-50/70 border-b border-slate-100 space-y-3">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={countrySearch}
+                  onChange={(e) => setCountrySearch(e.target.value)}
+                  placeholder="Search country name, dial code, or slug (e.g. United Kingdom, +44, India, 91, US)..."
+                  className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30"
+                />
+                {countrySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setCountrySearch('')}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Region Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                {[
+                  { id: 'all', label: 'All Jurisdictions (153)' },
+                  { id: 'popular', label: '⭐ Top Popular' }
+                ].map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setCountryRegionFilter(r.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 border ${
+                      countryRegionFilter === r.id
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                        : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Grid of Visual Country Cards */}
+            <div className="p-5 overflow-y-auto flex-1 max-h-[55vh] scrollbar-thin">
+              {filteredCountries.length === 0 ? (
+                <div className="py-16 text-center space-y-2">
+                  <div className="text-3xl">🌍</div>
+                  <p className="text-sm font-bold text-slate-700">No countries found matching "{countrySearch}"</p>
+                  <p className="text-xs text-slate-400">Try searching by dial code (e.g. +44) or country name</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {filteredCountries.map((c) => {
+                    const iso = resolveCountryIso(c.slug, c.iso);
+                    const flag = getCountryFlag(iso);
+                    const name = resolveCountryDisplayName(c.slug, c.name);
+                    const dial = formatDialCode(c.prefix);
+                    const isSelected = selectedCountry === c.slug;
+
+                    return (
+                      <button
+                        key={c.slug}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCountry(c.slug);
+                          setIsCountryModalOpen(false);
+                        }}
+                        className={`p-3 rounded-2xl border text-left transition flex items-center gap-3 relative group ${
+                          isSelected
+                            ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
+                            : 'bg-white hover:bg-slate-50 hover:border-slate-300 border-slate-200'
+                        }`}
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-xl shrink-0 group-hover:scale-110 transition shadow-2xs">
+                          {flag}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs font-bold text-slate-900 truncate">{name}</h4>
+                          <p className="text-[10px] text-slate-500 font-mono font-semibold">{dial || c.slug}</p>
+                        </div>
+                        {isSelected && (
+                          <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span>Showing {filteredCountries.length} of {countries.length} jurisdictions</span>
+              <button
+                type="button"
+                onClick={() => setIsCountryModalOpen(false)}
+                className="px-4 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
+              >
+                Close
               </button>
             </div>
           </div>
