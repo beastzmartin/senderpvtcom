@@ -31,3 +31,4 @@ router.get('/admin/rentals', requireAuth, requireAdmin, controller.getAdminRenta
 router.post('/admin/orders/:orderId/refund', requireAuth, requireAdmin, controller.refundAdminOrder);
 
 export default router;
+

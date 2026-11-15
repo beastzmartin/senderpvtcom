@@ -16,7 +16,7 @@ export class GrizzlyPartnerProtocolService {
   private static readonly SERVICES_CACHE_TTL_MS = 5000; // 5-second in-memory cache for fast polling
 
   /**
-   * Invalidate GET_SERVICES cache on inventory changes
+   * Invalidate GET_SERVICES cache on inventory or activation changes
    */
   public static invalidateCache(): void {
     this.servicesCache = null;
@@ -24,25 +24,28 @@ export class GrizzlyPartnerProtocolService {
   }
 
   /**
-   * Generates a unique 6 to 8 digit integer activation ID
+   * Generates a unique 6 to 9 digit unsigned integer activation ID
    */
   private static generateActivationId(): number {
     const db = getDatabase();
     for (let attempts = 0; attempts < 10; attempts++) {
-      // Generate a clean 6-digit random number between 100000 and 999999
       const candidateId = Math.floor(100000 + Math.random() * 900000);
       const exists = db.prepare('SELECT 1 FROM grizzly_activations WHERE activation_id = ?').get(candidateId);
       if (!exists) {
         return candidateId;
       }
     }
-    // Fallback using timestamp mod 1,000,000
     return Math.floor(Date.now() % 900000) + 100000;
   }
 
   /**
    * Implements documented GET_SERVICES operation
-   * Returns available country inventory and service counts per operator.
+   * Returns exact currently allocatable inventory across countries, operators, and services.
+   * Excludes:
+   * - Occupied / failed / maintenance hardware slots
+   * - Prohibited numbers (Status 1)
+   * - Cancellation-blacklisted numbers (>= 5 cancellations for service)
+   * - Quarantined returned numbers (Status 5)
    */
   public static handleGetServices(request: GrizzlyGetServicesRequest, clientIp?: string): GrizzlyGetServicesResponse {
     const startTime = Date.now();
@@ -66,7 +69,6 @@ export class GrizzlyPartnerProtocolService {
 
     const config = GrizzlyProviderConfigService.getConfig();
 
-    // If disabled or maintenance, return empty country list
     if (config.status !== 'enabled') {
       const duration = Date.now() - startTime;
       const response: GrizzlyGetServicesResponse = {
@@ -94,7 +96,31 @@ export class GrizzlyPartnerProtocolService {
 
     const db = getDatabase();
 
-    // 3. Query active and available inventory with healthy hardware modules
+    // 3. Preload all active blacklists and exclusions in memory for fast lookup
+    const blacklisted = new Set(
+      (db.prepare(`
+        SELECT phone_number || '::' || service as k
+        FROM grizzly_number_service_cancellations
+        WHERE is_permanently_excluded = 1
+      `).all() as any[]).map((r) => r.k)
+    );
+
+    const quarantined = new Set(
+      (db.prepare(`
+        SELECT phone_number || '::' || service as k
+        FROM grizzly_number_quarantine
+        WHERE status = 'quarantined'
+      `).all() as any[]).map((r) => r.k)
+    );
+
+    const prohibited = new Set(
+      (db.prepare(`
+        SELECT phone_number || '::' || service as k
+        FROM grizzly_prohibited_numbers
+      `).all() as any[]).map((r) => r.k)
+    );
+
+    // 4. Query physical inventory currently available with active hardware capacity
     const rows = db.prepare(`
       SELECT
         i.country_id,
@@ -112,7 +138,7 @@ export class GrizzlyPartnerProtocolService {
       phone_number: string;
     }>;
 
-    // 4. Aggregate counts per country -> operator -> service
+    // 5. Aggregate counts per country -> operator -> service
     const countryMap = new Map<number, Map<string, Map<string, number>>>();
 
     for (const row of rows) {
@@ -125,23 +151,32 @@ export class GrizzlyPartnerProtocolService {
 
       const countryId = row.country_id;
       const op = row.operator || 'any';
-
-      if (!countryMap.has(countryId)) {
-        countryMap.set(countryId, new Map());
-      }
-      const opMap = countryMap.get(countryId)!;
-
-      if (!opMap.has(op)) {
-        opMap.set(op, new Map());
-      }
-      const svcMap = opMap.get(op)!;
+      const cleanPhone = row.phone_number.replace(/\D/g, '');
 
       for (const s of services) {
+        const key = `${cleanPhone}::${s}`;
+        const keyAll = `${cleanPhone}::ALL`;
+
+        // Exclude if blacklisted (>= 5 cancellations), quarantined (status 5), or prohibited (status 1)
+        if (blacklisted.has(key) || quarantined.has(key) || prohibited.has(key) || prohibited.has(keyAll)) {
+          continue;
+        }
+
+        if (!countryMap.has(countryId)) {
+          countryMap.set(countryId, new Map());
+        }
+        const opMap = countryMap.get(countryId)!;
+
+        if (!opMap.has(op)) {
+          opMap.set(op, new Map());
+        }
+        const svcMap = opMap.get(op)!;
+
         svcMap.set(s, (svcMap.get(s) || 0) + 1);
       }
     }
 
-    // 5. Build standard Grizzly countryList response
+    // 6. Build exact standard countryList response (excluding empty entries)
     const countryList: GrizzlyCountryServicesItem[] = [];
 
     for (const [countryId, opMap] of countryMap.entries()) {
@@ -173,7 +208,6 @@ export class GrizzlyPartnerProtocolService {
       status: 'SUCCESS'
     };
 
-    // Store in cache
     this.servicesCache = response;
     this.lastCacheTime = now;
 
@@ -193,8 +227,9 @@ export class GrizzlyPartnerProtocolService {
   }
 
   /**
-   * Implements documented GET_NUMBER operation
-   * Allocates an available number for the specified country, operator, and service.
+   * Implements documented GET_NUMBER operation with database-level atomic allocation
+   * Guarantees that even under high concurrency (e.g. 100 simultaneous requests),
+   * no phone number is ever issued twice.
    */
   public static handleGetNumber(request: GrizzlyGetNumberRequest, clientIp?: string): GrizzlyGetNumberResponse {
     const startTime = Date.now();
@@ -218,7 +253,6 @@ export class GrizzlyPartnerProtocolService {
 
     const config = GrizzlyProviderConfigService.getConfig();
 
-    // If disabled or maintenance, return NO_NUMBERS
     if (config.status !== 'enabled') {
       const duration = Date.now() - startTime;
       const noNumbersResp: GrizzlyGetNumberResponse = { status: 'NO_NUMBERS' };
@@ -235,11 +269,11 @@ export class GrizzlyPartnerProtocolService {
       return noNumbersResp;
     }
 
-    // 2. Validate parameters
+    // 2. Strict field type validation
     const country = typeof request.country === 'number' ? request.country : parseInt(String(request.country), 10);
     const service = (request.service || '').trim().toLowerCase();
     const operator = (request.operator || 'any').trim().toLowerCase();
-    const sum = typeof request.sum === 'number' ? request.sum : parseFloat(String(request.sum)) || 0.0;
+    const sum = typeof request.sum === 'number' ? Number(request.sum.toFixed(2)) : parseFloat(String(request.sum)) || 0.0;
     const exceptionPhoneSet = Array.isArray(request.exceptionPhoneSet) ? request.exceptionPhoneSet : [];
     const canGetAnotherSms = Boolean(request.canGetAnotherSms);
 
@@ -282,9 +316,11 @@ export class GrizzlyPartnerProtocolService {
       return noNumbersResp;
     }
 
-    // 4. Atomic Number Allocation inside an immediate SQLite transaction
+    // 4. ATOMIC DATABASE ALLOCATION TRANSACTION
+    // Using immediate() transaction: SQLite acquires an exclusive write lock immediately,
+    // guaranteeing complete serialized isolation under heavy concurrency (100 simultaneous requests).
     const allocateTx = db.transaction(() => {
-      // Query candidates for the country and available status
+      // Find candidate numbers for the requested country with active hardware modules
       const candidates = db.prepare(`
         SELECT
           i.id,
@@ -304,16 +340,15 @@ export class GrizzlyPartnerProtocolService {
         ORDER BY i.total_allocations ASC, i.created_at ASC
       `).all(country) as any[];
 
-      // Filter candidate in application logic
       let selectedCandidate: any = null;
 
       for (const cand of candidates) {
-        // Check operator
+        // Operator check
         if (operator !== 'any' && cand.operator !== 'any' && cand.operator.toLowerCase() !== operator) {
           continue;
         }
 
-        // Check service capability
+        // Service capability check
         let supportedServices: string[] = [];
         try {
           supportedServices = JSON.parse(cand.supported_services || '[]');
@@ -325,18 +360,45 @@ export class GrizzlyPartnerProtocolService {
           continue;
         }
 
-        // Check exceptionPhoneSet (number must NOT start with any prefix in exceptionPhoneSet)
         const cleanPhone = cand.phone_number.replace(/\D/g, '');
-        let isExcluded = false;
+
+        // Exception prefix check: full international phone number must NOT start with any excluded prefix
+        let isExcludedByPrefix = false;
         for (const prefix of exceptionPhoneSet) {
           const cleanPrefix = String(prefix).replace(/\D/g, '');
           if (cleanPrefix && cleanPhone.startsWith(cleanPrefix)) {
-            isExcluded = true;
+            isExcludedByPrefix = true;
             break;
           }
         }
+        if (isExcludedByPrefix) {
+          continue;
+        }
 
-        if (isExcluded) {
+        // Cancellation blacklist check: permanently excluded if cancelled >= 5 times for this service
+        const isBlacklisted = db.prepare(`
+          SELECT 1 FROM grizzly_number_service_cancellations
+          WHERE phone_number = ? AND service = ? AND is_permanently_excluded = 1
+        `).get(cand.phone_number, service);
+        if (isBlacklisted) {
+          continue;
+        }
+
+        // Quarantine check: excluded if returned (status 5)
+        const isQuarantined = db.prepare(`
+          SELECT 1 FROM grizzly_number_quarantine
+          WHERE phone_number = ? AND service = ? AND status = 'quarantined'
+        `).get(cand.phone_number, service);
+        if (isQuarantined) {
+          continue;
+        }
+
+        // Prohibited check: excluded if prohibited (status 1)
+        const isProhibited = db.prepare(`
+          SELECT 1 FROM grizzly_prohibited_numbers
+          WHERE phone_number = ? AND (service = ? OR service = 'ALL')
+        `).get(cand.phone_number, service);
+        if (isProhibited) {
           continue;
         }
 
@@ -351,7 +413,7 @@ export class GrizzlyPartnerProtocolService {
       // Generate unique integer activation ID
       const activationId = GrizzlyPartnerProtocolService.generateActivationId();
 
-      // Lock inventory
+      // Lock inventory atomically
       db.prepare(`
         UPDATE grizzly_inventory
         SET status = 'allocated',
@@ -369,7 +431,7 @@ export class GrizzlyPartnerProtocolService {
         );
       }
 
-      // Record activation
+      // Record activation in grizzly_activations
       const activationRecordId = crypto.randomUUID();
       db.prepare(`
         INSERT INTO grizzly_activations (
@@ -412,7 +474,7 @@ export class GrizzlyPartnerProtocolService {
 
     let txResult: { selectedCandidate: any; activationId: number } | null = null;
     try {
-      txResult = allocateTx();
+      txResult = allocateTx.immediate();
     } catch (err: any) {
       console.error('[Grizzly] Allocation transaction error:', err);
       const duration = Date.now() - startTime;
@@ -448,10 +510,10 @@ export class GrizzlyPartnerProtocolService {
       return noNumbersResp;
     }
 
-    // Invalidate GET_SERVICES cache
+    // Invalidate GET_SERVICES cache immediately
     this.invalidateCache();
 
-    // Format phone number as an integer per documentation
+    // Format phone number as numeric Ulong
     const numericPhoneStr = txResult.selectedCandidate.phone_number.replace(/\D/g, '');
     const numericPhoneNumber = parseInt(numericPhoneStr, 10);
 

@@ -1,11 +1,27 @@
 /**
  * GrizzlySMS Partner Protocol Type Definitions
- * Exact documented contracts for inbound partner requests and outbound responses.
+ * Exact contracts for inbound partner requests and outbound delivery pipelines.
  */
 
-export type GrizzlyPartnerAction = 'GET_SERVICES' | 'GET_NUMBER' | 'PUSH_SMS' | 'FINISH_ACTIVATION';
+export type GrizzlyPartnerAction =
+  | 'GET_SERVICES'
+  | 'GET_NUMBER'
+  | 'PUSH_SMS'
+  | 'PUSH_CALL'
+  | 'PUSH_CALL_RECORD'
+  | 'FINISH_ACTIVATION';
 
 export type GrizzlyProviderStatus = 'enabled' | 'disabled' | 'maintenance';
+
+/**
+ * Official GrizzlySMS Status Codes
+ */
+export const GRIZZLY_STATUS = {
+  PROHIBITED: 1,  // Number issuance prohibited
+  SOLD: 3,        // Successfully sold
+  CANCELLED: 4,   // Activation cancelled
+  RETURNED: 5     // Activation returned / refund
+} as const;
 
 export interface GrizzlyProviderConfig {
   id: string;
@@ -15,6 +31,8 @@ export interface GrizzlyProviderConfig {
   protocol_key: string;
   status: GrizzlyProviderStatus;
   partner_api_endpoint?: string;
+  outbound_api_url: string;
+  user_agent: string;
   priority: number;
   max_active_numbers: number;
   min_payout: number;
@@ -66,8 +84,8 @@ export interface GrizzlyGetNumberRequest {
 
 export interface GrizzlyGetNumberSuccessResponse {
   status: 'SUCCESS';
-  number: number; // e.g. 19157891133
-  activationId: number; // e.g. 571346
+  number: number; // Ulong numeric e.g. 19157891133 or 447472190082
+  activationId: number; // Ulong e.g. 571346
   flashcall: boolean;
   voice: boolean;
   canGetAnotherSms: boolean;
@@ -79,41 +97,85 @@ export interface GrizzlyGetNumberNoNumbersResponse {
 
 export type GrizzlyGetNumberResponse = GrizzlyGetNumberSuccessResponse | GrizzlyGetNumberNoNumbersResponse;
 
-// 3. PUSH_SMS (Pending Complete Documentation)
+// 3. PUSH_SMS Outbound Contract (https://api.grizzlysms.com/agent/api/sms)
+export interface GrizzlyPushSmsOutboundRequest {
+  action: 'PUSH_SMS';
+  key: string;
+  smsId: number; // Ulong
+  phone: number; // Ulong e.g. 447472190082
+  phoneFrom: string; // e.g. "447472190099"
+  text: string;
+}
+
+export interface GrizzlyPushSmsResponse {
+  status: 'SUCCESS' | 'ERROR';
+  error?: string;
+}
+
 export interface GrizzlyPushSmsPayload {
   activationId: number;
   phoneNumber: string;
   sender: string;
   messageContent: string;
-  receivedTimestamp: string;
+  receivedTimestamp?: string;
+  smsId?: number;
+  phone?: string | number;
+  phoneFrom?: string;
+  text?: string;
 }
 
 export interface GrizzlyPushSmsResult {
   success: boolean;
-  status: 'forwarded' | 'pending_docs' | 'failed';
+  messageId?: string;
+  status?: string;
+  error?: string;
   providerResponse?: any;
+}
+
+// 4. PUSH_CALL Outbound Contract (https://api.grizzlysms.com/agent/api/sms)
+export interface GrizzlyPushCallOutboundRequest {
+  action: 'PUSH_CALL';
+  key: string;
+  callId: number; // Ulong
+  phone: number; // Ulong e.g. 447472190082
+  phoneFrom: string; // e.g. "447472190099"
+}
+
+export interface GrizzlyPushCallResponse {
+  status: 'SUCCESS' | 'ERROR';
   error?: string;
 }
 
-// 4. FINISH_ACTIVATION (Pending Complete Documentation)
-export interface GrizzlyFinishActivationPayload {
-  activationId: number;
-  statusCode?: number; // 3 represents successful registration
-  rewardAmount?: number;
-  providerRef?: string;
-  notes?: string;
+// 5. PUSH_CALL_RECORD Outbound Contract (multipart/form-data)
+export interface GrizzlyPushCallRecordData {
+  recordId: number;
+  callId?: number;
+  activationId?: number;
+  phone: number;
+  phoneFrom: string;
+  filePath?: string;
+  fileBuffer?: Buffer;
+  fileName?: string;
+  contentType?: string;
 }
 
-export interface GrizzlyFinishActivationResult {
-  success: boolean;
-  activationId: number;
-  newStatus: string;
-  rewardRecorded: boolean;
-  hardwareSlotReleased: boolean;
-  notes?: string;
+// 6. FINISH_ACTIVATION Inbound Callback Contract
+export interface GrizzlyFinishActivationCallback {
+  action: 'FINISH_ACTIVATION';
+  key: string;
+  activationId: number | string;
+  status: number; // 1=prohibited, 3=sold, 4=cancelled, 5=returned
+  reason?: string;
+  sum?: number;
+  reward?: number;
 }
 
-// 5. Hardware / SIM Module
+export interface GrizzlyFinishActivationCallbackResponse {
+  status: 'SUCCESS' | 'ERROR';
+  error?: string;
+}
+
+// 7. Hardware / SIM Module
 export interface GrizzlyHardwareModule {
   id: string;
   slotNumber: number;

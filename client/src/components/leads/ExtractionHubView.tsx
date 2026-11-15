@@ -63,8 +63,10 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
     const combined = kw && loc ? `${kw} in ${loc}` : (kw || loc || 'local businesses');
     const encoded = encodeURIComponent(combined);
     const parsedCount = parseInt(String(count), 10) || 50;
-    const queryParams = `?auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}`;
-    const hash = `#auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}`;
+    const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || '') : '';
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+    const queryParams = `?auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}${tokenParam}`;
+    const hash = `#auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}${tokenParam}`;
 
     switch (sourceId) {
       case 'google_maps':

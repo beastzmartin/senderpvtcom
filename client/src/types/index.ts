@@ -1018,6 +1018,72 @@ export interface VirtualNumberPricingRule {
   is_active: number;
 }
 
+export interface GrizzlyOverview {
+  config: {
+    id: string;
+    name: string;
+    slug: string;
+    status: 'enabled' | 'disabled' | 'maintenance';
+    partner_api_endpoint?: string;
+    priority: number;
+    max_active_numbers: number;
+    min_payout: number;
+    max_payout: number;
+    last_successful_request_at?: string;
+    last_error?: string;
+    last_error_at?: string;
+    total_requests_count: number;
+    successful_requests_count: number;
+    failed_requests_count: number;
+    error_rate_percentage: string;
+  };
+  capacity: {
+    modules: {
+      total: number;
+      active: number;
+      occupied: number;
+      failed: number;
+      maintenance: number;
+    };
+    inventory: {
+      total: number;
+      available: number;
+      allocated: number;
+    };
+    activations: {
+      total: number;
+      live: number;
+      successful: number;
+    };
+  };
+  accounting: {
+    totalTransactions: number;
+    totalRequestedSum: number;
+    totalRewardAmount: number;
+    confirmedRewards: number;
+  };
+  sms: {
+    total: number;
+    forwarded: number;
+    pending: number;
+  };
+  voice?: {
+    total: number;
+    delivered: number;
+    pending: number;
+    retries: number;
+  };
+  statusDistribution?: {
+    prohibited: number;
+    sold: number;
+    cancelled: number;
+    returned: number;
+  };
+  blacklistCount?: number;
+  quarantineCount?: number;
+  failedAllocationsCount: number;
+}
+
 
 
 

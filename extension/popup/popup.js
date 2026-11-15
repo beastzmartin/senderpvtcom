@@ -127,6 +127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const syncBufferCount = document.getElementById('sync-buffer-count');
   const syncStatusMsg = document.getElementById('sync-status-msg');
   const btnSyncNow = document.getElementById('btn-sync-now');
+  const btnExportCsv = document.getElementById('btn-export-csv');
   const btnOpenDashboard = document.getElementById('btn-open-dashboard');
   const btnLogout = document.getElementById('btn-logout');
 
@@ -214,41 +215,127 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Force Sync button
   if (btnSyncNow) {
     btnSyncNow.addEventListener('click', () => {
-      btnSyncNow.textContent = 'Syncing...';
+      btnSyncNow.textContent = '⏳ Syncing to CRM...';
       btnSyncNow.disabled = true;
-      chrome.runtime.sendMessage({ type: 'SYNC_QUEUE' }, () => {
+      chrome.runtime.sendMessage({ type: 'SYNC_QUEUE' }, (res) => {
         btnSyncNow.disabled = false;
-        updateBufferUI(0);
+        if (res && res.success) {
+          const count = res.count !== undefined ? res.count : 0;
+          btnSyncNow.textContent = '✓ Synced to CRM!';
+          syncStatusMsg.textContent = `✓ ${count} Leads Saved in Cloud CRM`;
+          syncBufferCount.textContent = 'All extracted leads are safely synced';
+          setTimeout(() => {
+            updateBufferUI(0);
+          }, 2500);
+        } else {
+          alert(res?.error || res?.message || 'Sync failed. Please ensure you are connected to the dashboard.');
+          btnSyncNow.textContent = '⚡ Retry CRM Sync';
+        }
+      });
+    });
+  }
+
+  // Export CSV button
+  if (btnExportCsv) {
+    btnExportCsv.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'GET_WORKSPACE_DATA' }, (res) => {
+        const leads = res?.scrapedLeads || [];
+        if (!leads || leads.length === 0) {
+          alert('No leads collected yet to export.');
+          return;
+        }
+
+        const headers = [
+          'Business Name',
+          'Category',
+          'Phone',
+          'Website',
+          'Address',
+          'Street',
+          'City',
+          'State',
+          'Postal Code',
+          'Rating',
+          'Reviews Count',
+          'Operating Status',
+          'Listing URL',
+          'Keyword'
+        ];
+        const escapeCsv = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+        const rows = leads.map((l) => [
+          escapeCsv(l.business_name || ''),
+          escapeCsv(l.category || ''),
+          escapeCsv(l.phone || ''),
+          escapeCsv(l.website || ''),
+          escapeCsv(l.address || ''),
+          escapeCsv(l.street || ''),
+          escapeCsv(l.city || ''),
+          escapeCsv(l.state || ''),
+          escapeCsv(l.postal_code || ''),
+          l.rating || '',
+          l.reviews_count || 0,
+          escapeCsv(l.operating_status || 'Operational'),
+          escapeCsv(l.listing_url || ''),
+          escapeCsv(l.keyword || '')
+        ]);
+        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `leads_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       });
     });
   }
 
   function updateBufferUI(count = 0) {
     if (!syncStatusMsg) return;
-    if (count > 0) {
-      // Auto-purge any residual leads in background so user never gets stuck
-      chrome.runtime.sendMessage({ type: 'PURGE_BUFFER' }, () => {
-        setTimeout(() => updateBufferUI(0), 300);
-      });
-    }
 
-    if (syncStatusDot) {
-      syncStatusDot.style.background = '#10b981';
-      syncStatusDot.style.boxShadow = '0 0 6px rgba(16, 185, 129, 0.4)';
-    }
-    if (syncBannerWrap) {
-      syncBannerWrap.style.background = '#f0fdf4';
-      syncBannerWrap.style.borderColor = '#bbf7d0';
-    }
-    syncStatusMsg.textContent = '✓ Cloud CRM Synchronized';
-    syncStatusMsg.style.color = '#166534';
-    if (syncBufferCount) {
-      syncBufferCount.textContent = 'Instant Real-Time Auto-Sync (0 Pending)';
-      syncBufferCount.style.color = '#15803d';
-      syncBufferCount.classList.remove('hidden');
-    }
-    if (btnSyncNow) {
-      btnSyncNow.classList.add('hidden');
+    if (count > 0) {
+      if (syncStatusDot) {
+        syncStatusDot.style.background = '#f59e0b';
+        syncStatusDot.style.boxShadow = '0 0 6px rgba(245, 158, 11, 0.4)';
+      }
+      if (syncBannerWrap) {
+        syncBannerWrap.style.background = '#fffbeb';
+        syncBannerWrap.style.borderColor = '#fde68a';
+      }
+      syncStatusMsg.textContent = `⚠️ ${count} Leads Waiting to Sync`;
+      syncStatusMsg.style.color = '#92400e';
+      if (syncBufferCount) {
+        syncBufferCount.textContent = 'Click button below to push to Cloud CRM';
+        syncBufferCount.style.color = '#b45309';
+        syncBufferCount.classList.remove('hidden');
+      }
+      if (btnSyncNow) {
+        btnSyncNow.classList.remove('hidden');
+        btnSyncNow.textContent = `⚡ Sync ${count} Leads`;
+        btnSyncNow.style.background = '#10b981';
+      }
+    } else {
+      if (syncStatusDot) {
+        syncStatusDot.style.background = '#10b981';
+        syncStatusDot.style.boxShadow = '0 0 6px rgba(16, 185, 129, 0.4)';
+      }
+      if (syncBannerWrap) {
+        syncBannerWrap.style.background = '#f0fdf4';
+        syncBannerWrap.style.borderColor = '#bbf7d0';
+      }
+      syncStatusMsg.textContent = '✓ Cloud CRM Synchronized';
+      syncStatusMsg.style.color = '#166534';
+      if (syncBufferCount) {
+        syncBufferCount.textContent = 'All extracted leads are securely stored in CRM';
+        syncBufferCount.style.color = '#15803d';
+        syncBufferCount.classList.remove('hidden');
+      }
+      if (btnSyncNow) {
+        btnSyncNow.classList.remove('hidden');
+        btnSyncNow.textContent = '⚡ Sync to CRM Now';
+      }
     }
   }
 
@@ -369,9 +456,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dailyLimit = u.daily_extraction_limit || 50000;
       userQuotaVal.textContent = `${extractedToday} / ${dailyLimit}`;
 
-      // Reset and ensure buffer is 0
-      updateBufferUI(0);
-      chrome.runtime.sendMessage({ type: 'PURGE_BUFFER' });
+      // Display actual pending sync count from state
+      updateBufferUI(state.bufferCount || 0);
 
       // Tab context detection: Check if currently on Google Maps
       if (currentTab && currentTab.url && /(google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)/.test(currentTab.url)) {

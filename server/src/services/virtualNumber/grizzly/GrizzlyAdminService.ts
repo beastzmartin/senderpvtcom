@@ -26,10 +26,40 @@ export class GrizzlyAdminService {
     const smsStats = db.prepare(`
       SELECT
         COUNT(*) as totalSms,
-        SUM(CASE WHEN forwarding_status = 'forwarded' THEN 1 ELSE 0 END) as forwardedSms,
-        SUM(CASE WHEN forwarding_status = 'pending_docs' THEN 1 ELSE 0 END) as pendingDocsSms
+        SUM(CASE WHEN delivery_status = 'delivered' OR forwarding_status = 'forwarded' THEN 1 ELSE 0 END) as forwardedSms,
+        SUM(CASE WHEN delivery_status = 'pending' THEN 1 ELSE 0 END) as pendingSms
       FROM grizzly_sms_messages
     `).get() as any;
+
+    const voiceStats = db.prepare(`
+      SELECT
+        COUNT(*) as totalCalls,
+        SUM(CASE WHEN delivery_status = 'delivered' THEN 1 ELSE 0 END) as deliveredCalls,
+        SUM(CASE WHEN delivery_status = 'pending' THEN 1 ELSE 0 END) as pendingCalls,
+        SUM(retry_count) as totalRetries
+      FROM grizzly_voice_calls
+    `).get() as any;
+
+    const statusCounts = db.prepare(`
+      SELECT
+        SUM(CASE WHEN official_grizzly_status = 1 THEN 1 ELSE 0 END) as prohibitedCount,
+        SUM(CASE WHEN official_grizzly_status = 3 THEN 1 ELSE 0 END) as soldCount,
+        SUM(CASE WHEN official_grizzly_status = 4 THEN 1 ELSE 0 END) as cancelledCount,
+        SUM(CASE WHEN official_grizzly_status = 5 THEN 1 ELSE 0 END) as returnedCount
+      FROM grizzly_activations
+    `).get() as any;
+
+    const blacklistCount = (db.prepare(`
+      SELECT COUNT(*) as c FROM grizzly_number_service_cancellations WHERE is_permanently_excluded = 1
+    `).get() as any)?.c || 0;
+
+    const quarantineCount = (db.prepare(`
+      SELECT COUNT(*) as c FROM grizzly_number_quarantine WHERE status = 'quarantined'
+    `).get() as any)?.c || 0;
+
+    const avgLatency = (db.prepare(`
+      SELECT AVG(response_time_ms) as avgLatency FROM grizzly_api_logs
+    `).get() as any)?.avgLatency || 0;
 
     const failedLogs = db.prepare(`
       SELECT COUNT(*) as c FROM grizzly_api_logs WHERE response_status = 'NO_NUMBERS' OR response_status = 'ERROR'
@@ -46,6 +76,7 @@ export class GrizzlyAdminService {
         slug: config.slug,
         status: config.status,
         partner_api_endpoint: config.partner_api_endpoint,
+        outbound_api_url: config.outbound_api_url,
         priority: config.priority,
         max_active_numbers: config.max_active_numbers,
         min_payout: config.min_payout,
@@ -56,7 +87,8 @@ export class GrizzlyAdminService {
         total_requests_count: totalRequests,
         successful_requests_count: config.successful_requests_count || 0,
         failed_requests_count: failedRequests,
-        error_rate_percentage: errorRate
+        error_rate_percentage: errorRate,
+        avg_response_time_ms: Math.round(Number(avgLatency))
       },
       capacity,
       accounting: {
@@ -68,8 +100,22 @@ export class GrizzlyAdminService {
       sms: {
         total: smsStats?.totalSms || 0,
         forwarded: smsStats?.forwardedSms || 0,
-        pending: smsStats?.pendingDocsSms || 0
+        pending: smsStats?.pendingSms || 0
       },
+      voice: {
+        total: voiceStats?.totalCalls || 0,
+        delivered: voiceStats?.deliveredCalls || 0,
+        pending: voiceStats?.pendingCalls || 0,
+        retries: voiceStats?.totalRetries || 0
+      },
+      statusDistribution: {
+        prohibited: statusCounts?.prohibitedCount || 0,
+        sold: statusCounts?.soldCount || 0,
+        cancelled: statusCounts?.cancelledCount || 0,
+        returned: statusCounts?.returnedCount || 0
+      },
+      blacklistCount,
+      quarantineCount,
       failedAllocationsCount: failedLogs?.c || 0
     };
   }
@@ -219,7 +265,7 @@ export class GrizzlyAdminService {
   }
 
   /**
-   * List SMS messages
+   * List SMS messages and forwarding status
    */
   public static getSmsMessages(limit = 50) {
     const db = getDatabase();
@@ -233,6 +279,67 @@ export class GrizzlyAdminService {
   }
 
   /**
+   * List Voice Calls (PUSH_CALL queue)
+   */
+  public static getVoiceCalls(limit = 50) {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT c.*, a.service, a.operator
+      FROM grizzly_voice_calls c
+      LEFT JOIN grizzly_activations a ON c.activation_id = a.activation_id
+      ORDER BY c.created_at DESC
+      LIMIT ?
+    `).all(limit);
+  }
+
+  /**
+   * List Call Audio/Text Records (PUSH_CALL_RECORD queue)
+   */
+  public static getCallRecords(limit = 50) {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT r.*, a.service, a.operator
+      FROM grizzly_call_records r
+      LEFT JOIN grizzly_activations a ON r.activation_id = a.activation_id
+      ORDER BY r.created_at DESC
+      LIMIT ?
+    `).all(limit);
+  }
+
+  /**
+   * List Number Cancellations (tracking towards threshold of 5)
+   */
+  public static getCancellations() {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT * FROM grizzly_number_service_cancellations
+      ORDER BY cancellation_count DESC, last_cancelled_at DESC
+    `).all();
+  }
+
+  /**
+   * List Quarantined Numbers (Status 5 returned)
+   */
+  public static getQuarantine() {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT * FROM grizzly_number_quarantine
+      ORDER BY quarantined_at DESC
+    `).all();
+  }
+
+  /**
+   * List Prohibited Numbers (Status 1 prohibited)
+   */
+  public static getProhibited() {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT * FROM grizzly_prohibited_numbers
+      ORDER BY prohibited_at DESC
+    `).all();
+  }
+
+  /**
    * Country and Service Mappings
    */
   public static getMappings() {
@@ -242,3 +349,4 @@ export class GrizzlyAdminService {
     return { countries, services };
   }
 }
+

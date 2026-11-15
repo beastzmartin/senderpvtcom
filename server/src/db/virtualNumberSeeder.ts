@@ -326,3 +326,4 @@ export function initVirtualNumberDatabase(db: Database.Database): void {
     console.error('[Virtual Numbers DB] Initialization error:', err);
   }
 }
+

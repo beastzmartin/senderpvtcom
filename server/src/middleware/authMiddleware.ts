@@ -54,6 +54,3 @@ export function optionalAuth(req: AuthenticatedRequest, res: Response, next: Nex
   next();
 }
 
-export const authenticateToken = requireAuth;
-
-

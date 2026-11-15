@@ -23,9 +23,10 @@ import {
   Settings,
   X
 } from 'lucide-react';
+import { GrizzlyDashboardView } from './grizzly/GrizzlyDashboardView';
 
 export const AdminVirtualNumbersTab: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'inventory' | 'providers' | 'pricing' | 'rentals' | 'orders'>('inventory');
+  const [activeSubTab, setActiveSubTab] = useState<'inventory' | 'providers' | 'grizzlysms' | 'pricing' | 'rentals' | 'orders'>('inventory');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -333,6 +334,18 @@ export const AdminVirtualNumbersTab: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setActiveSubTab('grizzlysms')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+              activeSubTab === 'grizzlysms'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Radio className="w-4 h-4 text-amber-500" />
+            GrizzlySMS Partner
+          </button>
+
+          <button
             onClick={() => setActiveSubTab('pricing')}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
               activeSubTab === 'pricing'
@@ -570,11 +583,26 @@ export const AdminVirtualNumbersTab: React.FC = () => {
                       <ShieldCheck className="w-3.5 h-3.5" /> Stored Securely
                     </span>
                   </div>
+
+                  {(p.slug === 'grizzlysms' || p.name.includes('Grizzly')) && (
+                    <button
+                      onClick={() => setActiveSubTab('grizzlysms')}
+                      className="w-full mt-2 py-1.5 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                    >
+                      <Radio className="w-3.5 h-3.5 text-amber-600" />
+                      Open GrizzlySMS Partner Console
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {/* SUB-TAB: GRIZZLYSMS PARTNER MANAGEMENT */}
+      {activeSubTab === 'grizzlysms' && (
+        <GrizzlyDashboardView />
       )}
 
       {/* SUB-TAB: PRICING & MARKUP RULES */}

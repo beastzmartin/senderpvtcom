@@ -112,3 +112,4 @@ export class GrizzlyHardwareCapacityService {
     `).run(activationId, moduleId);
   }
 }
+

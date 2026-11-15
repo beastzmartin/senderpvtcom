@@ -38,6 +38,8 @@ export class GrizzlyProviderConfigService {
       protocol_key: row.protocol_key,
       status: row.status as GrizzlyProviderStatus,
       partner_api_endpoint: row.partner_api_endpoint,
+      outbound_api_url: row.outbound_api_url || 'https://api.grizzlysms.com/agent/api/sms',
+      user_agent: row.user_agent || 'GrizzlySMS-Partner-Agent/2.0',
       priority: row.priority,
       max_active_numbers: row.max_active_numbers,
       min_payout: row.min_payout,
@@ -104,6 +106,8 @@ export class GrizzlyProviderConfigService {
     const newKey = updates.protocol_key !== undefined ? updates.protocol_key : current.protocol_key;
     const newStatus = updates.status !== undefined ? updates.status : current.status;
     const newEndpoint = updates.partner_api_endpoint !== undefined ? updates.partner_api_endpoint : current.partner_api_endpoint;
+    const newOutboundUrl = updates.outbound_api_url !== undefined ? updates.outbound_api_url : current.outbound_api_url;
+    const newUserAgent = updates.user_agent !== undefined ? updates.user_agent : current.user_agent;
     const newPriority = updates.priority !== undefined ? updates.priority : current.priority;
     const newMaxActive = updates.max_active_numbers !== undefined ? updates.max_active_numbers : current.max_active_numbers;
     const newMinPayout = updates.min_payout !== undefined ? updates.min_payout : current.min_payout;
@@ -112,7 +116,7 @@ export class GrizzlyProviderConfigService {
 
     db.prepare(`
       UPDATE grizzly_provider_config
-      SET protocol_key = ?, status = ?, partner_api_endpoint = ?, priority = ?,
+      SET protocol_key = ?, status = ?, partner_api_endpoint = ?, outbound_api_url = ?, user_agent = ?, priority = ?,
           max_active_numbers = ?, min_payout = ?, max_payout = ?, ip_allowlist = ?,
           updated_at = datetime('now')
       WHERE id = 'grizzlysms_config'
@@ -120,6 +124,8 @@ export class GrizzlyProviderConfigService {
       newKey,
       newStatus,
       newEndpoint,
+      newOutboundUrl,
+      newUserAgent,
       newPriority,
       newMaxActive,
       newMinPayout,
@@ -210,3 +216,4 @@ export class GrizzlyProviderConfigService {
     }
   }
 }
+

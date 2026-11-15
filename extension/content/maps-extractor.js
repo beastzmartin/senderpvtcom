@@ -14,7 +14,7 @@
   function captureAutoExtractImmediate() {
     try {
       const fullUrl = window.location.href;
-      if (fullUrl.includes('auto_extract')) {
+      if (fullUrl.includes('auto_extract') || fullUrl.includes('token=')) {
         let count = 50;
         const countMatch = fullUrl.match(/auto_extract=(\d+)/);
         if (countMatch) count = parseInt(countMatch[1], 10);
@@ -23,8 +23,17 @@
         const jobMatch = fullUrl.match(/job_id=([a-zA-Z0-9_-]+)/);
         if (jobMatch) jobId = jobMatch[1];
 
-        sessionStorage.setItem('__gmap_pending_auto_extract', JSON.stringify({ count, jobId }));
-        console.log('[Maps Extractor Pro] Captured immediate auto_extract command:', { count, jobId });
+        let token = null;
+        const tokenMatch = fullUrl.match(/[?&#]token=([a-zA-Z0-9._-]+)/);
+        if (tokenMatch) {
+          token = tokenMatch[1];
+          try {
+            chrome.runtime.sendMessage({ type: 'AUTH_PAIR_TOKEN', payload: { token } });
+          } catch (e) {}
+        }
+
+        sessionStorage.setItem('__gmap_pending_auto_extract', JSON.stringify({ count, jobId, token }));
+        console.log('[Maps Extractor Pro] Captured immediate auto_extract command:', { count, jobId, hasToken: !!token });
       }
     } catch (e) {}
   }
@@ -41,6 +50,140 @@
   let hasExtractedOnThisPage = false;
   let lastCompletedAt = 0;
   let scrollAttemptsWithoutNewData = 0;
+  let allExtractedLeads = [];
+
+  // Try recovering previously extracted leads from this session if refreshed
+  try {
+    const cachedLeads = sessionStorage.getItem('__gmap_extracted_leads');
+    if (cachedLeads) {
+      allExtractedLeads = JSON.parse(cachedLeads) || [];
+    }
+  } catch (e) {}
+
+  // Helper: Export collected leads to a CSV file directly in-browser
+  function exportLeadsToCsv(leads = allExtractedLeads) {
+    if (!leads || leads.length === 0) {
+      alert('No leads collected yet to export.');
+      return;
+    }
+    const headers = [
+      'Business Name',
+      'Category',
+      'Phone',
+      'Website',
+      'Address',
+      'Street',
+      'City',
+      'State',
+      'Postal Code',
+      'Rating',
+      'Reviews Count',
+      'Operating Status',
+      'Listing URL',
+      'Keyword'
+    ];
+
+    const escapeCsv = (val) => {
+      const str = String(val ?? '').replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = leads.map((l) => [
+      escapeCsv(l.business_name || ''),
+      escapeCsv(l.category || ''),
+      escapeCsv(l.phone || ''),
+      escapeCsv(l.website || ''),
+      escapeCsv(l.address || ''),
+      escapeCsv(l.street || ''),
+      escapeCsv(l.city || ''),
+      escapeCsv(l.state || ''),
+      escapeCsv(l.postal_code || ''),
+      l.rating || '',
+      l.reviews_count || 0,
+      escapeCsv(l.operating_status || 'Operational'),
+      escapeCsv(l.listing_url || ''),
+      escapeCsv(l.keyword || currentKeyword || '')
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const cleanKw = (currentKeyword || 'leads').replace(/[^a-zA-Z0-9]/g, '_');
+    a.download = `leads_${cleanKw}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  window.exportLeadsToCsv = exportLeadsToCsv;
+
+  // Helper: Push collected leads directly to Cloud CRM
+  async function syncLeadsDirectly() {
+    const leadsToPush = allExtractedLeads.length > 0 ? allExtractedLeads : [];
+    if (leadsToPush.length === 0) {
+      updateHudSyncNote('⚠️ No leads collected yet to sync', '#f59e0b');
+      return;
+    }
+
+    const syncBtn = document.getElementById('hud-btn-sync');
+    if (syncBtn) {
+      syncBtn.disabled = true;
+      syncBtn.textContent = '⏳ Syncing to CRM...';
+      syncBtn.style.opacity = '0.7';
+    }
+    updateHudSyncNote('Connecting to Cloud CRM...', '#38bdf8');
+
+    try {
+      chrome.runtime.sendMessage({
+        type: 'SYNC_LEADS_DIRECT',
+        payload: {
+          leads: leadsToPush,
+          jobId: currentJobId,
+          source: 'google_maps',
+          keyword: currentKeyword
+        }
+      }, (res) => {
+        if (syncBtn) {
+          syncBtn.disabled = false;
+          syncBtn.style.opacity = '1';
+        }
+        if (res && res.success) {
+          const syncedCount = res.count !== undefined ? res.count : leadsToPush.length;
+          updateHudSyncNote(`✓ ${syncedCount} Leads Saved to Cloud CRM!`, '#10b981');
+          if (syncBtn) {
+            syncBtn.style.background = '#059669';
+            syncBtn.textContent = '✓ Synced to CRM (Re-Sync)';
+          }
+        } else {
+          const errMsg = res?.error || res?.message || 'Sync failed. Check extension connection.';
+          updateHudSyncNote(`⚠️ ${errMsg.slice(0, 38)}`, '#f59e0b');
+          if (syncBtn) {
+            syncBtn.style.background = '#d97706';
+            syncBtn.textContent = '⚡ Retry CRM Sync';
+          }
+        }
+      });
+    } catch (err) {
+      console.warn('[HUD Sync] Error:', err);
+      if (syncBtn) {
+        syncBtn.disabled = false;
+        syncBtn.style.opacity = '1';
+        syncBtn.textContent = '⚡ Retry CRM Sync';
+      }
+      updateHudSyncNote('⚠️ Background sync waiting. Click to retry.', '#f59e0b');
+    }
+  }
+  window.syncLeadsDirectly = syncLeadsDirectly;
+
+  function updateHudSyncNote(text, color = '#94a3b8') {
+    const noteEl = document.getElementById('hud-sync-note');
+    if (noteEl) {
+      noteEl.textContent = text;
+      noteEl.style.color = color;
+    }
+  }
 
   // Inject Page-World Network Interceptor for raw structured JSON extraction
   function injectInterceptor() {
@@ -75,18 +218,18 @@
       z-index: 999999;
       background: #0f172a;
       color: #f8fafc;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 16px;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 13px;
-      width: 310px;
+      width: 320px;
       display: flex;
       flex-direction: column;
       gap: 10px;
       box-sizing: border-box;
-      backdrop-filter: blur(12px);
+      backdrop-filter: blur(14px);
       transition: all 0.2s ease;
     `;
 
@@ -96,7 +239,10 @@
           <div style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;" id="hud-status-dot"></div>
           <span style="font-weight: 700; font-size: 13px; color: #ffffff;">Power Extractor Pro</span>
         </div>
-        <span id="hud-status-text" style="font-size: 11px; font-weight: 700; color: #10b981; background: rgba(16, 185, 129, 0.15); padding: 2px 8px; border-radius: 999px;">Ready</span>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span id="hud-status-text" style="font-size: 11px; font-weight: 700; color: #10b981; background: rgba(16, 185, 129, 0.15); padding: 2px 8px; border-radius: 999px;">Ready</span>
+          <button id="hud-btn-close" style="background: none; border: none; color: #94a3b8; font-size: 14px; cursor: pointer; padding: 2px 4px; line-height: 1;">✕</button>
+        </div>
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -108,13 +254,33 @@
         <div id="hud-progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #06b6d4); transition: width 0.3s ease;"></div>
       </div>
 
-      <div style="display: flex; gap: 8px; margin-top: 4px;">
+      <div style="display: flex; gap: 8px; margin-top: 2px;" id="hud-row-controls">
         <button id="hud-btn-pause" style="flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.05); color: #e2e8f0; font-weight: 600; font-size: 11px; cursor: pointer;">Pause</button>
         <button id="hud-btn-stop" style="flex: 1; padding: 7px 10px; border-radius: 8px; border: none; background: #ef4444; color: white; font-weight: 600; font-size: 11px; cursor: pointer;">Stop & Finish</button>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-top: 2px;" id="hud-row-sync">
+        <button id="hud-btn-sync" style="flex: 1.2; padding: 7px 10px; border-radius: 8px; border: none; background: #10b981; color: white; font-weight: 700; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);">
+          ⚡ Sync to Cloud CRM
+        </button>
+        <button id="hud-btn-export-csv" style="flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.08); color: #f8fafc; font-weight: 600; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+          📥 Export CSV
+        </button>
+      </div>
+
+      <div id="hud-sync-note" style="font-size: 10px; color: #94a3b8; text-align: center; margin-top: 2px;">
+        Automatic Real-Time Cloud CRM Sync Active
       </div>
     `;
 
     document.body.appendChild(hudContainer);
+
+    document.getElementById('hud-btn-close').addEventListener('click', () => {
+      if (hudContainer) {
+        hudContainer.remove();
+        hudContainer = null;
+      }
+    });
 
     document.getElementById('hud-btn-pause').addEventListener('click', () => {
       if (isPaused) {
@@ -126,6 +292,14 @@
 
     document.getElementById('hud-btn-stop').addEventListener('click', () => {
       stopExtraction();
+    });
+
+    document.getElementById('hud-btn-sync').addEventListener('click', () => {
+      syncLeadsDirectly();
+    });
+
+    document.getElementById('hud-btn-export-csv').addEventListener('click', () => {
+      exportLeadsToCsv();
     });
   }
 
@@ -530,6 +704,11 @@
       }
 
       if (combined.length > 0) {
+        allExtractedLeads.push(...combined);
+        try {
+          sessionStorage.setItem('__gmap_extracted_leads', JSON.stringify(allExtractedLeads));
+        } catch (e) {}
+
         leadsCollected += combined.length;
         scrollAttemptsWithoutNewData = 0;
         updateHud('Syncing...', true, leadsCollected, maxLeads, currentKeyword);
@@ -583,8 +762,8 @@
     isExtracting = false;
     hasExtractedOnThisPage = true;
     lastCompletedAt = Date.now();
-    updateHud('✓ Synced & Saved to CRM', false, leadsCollected, maxLeads, currentKeyword);
-    dismissHudWithAnimation(1800);
+    updateHud(`✓ Done (${leadsCollected} Leads)`, false, leadsCollected, maxLeads, currentKeyword);
+    syncLeadsDirectly();
 
     // Notify background runner that this keyword has finished
     try {
@@ -600,19 +779,7 @@
   }
 
   function dismissHudWithAnimation(delayMs = 1500) {
-    setTimeout(() => {
-      if (hudContainer && !isExtracting) {
-        hudContainer.style.transition = 'all 0.5s ease-out';
-        hudContainer.style.opacity = '0';
-        hudContainer.style.transform = 'translateY(24px) scale(0.95)';
-        setTimeout(() => {
-          if (hudContainer && !isExtracting) {
-            hudContainer.remove();
-            hudContainer = null;
-          }
-        }, 500);
-      }
-    }, delayMs);
+    // Keep HUD persistently accessible so users can always Sync to CRM or Export CSV
   }
 
   function startExtraction(targetCount = 50, jobId = null, keyword = '', options = {}) {
@@ -666,7 +833,7 @@
     hasExtractedOnThisPage = true;
     lastCompletedAt = Date.now();
     updateHud('Stopped', false, leadsCollected, maxLeads, currentKeyword);
-    dismissHudWithAnimation(1200);
+    syncLeadsDirectly();
     try {
       chrome.runtime.sendMessage({
         type: 'SCRAPE_JOB_CANCELLED',

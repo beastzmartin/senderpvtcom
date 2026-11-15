@@ -305,3 +305,4 @@ CREATE TABLE IF NOT EXISTS virtual_number_audit_logs (
 
 CREATE INDEX IF NOT EXISTS idx_vn_audit_date ON virtual_number_audit_logs(created_at);
 `;
+

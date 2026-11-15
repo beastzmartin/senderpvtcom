@@ -177,10 +177,12 @@ export class GrizzlyProviderAdapter implements IVirtualNumberProvider {
       const adapter = new GrizzlyFinishActivationAdapter();
       const activationId = parseInt(request.providerNumberRef, 10);
       if (!isNaN(activationId)) {
-        await adapter.finishActivation({
+        await adapter.handleCallback({
+          action: 'FINISH_ACTIVATION',
+          key: 'internal',
           activationId,
-          statusCode: 8,
-          notes: 'Released from customer portal'
+          status: 4,
+          reason: 'Released from customer portal'
         });
       }
       return { success: true };

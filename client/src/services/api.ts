@@ -1500,7 +1500,95 @@ export const api = {
       request<{ success: boolean; refundedAmount: number; newBalance: number }>(`/virtual-numbers/admin/orders/${orderId}/refund`, {
         method: 'POST',
         body: JSON.stringify({ reason })
-      })
+      }),
+
+    // --- GrizzlySMS Partner Protocol Admin API ---
+    grizzly: {
+      getOverview: () =>
+        request<{ success: boolean; overview: any }>('/virtual-numbers/admin/grizzly/overview'),
+
+      getConfig: () =>
+        request<{ success: boolean; config: any }>('/virtual-numbers/admin/grizzly/config'),
+
+      updateConfig: (data: any) =>
+        request<{ success: boolean; config: any }>('/virtual-numbers/admin/grizzly/config', {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        }),
+
+      getInventory: (params?: { country?: number; status?: string; limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.country !== undefined) query.set('country', String(params.country));
+        if (params?.status) query.set('status', params.status);
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/inventory?${query.toString()}`);
+      },
+
+      addInventory: (data: any) =>
+        request<{ success: boolean; id: string }>('/virtual-numbers/admin/grizzly/inventory', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      getHardware: () =>
+        request<{ success: boolean; modules: any[] }>('/virtual-numbers/admin/grizzly/hardware'),
+
+      getActivations: (params?: { status?: string; search?: string; limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.status) query.set('status', params.status);
+        if (params?.search) query.set('search', params.search);
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/activations?${query.toString()}`);
+      },
+
+      getSms: () =>
+        request<{ success: boolean; messages: any[] }>('/virtual-numbers/admin/grizzly/sms'),
+
+      getVoiceCalls: () =>
+        request<{ success: boolean; calls: any[] }>('/virtual-numbers/admin/grizzly/voice-calls'),
+
+      getCallRecords: () =>
+        request<{ success: boolean; records: any[] }>('/virtual-numbers/admin/grizzly/call-records'),
+
+      getCancellations: () =>
+        request<{ success: boolean; cancellations: any[] }>('/virtual-numbers/admin/grizzly/cancellations'),
+
+      getQuarantine: () =>
+        request<{ success: boolean; quarantine: any[] }>('/virtual-numbers/admin/grizzly/quarantine'),
+
+      getProhibited: () =>
+        request<{ success: boolean; prohibited: any[] }>('/virtual-numbers/admin/grizzly/prohibited'),
+
+      getLogs: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/logs?${query.toString()}`);
+      },
+
+      getMappings: () =>
+        request<{ success: boolean; countries: any[]; services: any[] }>('/virtual-numbers/admin/grizzly/mappings'),
+
+      finishActivation: (activationId: number, statusCode = 3, reason?: string) =>
+        request<{ success: boolean; result: any }>(`/virtual-numbers/admin/grizzly/activations/${activationId}/finish`, {
+          method: 'POST',
+          body: JSON.stringify({ statusCode, reason })
+        }),
+
+      triggerCall: (data: { phone: string; phoneFrom: string; activationId?: number }) =>
+        request<{ success: boolean; result: any }>('/virtual-numbers/admin/grizzly/trigger-call', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      triggerSms: (data: { phone: string; phoneFrom: string; text: string; activationId?: number }) =>
+        request<{ success: boolean; result: any }>('/virtual-numbers/admin/grizzly/trigger-sms', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        })
+    }
   }
 };
 

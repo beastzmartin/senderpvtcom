@@ -3,12 +3,13 @@ import { GrizzlyPartnerProtocolService } from '../services/virtualNumber/grizzly
 import { GrizzlyProviderConfigService } from '../services/virtualNumber/grizzly/GrizzlyProviderConfigService.js';
 import { GrizzlyHardwareCapacityService } from '../services/virtualNumber/grizzly/GrizzlyHardwareCapacityService.js';
 import { GrizzlyAdminService } from '../services/virtualNumber/grizzly/GrizzlyAdminService.js';
-import { grizzlyPushSmsAdapter } from '../services/virtualNumber/grizzly/GrizzlyPushSmsAdapter.js';
+import { GrizzlySmsQueueService } from '../services/virtualNumber/grizzly/GrizzlySmsQueueService.js';
+import { GrizzlyVoiceQueueService } from '../services/virtualNumber/grizzly/GrizzlyVoiceQueueService.js';
 import { grizzlyFinishActivationAdapter } from '../services/virtualNumber/grizzly/GrizzlyFinishActivationAdapter.js';
 
 export class GrizzlyPartnerController {
   /**
-   * Main inbound partner webhook handling GET_SERVICES, GET_NUMBER, etc.
+   * Main inbound partner webhook handling GET_SERVICES, GET_NUMBER, FINISH_ACTIVATION, etc.
    * POST /api/virtual-numbers/partners/grizzlysms
    */
   public static async handlePartnerRequest(req: Request, res: Response): Promise<void> {
@@ -36,15 +37,45 @@ export class GrizzlyPartnerController {
         return;
       }
 
-      if (action === 'PUSH_SMS') {
-        const result = await grizzlyPushSmsAdapter.pushSms(req.body);
+      if (action === 'FINISH_ACTIVATION') {
+        // Official Grizzly status callback (1=prohibited, 3=sold, 4=cancelled, 5=returned)
+        const result = await grizzlyFinishActivationAdapter.handleCallback(req.body);
         res.status(200).json(result);
         return;
       }
 
-      if (action === 'FINISH_ACTIVATION') {
-        const result = await grizzlyFinishActivationAdapter.finishActivation(req.body);
-        res.status(200).json(result);
+      if (action === 'PUSH_SMS') {
+        const result = await GrizzlySmsQueueService.enqueueAndSendSms({
+          phone: req.body.phone,
+          phoneFrom: req.body.phoneFrom || 'System',
+          text: req.body.text || req.body.messageContent || '',
+          activationId: req.body.activationId || 0,
+          smsId: req.body.smsId
+        });
+        res.status(200).json({ status: result.success ? 'SUCCESS' : 'ERROR' });
+        return;
+      }
+
+      if (action === 'PUSH_CALL') {
+        const result = await GrizzlyVoiceQueueService.enqueueAndSendCall({
+          phone: req.body.phone,
+          phoneFrom: req.body.phoneFrom || 'Caller',
+          activationId: req.body.activationId,
+          callId: req.body.callId
+        });
+        res.status(200).json({ status: result.success ? 'SUCCESS' : 'ERROR' });
+        return;
+      }
+
+      if (action === 'PUSH_CALL_RECORD') {
+        const result = await GrizzlyVoiceQueueService.enqueueAndSendCallRecord({
+          recordId: req.body.recordId,
+          callId: req.body.callId,
+          phone: req.body.phone,
+          phoneFrom: req.body.phoneFrom || 'Caller',
+          filePath: req.body.filePath
+        });
+        res.status(200).json({ status: result.success ? 'SUCCESS' : 'ERROR' });
         return;
       }
 
@@ -72,7 +103,6 @@ export class GrizzlyPartnerController {
   public static async getAdminConfig(_req: Request, res: Response): Promise<void> {
     try {
       const config = GrizzlyProviderConfigService.getConfig();
-      // Mask protocol key for display
       const maskedConfig = {
         ...config,
         protocol_key_masked: `${config.protocol_key.substring(0, 4)}...${config.protocol_key.slice(-4)}`
@@ -147,6 +177,51 @@ export class GrizzlyPartnerController {
     }
   }
 
+  public static async getAdminVoiceCalls(_req: Request, res: Response): Promise<void> {
+    try {
+      const calls = GrizzlyAdminService.getVoiceCalls();
+      res.json({ success: true, calls });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async getAdminCallRecords(_req: Request, res: Response): Promise<void> {
+    try {
+      const records = GrizzlyAdminService.getCallRecords();
+      res.json({ success: true, records });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async getAdminCancellations(_req: Request, res: Response): Promise<void> {
+    try {
+      const cancellations = GrizzlyAdminService.getCancellations();
+      res.json({ success: true, cancellations });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async getAdminQuarantine(_req: Request, res: Response): Promise<void> {
+    try {
+      const quarantine = GrizzlyAdminService.getQuarantine();
+      res.json({ success: true, quarantine });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async getAdminProhibited(_req: Request, res: Response): Promise<void> {
+    try {
+      const prohibited = GrizzlyAdminService.getProhibited();
+      res.json({ success: true, prohibited });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
   public static async getAdminLogs(req: Request, res: Response): Promise<void> {
     try {
       const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 100;
@@ -171,12 +246,43 @@ export class GrizzlyPartnerController {
     try {
       const activationId = parseInt(String(req.params.activationId), 10);
       const statusCode = req.body?.statusCode !== undefined ? parseInt(String(req.body.statusCode), 10) : 3;
-      const notes = req.body?.notes || 'Manually finished via Admin Dashboard';
+      const reason = req.body?.reason || req.body?.notes;
 
-      const result = await grizzlyFinishActivationAdapter.finishActivation({
+      const result = await grizzlyFinishActivationAdapter.handleCallback({
+        action: 'FINISH_ACTIVATION',
+        key: 'internal_admin',
         activationId,
-        statusCode,
-        notes
+        status: statusCode,
+        reason
+      });
+      res.json({ success: true, result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async triggerPushCall(req: Request, res: Response): Promise<void> {
+    try {
+      const { phone, phoneFrom, activationId } = req.body;
+      const result = await GrizzlyVoiceQueueService.enqueueAndSendCall({
+        phone,
+        phoneFrom,
+        activationId: activationId ? parseInt(String(activationId), 10) : undefined
+      });
+      res.json({ success: true, result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async triggerPushSms(req: Request, res: Response): Promise<void> {
+    try {
+      const { phone, phoneFrom, text, activationId } = req.body;
+      const result = await GrizzlySmsQueueService.enqueueAndSendSms({
+        phone,
+        phoneFrom,
+        text,
+        activationId: activationId ? parseInt(String(activationId), 10) : 0
       });
       res.json({ success: true, result });
     } catch (err: any) {

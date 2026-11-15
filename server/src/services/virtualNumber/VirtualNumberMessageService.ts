@@ -142,3 +142,4 @@ export class VirtualNumberMessageService {
     return db.prepare(query).all(...params);
   }
 }
+

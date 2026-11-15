@@ -93,3 +93,4 @@ export interface IVirtualNumberProvider {
    */
   handleWebhook?(payload: any, headers?: Record<string, any>): Promise<ProviderWebhookResult>;
 }
+
