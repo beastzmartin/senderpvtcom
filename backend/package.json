@@ -10,6 +10,7 @@
     "dev": "tsx watch src/index.ts",
     "test:verify": "tsx tests/verify.ts",
     "test:decryption": "tsx tests/decryption_sync_test.ts",
+    "test:marketplace": "tsx tests/marketplace_test.ts",
     "reset-password": "node scripts/reset-password.js"
   },
   "dependencies": {

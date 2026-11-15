@@ -31,6 +31,10 @@ export class ProviderRegistry {
     return adapter;
   }
 
+  public get(providerType: string): ProviderAdapter {
+    return this.getAdapter(providerType);
+  }
+
   /**
    * Helper to retrieve the mock adapter directly for unit testing
    */

@@ -3,7 +3,8 @@ import { Request, Response, NextFunction } from 'express';
 export class WhiteLabelSanitizer {
   // Regex patterns targeting any upstream provider URLs, console links, or identifiers
   private static readonly PROVIDER_URL_REGEX = /https?:\/\/(?:[a-zA-Z0-9-]+\.)*(?:apify\.com|apify-uploads\.s3[a-zA-Z0-9-]*\.amazonaws\.com)[^\s"'<>)]*/gi;
-  private static readonly PROVIDER_NAME_REGEX = /\b(apify|actor|actors)\b/gi;
+  private static readonly PROVIDER_APIFY_REGEX = /apify/gi;
+  private static readonly PROVIDER_ACTOR_REGEX = /\b(actors?)\b/gi;
 
   /**
    * Recursively sanitizes any string, object or array to ensure zero provider references
@@ -15,10 +16,10 @@ export class WhiteLabelSanitizer {
 
     if (typeof data === 'string') {
       let cleaned = data.replace(this.PROVIDER_URL_REGEX, '[secure-resource]');
-      cleaned = cleaned.replace(this.PROVIDER_NAME_REGEX, (match) => {
+      cleaned = cleaned.replace(this.PROVIDER_APIFY_REGEX, 'cloud-service');
+      cleaned = cleaned.replace(this.PROVIDER_ACTOR_REGEX, (match) => {
         const lower = match.toLowerCase();
-        if (lower === 'actor' || lower === 'actors') return 'extractor';
-        return 'cloud-service';
+        return lower === 'actors' ? 'engines' : 'engine';
       });
       return cleaned as unknown as T;
     }
@@ -30,8 +31,11 @@ export class WhiteLabelSanitizer {
     if (typeof data === 'object') {
       const sanitizedObj: Record<string, any> = {};
       for (const [key, value] of Object.entries(data as Record<string, any>)) {
-        // Strip sensitive internal fields from customer objects
+        const lowerKey = key.toLowerCase();
+        // Strip sensitive internal fields and provider keys from customer objects
         if (
+          lowerKey.includes('apify') ||
+          lowerKey.includes('actor') ||
           key === 'provider_run_id' ||
           key === 'provider_dataset_id' ||
           key === 'provider_cost_usd' ||
@@ -47,6 +51,29 @@ export class WhiteLabelSanitizer {
     }
 
     return data;
+  }
+
+  public static cleanText(text: string): string {
+    return this.sanitizeData(text);
+  }
+
+  public static cleanObject<T>(obj: T): T {
+    return this.sanitizeData(obj);
+  }
+
+  public static cleanCustomerProduct(product: any): any {
+    const sanitized = JSON.parse(JSON.stringify(this.sanitizeData(product)));
+    if (sanitized && typeof sanitized === 'object') {
+      delete sanitized.provider;
+      if (sanitized.input) {
+        delete sanitized.input.static_overrides;
+        delete sanitized.input.hidden_defaults;
+      }
+      if (sanitized.pricing?.provider_cost_reference) {
+        delete sanitized.pricing.provider_cost_reference;
+      }
+    }
+    return sanitized;
   }
 
   /**
