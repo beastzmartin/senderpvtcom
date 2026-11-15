@@ -259,10 +259,10 @@ export class SchemaMapper {
       const tokens: string[] = [];
       if (rawLine.includes(',') || rawLine.includes(';') || rawLine.includes('\t')) {
         // Simple CSV splitter
-        const parts = rawLine.split(/[,;\t]+/).map((t) => t.replace(/^["']|["']$/g, '').trim());
+        const parts = rawLine.split(/[,;\t]+/).map((t) => t.trim().replace(/^["']|["']$/g, '').trim());
         tokens.push(...parts.filter(Boolean));
       } else {
-        tokens.push(rawLine.replace(/^["']|["']$/g, '').trim());
+        tokens.push(rawLine.trim().replace(/^["']|["']$/g, '').trim());
       }
 
       for (const token of tokens) {
@@ -270,11 +270,33 @@ export class SchemaMapper {
 
         if (mode === 'url') {
           try {
-            const parsed = new URL(token.startsWith('http') ? token : `https://${token}`);
+            let targetUrl = token;
+            if (/^https?:\/\//i.test(token)) {
+              targetUrl = token;
+            } else if (token.includes('://')) {
+              invalidRows.push({ line: lineNum, text: token, error: 'Must use http: or https: protocol' });
+              continue;
+            } else {
+              // Domain without scheme e.g. "google.com" or "shop.mystore.co.uk/products"
+              if (!/^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+([/?#].*)?$/.test(token)) {
+                invalidRows.push({ line: lineNum, text: token, error: 'Invalid domain syntax' });
+                continue;
+              }
+              targetUrl = `https://${token}`;
+            }
+
+            const parsed = new URL(targetUrl);
             if (!['http:', 'https:'].includes(parsed.protocol)) {
               invalidRows.push({ line: lineNum, text: token, error: 'Must use http: or https: protocol' });
               continue;
             }
+
+            // Ensure hostname has at least one dot
+            if (!parsed.hostname.includes('.') && parsed.hostname !== 'localhost') {
+              invalidRows.push({ line: lineNum, text: token, error: 'URL must have a valid hostname' });
+              continue;
+            }
+
             const cleanUrl = parsed.toString();
             if (seen.has(cleanUrl)) {
               duplicatesRemoved++;

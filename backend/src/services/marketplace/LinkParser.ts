@@ -60,12 +60,28 @@ export class LinkParser {
             'source-code'
           ]);
 
-          const filteredParts = parts.filter((p) => !subPageKeywords.has(p.toLowerCase()));
+          const filteredParts = parts.filter((p) => p && !subPageKeywords.has(p.toLowerCase()));
           if (filteredParts.length >= 2) {
-            cleaned = `${filteredParts[0]}~${filteredParts[1]}`;
-          } else if (filteredParts.length === 1) {
-            cleaned = filteredParts[0];
+            if (filteredParts[0].toLowerCase() === 'actors') {
+              cleaned = filteredParts[1];
+            } else {
+              cleaned = `${filteredParts[0]}~${filteredParts[1]}`;
+            }
+          } else {
+            return {
+              originalInput: raw,
+              normalizedActorId: '',
+              isValid: false,
+              error: 'Invalid actor link format on apify.com. Actor link must be in format username/actor-name or /actors/:id.'
+            };
           }
+        } else {
+          return {
+            originalInput: raw,
+            normalizedActorId: '',
+            isValid: false,
+            error: 'Unsupported URL domain. Only provider links (e.g. apify.com) or actor identifiers are supported.'
+          };
         }
       }
 
@@ -111,7 +127,7 @@ export class LinkParser {
                OR slug = ?
                OR json_extract(definition_json, '$.provider.actor_id') LIKE ?
           `).get(cleaned, cleaned, `%${cleaned}%`) as { slug: string } | undefined;
-        } catch {}
+        } catch { }
       }
 
       return {
@@ -140,9 +156,9 @@ export class LinkParser {
     const rawTokens = Array.isArray(multiLineInput)
       ? multiLineInput.map((t) => (t || '').trim()).filter(Boolean)
       : (multiLineInput || '')
-          .split(/[\r\n,;]+/)
-          .map((t) => t.trim())
-          .filter(Boolean);
+        .split(/[\r\n,;]+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
 
     const seenIds = new Set<string>();
     const results: ParsedActorRef[] = [];

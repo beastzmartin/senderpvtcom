@@ -2149,6 +2149,21 @@ export const api = {
       return `${API_BASE}/marketplace/jobs/${jobId}/export?format=${format}&token=${encodeURIComponent(token)}`;
     },
 
+    listJobFiles: (jobId: string) =>
+      request<{ success: boolean; files: any[] }>(`/marketplace/jobs/${jobId}/files`),
+
+    getFileDownloadUrl: (fileId: string, token: string) =>
+      `${API_BASE}/marketplace/files/${fileId}/download?token=${encodeURIComponent(token)}`,
+
+    getCurrencyMatrix: (slug: string) =>
+      request<{ success: boolean; matrix: Record<string, Record<number, number>> }>(`/marketplace/products/${slug}/currency-matrix`),
+
+    parseBulkInput: (text: string, mode?: 'string' | 'url', maxLimit?: number) =>
+      request<{ success: boolean; items: string[]; duplicatesRemoved: number; invalidRows: any[]; totalParsed: number }>('/marketplace/parse-bulk-input', {
+        method: 'POST',
+        body: JSON.stringify({ text, mode: mode || 'string', maxLimit })
+      }),
+
     abortJob: (jobId: string) =>
       request<{ success: boolean; message: string }>(`/marketplace/jobs/${jobId}/abort`, {
         method: 'POST'
@@ -2184,6 +2199,12 @@ export const api = {
       request<{ success: boolean; product: any }>(`/marketplace/admin/products/${slug}/gates`, {
         method: 'POST',
         body: JSON.stringify({ gateKey, value })
+      }),
+
+    adminOverrideClassification: (slug: string, classification: string, reason: string) =>
+      request<{ success: boolean; product: any }>(`/marketplace/admin/products/${slug}/override-classification`, {
+        method: 'POST',
+        body: JSON.stringify({ classification, reason })
       }),
 
     adminDuplicateProduct: (slug: string) =>

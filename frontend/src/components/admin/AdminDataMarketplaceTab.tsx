@@ -55,6 +55,32 @@ export const AdminDataMarketplaceTab: React.FC = () => {
   const [wizardProduct, setWizardProduct] = useState<any | null>(null);
   const [updatingGate, setUpdatingGate] = useState<string | null>(null);
 
+  // Actor Profile & Evidence State
+  const [selectedProfileProduct, setSelectedProfileProduct] = useState<any | null>(null);
+  const [overrideClass, setOverrideClass] = useState<string>('');
+  const [overrideReason, setOverrideReason] = useState<string>('');
+  const [savingOverride, setSavingOverride] = useState<boolean>(false);
+
+  const handleOverrideClassification = async (slug: string) => {
+    if (!overrideClass || !overrideReason.trim()) {
+      alert('Please choose a classification and provide a written justification reason.');
+      return;
+    }
+    setSavingOverride(true);
+    try {
+      const res = await api.dataMarketplace.adminOverrideClassification(slug, overrideClass, overrideReason.trim());
+      if (res.success) {
+        alert('Compatibility classification successfully updated!');
+        setSelectedProfileProduct(res.product?.definition || res.product);
+        loadData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to override classification');
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
   // Drift Check State
   const [driftResult, setDriftResult] = useState<{ slug: string; data: any } | null>(null);
   const [driftCheckingSlug, setDriftCheckingSlug] = useState<string | null>(null);
@@ -442,6 +468,9 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {products.map((prod) => {
                     const pricing = prod.definition?.pricing;
+                    const profile = prod.definition?.profile;
+                    const classification = profile?.compatibility?.classification || 'FULLY_SUPPORTED';
+
                     return (
                       <tr key={prod.id} className="hover:bg-slate-50">
                         <td className="py-3 px-4">
@@ -456,22 +485,49 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                           ₹{pricing?.sell?.per_1000_items || 0} / 1k
                         </td>
                         <td className="py-3 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              prod.status === 'active'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : prod.status === 'draft'
-                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {prod.status}
-                          </span>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                prod.status === 'active'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : prod.status === 'draft'
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {prod.status}
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${
+                                classification === 'FULLY_SUPPORTED'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : classification === 'SUPPORTED_WITH_LIMITS'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                  : classification === 'ADMIN_REVIEW_REQUIRED'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200'
+                              }`}
+                            >
+                              {classification.replace(/_/g, ' ')}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
                           <button
+                            onClick={() => {
+                              setSelectedProfileProduct(prod.definition);
+                              setOverrideClass(classification);
+                              setOverrideReason('');
+                            }}
+                            title="View Capability Profile & Compatibility Classification"
+                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded font-semibold text-[11px] border border-purple-200"
+                          >
+                            <ShieldAlert className="w-3 h-3 inline mr-1 text-purple-600" />
+                            Profile
+                          </button>
+                          <button
                             onClick={() => setWizardProduct(prod.definition)}
-                            title="8-Gate Review & Activate Wizard"
+                            title="10-Gate Review & Activate Wizard"
                             className="px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 rounded font-semibold text-[11px] border border-amber-500/30"
                           >
                             <CheckCircle className="w-3 h-3 inline mr-1 text-amber-500" />
@@ -694,18 +750,35 @@ export const AdminDataMarketplaceTab: React.FC = () => {
             </div>
           )}
 
-          {/* 8-Gate Review & Activate Wizard Modal */}
+          {/* 10-Gate Review & Activate Wizard Modal */}
           {wizardProduct && (
             <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
                   <div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800">
-                      Product Activation Checklist
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800">
+                        10-Gate Quality Checklist
+                      </span>
+                      {wizardProduct.profile?.compatibility && (
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            wizardProduct.profile.compatibility.classification === 'FULLY_SUPPORTED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : wizardProduct.profile.compatibility.classification === 'SUPPORTED_WITH_LIMITS'
+                              ? 'bg-blue-100 text-blue-800'
+                              : wizardProduct.profile.compatibility.classification === 'ADMIN_REVIEW_REQUIRED'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}
+                        >
+                          {wizardProduct.profile.compatibility.classification.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </div>
                     <h3 className="font-bold text-base text-slate-900 mt-1">{wizardProduct.display_name}</h3>
                     <p className="text-xs text-slate-500">
-                      Verify all 8 quality gates before publishing this product to customer catalog
+                      Verify all 10 quality gates before publishing this product to customer catalog
                     </p>
                   </div>
                   <button onClick={() => setWizardProduct(null)} className="text-slate-400 hover:text-slate-600">
@@ -713,7 +786,18 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="p-5 space-y-3 flex-1 overflow-y-auto">
+                {wizardProduct.profile?.compatibility?.classification === 'UNSUPPORTED' && (
+                  <div className="bg-rose-50 border-b border-rose-200 px-5 py-3 text-xs text-rose-800 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Activation Blocked: </span>
+                      This actor was classified as <strong>UNSUPPORTED</strong> ({wizardProduct.profile.compatibility.reasons?.join('; ')}).
+                      Admin review & override is required before it can be published.
+                    </div>
+                  </div>
+                )}
+
+                <div className="p-5 space-y-2.5 flex-1 overflow-y-auto">
                   {[
                     {
                       key: 'link_imported',
@@ -721,41 +805,51 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                       desc: `Actor ID normalized to "${wizardProduct.provider?.actor_id || 'internal'}". Version & limits cached.`
                     },
                     {
+                      key: 'actor_profile_approved',
+                      label: '2. Actor Profile & Compatibility Classification Verified',
+                      desc: `Classified as ${wizardProduct.profile?.compatibility?.classification || 'FULLY_SUPPORTED'} with capability detector.`
+                    },
+                    {
                       key: 'schema_mapped',
-                      label: '2. Input Schema Mapped',
-                      desc: `${wizardProduct.input?.fields?.length || 0} parameter fields typed with options and validation.`
+                      label: '3. Input Schema Mapped',
+                      desc: `${wizardProduct.input?.fields?.length || 0} parameter fields typed with options, validation, and smart defaults.`
                     },
                     {
                       key: 'whitelabel_passed',
-                      label: '3. White-Label Blocklist Scan',
+                      label: '4. White-Label Blocklist Scan',
                       desc: 'Zero upstream provider trademarks, URLs or author references found in customer-facing copy.'
                     },
                     {
                       key: 'pricing_validated',
-                      label: '4. Pricing Floor & Margin Validated',
+                      label: '5. Pricing Floor & Margin Validated',
                       desc: `Sell price (₹${wizardProduct.pricing?.sell?.per_1000_items || 0}) covers provider cost with healthy profit margin.`
                     },
                     {
                       key: 'test_run_passed',
-                      label: '5. Internal Test Run Verified',
+                      label: '6. Internal Test Run Verified',
                       desc: 'Executed a 5-item test extraction to confirm upstream execution and data delivery.'
                     },
                     {
                       key: 'output_reviewed',
-                      label: '6. Output Columns & Mappings Reviewed',
-                      desc: 'Verified data fields, preview columns and sanitized drop list.'
+                      label: '7. Output Views & File Formats Reviewed',
+                      desc: 'Verified dataset views, key-value file attachments, preview columns and sanitized drop list.'
                     },
                     {
                       key: 'compliance_set',
-                      label: '7. Compliance & Regulatory Disclaimers',
+                      label: '8. Compliance & Regulatory Disclaimers',
                       desc: wizardProduct.compliance?.contains_personal_data
-                        ? 'Flagged: Contains personal data. Compliance disclaimers applied.'
+                        ? 'Flagged: Contains personal contact data. GDPR / electronic marketing disclaimers applied.'
                         : 'Standard web intelligence extraction. No regulated personal data.'
                     },
                     {
                       key: 'studio_preview_verified',
-                      label: '8. Extraction Studio Preview Verified',
+                      label: '9. Extraction Studio Preview Verified',
                       desc: 'Dynamic form controls, sections, and live quotes verified in preview.'
+                    },
+                    {
+                      key: 'multi_customer_risk_decided',
+                      label: '10. Multi-Customer Isolation & Risk Decided',
+                      desc: 'Isolated session memory, deduplication state, and customer namespaces confirmed.'
                     }
                   ].map((gate) => {
                     const gatesObj = wizardProduct.wizard_gates || {};
@@ -763,7 +857,7 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                     return (
                       <div
                         key={gate.key}
-                        className={`p-3.5 rounded-xl border flex items-start justify-between gap-3 transition ${
+                        className={`p-3 rounded-xl border flex items-start justify-between gap-3 transition ${
                           isChecked ? 'bg-emerald-50/50 border-emerald-200' : 'bg-slate-50 border-slate-200'
                         }`}
                       >
@@ -775,9 +869,9 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                             className="mt-0.5 text-slate-400 hover:text-emerald-600 transition"
                           >
                             {isChecked ? (
-                              <CheckCircle className="w-5 h-5 text-emerald-600 fill-emerald-100" />
+                              <CheckCircle className="w-4 h-4 text-emerald-600 fill-emerald-100" />
                             ) : (
-                              <div className="w-5 h-5 rounded-full border-2 border-slate-300" />
+                              <div className="w-4 h-4 rounded-full border-2 border-slate-300" />
                             )}
                           </button>
                           <div>
@@ -802,7 +896,7 @@ export const AdminDataMarketplaceTab: React.FC = () => {
 
                 <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-xs text-slate-500">
-                    {Object.values(wizardProduct.wizard_gates || {}).filter(Boolean).length} / 8 Gates Verified
+                    {Object.values(wizardProduct.wizard_gates || {}).filter(Boolean).length} / 10 Gates Verified
                   </span>
                   <div className="flex items-center gap-2">
                     <button
@@ -814,8 +908,9 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                     </button>
                     <button
                       type="button"
+                      disabled={wizardProduct.profile?.compatibility?.classification === 'UNSUPPORTED'}
                       onClick={() => handleActivateFromWizard(wizardProduct)}
-                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition"
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl shadow-md transition"
                     >
                       Publish & Activate Product
                     </button>
@@ -825,7 +920,211 @@ export const AdminDataMarketplaceTab: React.FC = () => {
             </div>
           )}
 
-          {/* Drift Check Modal */}
+          {/* Actor Profile & Evidence Modal */}
+          {selectedProfileProduct && (
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-3xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                  <div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-800">
+                      Actor Profile & Capability Intelligence
+                    </span>
+                    <h3 className="font-bold text-base text-slate-900 mt-1">
+                      {selectedProfileProduct.display_name || selectedProfileProduct.slug}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono">
+                      Provider ID: {selectedProfileProduct.provider?.actor_id || 'internal'}
+                    </p>
+                  </div>
+                  <button onClick={() => setSelectedProfileProduct(null)} className="text-slate-400 hover:text-slate-600">
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-5 flex-1 overflow-y-auto text-xs">
+                  {/* Compatibility Classification Card */}
+                  {selectedProfileProduct.profile?.compatibility ? (
+                    <div className="p-4 rounded-xl border bg-slate-50/50 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">Compatibility Classification:</span>
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                            selectedProfileProduct.profile.compatibility.classification === 'FULLY_SUPPORTED'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : selectedProfileProduct.profile.compatibility.classification === 'SUPPORTED_WITH_LIMITS'
+                              ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                              : selectedProfileProduct.profile.compatibility.classification === 'ADMIN_REVIEW_REQUIRED'
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                              : 'bg-rose-100 text-rose-800 border border-rose-300'
+                          }`}
+                        >
+                          {selectedProfileProduct.profile.compatibility.classification.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+
+                      {selectedProfileProduct.profile.compatibility.reasons?.length > 0 && (
+                        <div className="space-y-1 bg-white p-3 rounded-lg border border-slate-200">
+                          <span className="font-semibold text-slate-700">Classification Assessment:</span>
+                          <ul className="list-disc pl-4 space-y-0.5 text-slate-600">
+                            {selectedProfileProduct.profile.compatibility.reasons.map((r: string, idx: number) => (
+                              <li key={idx}>{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Evidence Checklist */}
+                      {selectedProfileProduct.profile.compatibility.evidence?.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="font-bold text-slate-700">Why? Security & Compatibility Evidence:</span>
+                          <div className="rounded-lg border border-slate-200 overflow-hidden">
+                            <table className="w-full text-left">
+                              <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                                <tr>
+                                  <th className="p-2">Check Name</th>
+                                  <th className="p-2">Evidence Detail</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 bg-white">
+                                {selectedProfileProduct.profile.compatibility.evidence.map((ev: any, idx: number) => (
+                                  <tr key={idx} className="hover:bg-slate-50">
+                                    <td className="p-2 font-mono text-[11px] text-slate-800 font-bold">{ev.check}</td>
+                                    <td className="p-2 text-slate-600">{ev.detail}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800">
+                      No cached ActorProfile detected for this product. Re-sync via drift check or import to analyze.
+                    </div>
+                  )}
+
+                  {/* Capabilities Matrix */}
+                  {selectedProfileProduct.profile?.capabilities && (
+                    <div className="space-y-3">
+                      <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                        Detected Capabilities (Studio Driver)
+                      </h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        <div className="p-2.5 rounded-lg border border-slate-200 bg-white">
+                          <span className="text-[10px] text-slate-400 block font-semibold uppercase">Pricing Model</span>
+                          <span className="font-bold text-slate-900">{selectedProfileProduct.profile.capabilities.pricing_model}</span>
+                        </div>
+                        <div className="p-2.5 rounded-lg border border-slate-200 bg-white">
+                          <span className="text-[10px] text-slate-400 block font-semibold uppercase">Runtime Class</span>
+                          <span className="font-bold text-slate-900 capitalize">{selectedProfileProduct.profile.capabilities.runtime_class}</span>
+                        </div>
+                        <div className="p-2.5 rounded-lg border border-slate-200 bg-white">
+                          <span className="text-[10px] text-slate-400 block font-semibold uppercase">Supports Max Items</span>
+                          <span className="font-bold text-slate-900">
+                            {selectedProfileProduct.profile.capabilities.supports_max_items ? '✅ Yes' : '❌ No'}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-lg border border-slate-200 bg-white">
+                          <span className="text-[10px] text-slate-400 block font-semibold uppercase">Dataset Views</span>
+                          <span className="font-bold text-slate-900">
+                            {selectedProfileProduct.profile.capabilities.dataset_views?.length || 0} View Tabs
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-lg border border-slate-200 bg-white">
+                          <span className="text-[10px] text-slate-400 block font-semibold uppercase">Files Output</span>
+                          <span className="font-bold text-slate-900">
+                            {selectedProfileProduct.profile.capabilities.output_kinds?.includes('key_value_files')
+                              ? '📁 Key-Value Files'
+                              : '📄 Dataset Only'}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-lg border border-slate-200 bg-white">
+                          <span className="text-[10px] text-slate-400 block font-semibold uppercase">Permission Level</span>
+                          <span className={`font-bold uppercase ${selectedProfileProduct.profile.capabilities.permission_level === 'full' ? 'text-rose-600' : 'text-slate-900'}`}>
+                            {selectedProfileProduct.profile.capabilities.permission_level}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Input Kinds Tags */}
+                      <div className="p-3 rounded-lg border border-slate-200 bg-white space-y-1.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Detected Input Kinds:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(selectedProfileProduct.profile.capabilities.input_kinds || []).map((k: string) => (
+                            <span key={k} className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-700 font-mono text-[10px]">
+                              {k}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Admin Override Panel */}
+                  <div className="p-4 rounded-xl border border-purple-200 bg-purple-50/50 space-y-3">
+                    <h4 className="font-bold text-purple-900 text-xs flex items-center gap-1.5">
+                      <Edit2 className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Admin Classification Override</span>
+                    </h4>
+                    <p className="text-[11px] text-purple-700">
+                      Super-admins may override the automatic classifier. All overrides are logged with an audit trail and timestamp.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-purple-900 block mb-1">Target Classification</label>
+                        <select
+                          value={overrideClass}
+                          onChange={(e) => setOverrideClass(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg border border-purple-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        >
+                          <option value="FULLY_SUPPORTED">FULLY_SUPPORTED (All features auto)</option>
+                          <option value="SUPPORTED_WITH_LIMITS">SUPPORTED_WITH_LIMITS (Safe limits active)</option>
+                          <option value="ADMIN_REVIEW_REQUIRED">ADMIN_REVIEW_REQUIRED (Manual confirmation needed)</option>
+                          <option value="UNSUPPORTED">UNSUPPORTED (Blocked from activation)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-purple-900 block mb-1">Justification Reason (Mandatory)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Code reviewed manually and confirmed benign"
+                          value={overrideReason}
+                          onChange={(e) => setOverrideReason(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg border border-purple-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        disabled={savingOverride || !overrideReason.trim()}
+                        onClick={() => handleOverrideClassification(selectedProfileProduct.slug)}
+                        className="px-4 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-xs shadow-sm transition disabled:opacity-50"
+                      >
+                        {savingOverride ? 'Saving...' : 'Apply Classification Override'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProfileProduct(null)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {driftResult && (
             <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden p-6 space-y-4">

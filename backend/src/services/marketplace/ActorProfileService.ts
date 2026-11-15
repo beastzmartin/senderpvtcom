@@ -21,6 +21,8 @@ export interface RawActorMetadata {
   description?: string;
   categories?: string[];
   stats?: any;
+  pricingModel?: string;
+  pricingInfo?: any;
   pricingInfos?: any[];
   defaultRunOptions?: any;
   taggedBuilds?: any;
@@ -154,6 +156,12 @@ export class CapabilityDetector {
       // Classify input kind
       if (type === 'boolean') {
         inputKindsSet.add('toggles');
+      } else if (type === 'object') {
+        if (editor === 'json') {
+          inputKindsSet.add('json');
+        } else {
+          inputKindsSet.add('nested_objects');
+        }
       } else if (type === 'integer' || type === 'number') {
         inputKindsSet.add('filters');
       } else if (
@@ -187,12 +195,6 @@ export class CapabilityDetector {
         inputKindsSet.add('keyword');
       } else if (type === 'array') {
         inputKindsSet.add('filters');
-      } else if (type === 'object') {
-        if (editor === 'json') {
-          inputKindsSet.add('json');
-        } else {
-          inputKindsSet.add('nested_objects');
-        }
       } else if (type === 'string') {
         if (Array.isArray(prop.enum)) {
           inputKindsSet.add('filters');
@@ -208,19 +210,47 @@ export class CapabilityDetector {
 
     // 2. Pricing model
     let pricingModel: 'free_usage' | 'rental' | 'pay_per_result' | 'pay_per_event' | 'unknown' = 'unknown';
-    const pricingInfos = meta.pricingInfos || [];
+    const pricingInfos: any[] = Array.isArray(meta.pricingInfos) && meta.pricingInfos.length > 0
+      ? meta.pricingInfos
+      : meta.pricingInfo
+        ? [meta.pricingInfo]
+        : [];
+
+    const directPricingModel = String(meta.pricingModel || '').toLowerCase();
+
     if (pricingInfos.length > 0) {
       const activePricing = pricingInfos[pricingInfos.length - 1];
-      const pModel = String(activePricing.pricingModel || '').toLowerCase();
-      if (pModel === 'pay_per_result' || pModel === 'pay-per-result' || pModel === 'per_item') {
+      const pModel = String(
+        activePricing.pricingModel ||
+        activePricing.model ||
+        directPricingModel ||
+        ''
+      ).toLowerCase();
+
+      if (pModel.includes('result') || pModel === 'pay_per_result' || pModel === 'per_item') {
         pricingModel = 'pay_per_result';
         supportsMaxItems = true; // PPR always supports item limiting
-      } else if (pModel === 'pay_per_event' || pModel === 'pay-per-event' || activePricing.pricingPerEvent) {
+      } else if (pModel.includes('event') || pModel === 'pay_per_event' || activePricing.pricingPerEvent) {
         pricingModel = 'pay_per_event';
-      } else if (pModel === 'rental' || pModel === 'monthly' || pModel === 'subscription') {
+      } else if (pModel.includes('rental') || pModel.includes('subscription') || pModel.includes('monthly')) {
         pricingModel = 'rental';
-      } else if (pModel === 'free' || pModel === 'free_usage_based' || pModel === 'usage') {
+      } else if (pModel.includes('free') || pModel.includes('usage')) {
         pricingModel = 'free_usage';
+      } else {
+        pricingModel = 'unknown';
+      }
+    } else if (directPricingModel) {
+      if (directPricingModel.includes('result') || directPricingModel === 'pay_per_result' || directPricingModel === 'per_item') {
+        pricingModel = 'pay_per_result';
+        supportsMaxItems = true;
+      } else if (directPricingModel.includes('event') || directPricingModel === 'pay_per_event') {
+        pricingModel = 'pay_per_event';
+      } else if (directPricingModel.includes('rental') || directPricingModel.includes('monthly')) {
+        pricingModel = 'rental';
+      } else if (directPricingModel.includes('free') || directPricingModel.includes('usage')) {
+        pricingModel = 'free_usage';
+      } else {
+        pricingModel = 'unknown';
       }
     } else {
       pricingModel = 'free_usage';

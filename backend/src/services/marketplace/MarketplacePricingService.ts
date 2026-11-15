@@ -83,10 +83,10 @@ export class MarketplacePricingService {
     const finalSellPrice = Number(Math.max(rawSellPrice, minCharge).toFixed(2));
 
     // 2. Calculate estimated provider cost in USD
-    const ref = pricing.provider_cost_reference || { model: 'pay_per_result', usd_per_1000_items: 0 };
+    const ref = pricing.provider_cost_reference;
     let providerCostUsd = 0;
 
-    if (ref && ref.model === 'pay_per_event') {
+    if (ref.model === 'pay_per_event') {
       // PPE Worst-Case Estimator
       const runStart = ref.usd_per_run_start || 0;
       let eventSum = 0;
@@ -280,7 +280,7 @@ export class MarketplacePricingService {
   public generateMultiCurrencyMatrix(
     product: ProductDefinition
   ): Record<string, { [items: number]: number }> {
-    const currencies = this.currencyService.getAllCurrencies(true).map((c: any) => c.code);
+    const currencies = this.currencyService.getActiveCurrencies().map((c) => c.code);
     const itemSteps = [100, 1000, 10000];
     const matrix: Record<string, { [items: number]: number }> = {};
 
