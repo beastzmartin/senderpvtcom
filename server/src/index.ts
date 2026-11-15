@@ -27,6 +27,7 @@ import virtualNumberRoutes from './routes/virtualNumberRoutes.js';
 import grizzlyPartnerRoutes from './routes/grizzlyPartnerRoutes.js';
 import { GrizzlyVoiceQueueService } from './services/virtualNumber/grizzly/GrizzlyVoiceQueueService.js';
 import { GrizzlySmsQueueService } from './services/virtualNumber/grizzly/GrizzlySmsQueueService.js';
+import { GrizzlyCustomerSchedulerService } from './services/virtualNumber/grizzly/GrizzlyCustomerSchedulerService.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
@@ -125,6 +126,7 @@ httpServer.listen(config.port, () => {
   // Start GrizzlySMS outbound delivery retry queues
   GrizzlyVoiceQueueService.startWorker();
   GrizzlySmsQueueService.startWorker();
+  GrizzlyCustomerSchedulerService.startWorker();
 });
 
 // Handle graceful shutdown

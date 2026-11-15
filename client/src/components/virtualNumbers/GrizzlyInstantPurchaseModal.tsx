@@ -60,6 +60,18 @@ export const GrizzlyInstantPurchaseModal: React.FC<GrizzlyInstantPurchaseModalPr
     status: string;
     expiresAt?: string;
     smsCode?: string;
+    smsText?: string;
+    verificationType?: number;
+    smsHistory?: any[];
+    canGetAnotherSms?: boolean;
+  } | null>(null);
+
+  // Provider comparison state
+  const [comparison, setComparison] = useState<{
+    overallPrice: number;
+    overallQuantity: number;
+    isStale: boolean;
+    providers: any[];
   } | null>(null);
 
   const [timeLeft, setTimeLeft] = useState<number>(20 * 60); // 20 minutes in seconds
@@ -97,6 +109,19 @@ export const GrizzlyInstantPurchaseModal: React.FC<GrizzlyInstantPurchaseModalPr
   const selectedService = services.find((s) => s.provider_service_code === selectedServiceCode) || services[0];
   const displayedPrice = selectedService?.sellingPrice || 23.75;
 
+  // Load provider comparison when service / country changes
+  useEffect(() => {
+    if (!isOpen || !selectedServiceCode) return;
+    api.virtualNumbers.grizzlyCustomer.getProviderComparison({
+      country: selectedCountryId === 'any' ? undefined : selectedCountryId,
+      service: selectedServiceCode
+    }).then((res) => {
+      if (res.success && res.comparison) {
+        setComparison(res.comparison);
+      }
+    }).catch(() => {});
+  }, [isOpen, selectedCountryId, selectedServiceCode]);
+
   // Countdown timer for active activation
   useEffect(() => {
     if (!activeActivation) return;
@@ -112,22 +137,29 @@ export const GrizzlyInstantPurchaseModal: React.FC<GrizzlyInstantPurchaseModalPr
     return () => clearInterval(interval);
   }, [activeActivation]);
 
-  // Auto-polling for SMS verification code
+  // Auto-polling for SMS verification code using V2 endpoint
   useEffect(() => {
-    if (!activeActivation || activeActivation.smsCode || timeLeft <= 0) return;
+    if (!activeActivation || timeLeft <= 0) return;
 
     const pollInterval = setInterval(async () => {
       try {
-        const res = await api.virtualNumbers.grizzlyCustomer.checkSms(activeActivation.activationId);
-        if (res.success && res.status === 'CODE_RECEIVED' && res.code) {
-          setActiveActivation((prev) => (prev ? { ...prev, smsCode: res.code, status: 'COMPLETED' } : null));
-          clearInterval(pollInterval);
+        const res = await api.virtualNumbers.grizzlyCustomer.checkSmsV2(activeActivation.activationId);
+        if (res.success && res.hasSms && res.code) {
+          setActiveActivation((prev) => (prev ? {
+            ...prev,
+            smsCode: res.code,
+            smsText: res.text,
+            verificationType: res.verificationType,
+            smsHistory: res.smsHistory,
+            canGetAnotherSms: res.canGetAnotherSms,
+            status: 'COMPLETED'
+          } : null));
         }
       } catch {}
-    }, 4000);
+    }, 3500);
 
     return () => clearInterval(pollInterval);
-  }, [activeActivation, timeLeft]);
+  }, [activeActivation?.activationId, timeLeft]);
 
   // Buy Number Action
   const handleBuyNumber = async () => {
@@ -157,7 +189,9 @@ export const GrizzlyInstantPurchaseModal: React.FC<GrizzlyInstantPurchaseModalPr
           countryName: res.countryName || 'Selected Region',
           sellingPrice: res.sellingPrice || displayedPrice,
           status: res.status || 'NUMBER_ASSIGNED',
-          expiresAt: res.expiresAt
+          expiresAt: res.expiresAt,
+          smsHistory: [],
+          canGetAnotherSms: true
         });
         setTimeLeft(20 * 60);
         if (onPurchaseSuccess) onPurchaseSuccess();
@@ -171,14 +205,22 @@ export const GrizzlyInstantPurchaseModal: React.FC<GrizzlyInstantPurchaseModalPr
     }
   };
 
-  // Manual Check SMS button
+  // Manual Check SMS button using V2
   const handleManualCheckSms = async () => {
     if (!activeActivation) return;
     try {
       setCheckingSms(true);
-      const res = await api.virtualNumbers.grizzlyCustomer.checkSms(activeActivation.activationId);
-      if (res.success && res.status === 'CODE_RECEIVED' && res.code) {
-        setActiveActivation({ ...activeActivation, smsCode: res.code, status: 'COMPLETED' });
+      const res = await api.virtualNumbers.grizzlyCustomer.checkSmsV2(activeActivation.activationId);
+      if (res.success && res.hasSms && res.code) {
+        setActiveActivation({
+          ...activeActivation,
+          smsCode: res.code,
+          smsText: res.text,
+          verificationType: res.verificationType,
+          smsHistory: res.smsHistory,
+          canGetAnotherSms: res.canGetAnotherSms,
+          status: 'COMPLETED'
+        });
       }
     } catch (err: any) {
       setError(err.message || 'Failed to check SMS status.');
@@ -320,7 +362,22 @@ export const GrizzlyInstantPurchaseModal: React.FC<GrizzlyInstantPurchaseModalPr
                   </div>
                 </div>
 
-                {/* 3. Pricing & Wallet Summary */}
+                {/* 3. Live Provider Stock & Routes Info */}
+                {comparison && comparison.overallQuantity > 0 && (
+                  <div className="flex items-center justify-between text-[11px] text-slate-600 bg-purple-50/60 px-3.5 py-2 rounded-xl border border-purple-100">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Live Stock: <strong className="text-slate-800">{comparison.overallQuantity}</strong> numbers</span>
+                    </span>
+                    {comparison.providers.length > 0 && (
+                      <span className="text-purple-700 font-semibold text-[10px] bg-purple-100/60 px-2 py-0.5 rounded-md">
+                        {comparison.providers.length} provider route{comparison.providers.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* 4. Pricing & Wallet Summary */}
                 <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 rounded-2xl p-4 flex items-center justify-between">
                   <div>
                     <span className="text-[11px] font-bold text-purple-900 uppercase tracking-wider block">
@@ -459,6 +516,35 @@ export const GrizzlyInstantPurchaseModal: React.FC<GrizzlyInstantPurchaseModalPr
                   <p className="text-[11px] text-slate-400">
                     Paste the phone number into the app now. The verification code will appear here automatically.
                   </p>
+                </div>
+              )}
+              {activeActivation.smsHistory && activeActivation.smsHistory.length > 0 && (
+                <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                    <span>SMS Message History ({activeActivation.smsHistory.length})</span>
+                    {activeActivation.canGetAnotherSms && (
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        ✓ Additional SMS Allowed
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                    {activeActivation.smsHistory.map((item, idx) => (
+                      <div key={idx} className="bg-white p-2.5 rounded-xl border border-slate-200 text-left text-xs space-y-1 shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                            Code: {item.code}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {item.receivedAt ? new Date(item.receivedAt).toLocaleTimeString() : ''}
+                          </span>
+                        </div>
+                        {item.text && item.text !== item.code && (
+                          <p className="text-[11px] text-slate-600 font-mono break-all">{item.text}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

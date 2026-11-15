@@ -25,6 +25,9 @@ router.get('/grizzly-customer/options', requireAuth, GrizzlyCustomerController.g
 router.post('/grizzly-customer/purchase', requireAuth, GrizzlyCustomerController.purchaseNumber);
 router.get('/grizzly-customer/activations', requireAuth, GrizzlyCustomerController.getMyActivations);
 router.get('/grizzly-customer/activations/:id/check-sms', requireAuth, GrizzlyCustomerController.checkActivationSms);
+router.get('/grizzly-customer/activations/:id/check-sms-v2', requireAuth, GrizzlyCustomerController.checkActivationSmsV2);
+router.get('/grizzly-customer/activations/:id/sms-history', requireAuth, GrizzlyCustomerController.getActivationSmsHistory);
+router.get('/grizzly-customer/provider-comparison', requireAuth, GrizzlyCustomerController.getProviderComparison);
 router.post('/grizzly-customer/activations/:id/cancel', requireAuth, GrizzlyCustomerController.cancelActivation);
 
 // --- Administrator Management Routes ---
@@ -38,12 +41,26 @@ router.post('/admin/pricing', requireAuth, requireAdmin, controller.saveAdminPri
 router.get('/admin/rentals', requireAuth, requireAdmin, controller.getAdminRentals);
 router.post('/admin/orders/:orderId/refund', requireAuth, requireAdmin, controller.refundAdminOrder);
 
-// --- GrizzlySMS Customer API Admin Settings & Diagnostics ---
+// --- GrizzlySMS Customer API Admin Settings, Pricing & Reconciliation ---
 router.get('/admin/grizzly-customer/config', requireAuth, requireAdmin, GrizzlyCustomerController.getAdminConfig);
 router.put('/admin/grizzly-customer/config', requireAuth, requireAdmin, GrizzlyCustomerController.updateAdminConfig);
 router.post('/admin/grizzly-customer/test-connection', requireAuth, requireAdmin, GrizzlyCustomerController.testAdminConnection);
 router.get('/admin/grizzly-customer/logs', requireAuth, requireAdmin, GrizzlyCustomerController.getAdminLogs);
 router.get('/admin/grizzly-customer/activations', requireAuth, requireAdmin, GrizzlyCustomerController.getAdminActivations);
+
+// Pricing & Provider Comparison Endpoints
+router.post('/admin/grizzly-customer/sync-prices', requireAuth, requireAdmin, GrizzlyCustomerController.syncPrices);
+router.get('/admin/grizzly-customer/prices', requireAuth, requireAdmin, GrizzlyCustomerController.getCachedPrices);
+router.get('/admin/grizzly-customer/provider-rules', requireAuth, requireAdmin, GrizzlyCustomerController.getProviderRules);
+router.post('/admin/grizzly-customer/provider-rules', requireAuth, requireAdmin, GrizzlyCustomerController.saveProviderRule);
+router.delete('/admin/grizzly-customer/provider-rules/:id', requireAuth, requireAdmin, GrizzlyCustomerController.deleteProviderRule);
+
+// Active Activations & Reconciliation Endpoints
+router.post('/admin/grizzly-customer/reconcile', requireAuth, requireAdmin, GrizzlyCustomerController.runReconciliation);
+router.get('/admin/grizzly-customer/reconciliation/runs', requireAuth, requireAdmin, GrizzlyCustomerController.getReconciliationRuns);
+router.get('/admin/grizzly-customer/reconciliation/records', requireAuth, requireAdmin, GrizzlyCustomerController.getReconciliationRecords);
+router.post('/admin/grizzly-customer/reconciliation/records/:id/resolve', requireAuth, requireAdmin, GrizzlyCustomerController.resolveReconciliationRecord);
+router.get('/admin/grizzly-customer/remote-active-activations', requireAuth, requireAdmin, GrizzlyCustomerController.getRemoteActiveActivations);
 
 export default router;
 

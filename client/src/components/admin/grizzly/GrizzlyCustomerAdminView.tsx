@@ -19,11 +19,17 @@ import {
   Filter,
   Activity,
   Layers,
-  Database
+  Database,
+  Tag,
+  GitCompare,
+  FileCheck2,
+  Plus,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 
 export const GrizzlyCustomerAdminView: React.FC = () => {
-  const [activeSubView, setActiveSubView] = useState<'config' | 'activations' | 'logs'>('config');
+  const [activeSubView, setActiveSubView] = useState<'config' | 'pricing' | 'providers' | 'reconciliation' | 'activations' | 'logs'>('config');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -45,6 +51,15 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
     markup_percentage: 25,
     fixed_fee: 5,
     customer_daily_limit: 50,
+    pricing_endpoint: 'getPricesV3',
+    price_sync_interval_minutes: 60,
+    auto_price_sync: true,
+    reconciliation_interval_minutes: 30,
+    auto_reconciliation: true,
+    preferred_providers: '',
+    min_profit: 2,
+    max_acceptable_provider_cost: 100,
+    currency_conversion_rate: 1,
     cached_balance: 0,
     cached_balance_currency: 'RUB',
     last_health_check_at: null,
@@ -58,6 +73,39 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
     latencyMs?: number;
     message?: string;
   } | null>(null);
+
+  // Pricing State
+  const [cachedPrices, setCachedPrices] = useState<any[]>([]);
+  const [pricesTotal, setPricesTotal] = useState(0);
+  const [syncingPrices, setSyncingPrices] = useState(false);
+  const [syncEndpoint, setSyncEndpoint] = useState<'getPrices' | 'getPricesV2' | 'getPricesV3'>('getPricesV3');
+  const [priceFilterCountry, setPriceFilterCountry] = useState('');
+  const [priceFilterService, setPriceFilterService] = useState('');
+
+  // Provider Rules State
+  const [providerRules, setProviderRules] = useState<any[]>([]);
+  const [showAddRuleModal, setShowAddRuleModal] = useState(false);
+  const [newRule, setNewRule] = useState<any>({
+    scope: 'global',
+    countryId: '',
+    serviceCode: '',
+    allowedProviderIds: '',
+    excludedProviderIds: '',
+    preferredProviderId: '',
+    minPrice: '',
+    maxPrice: '',
+    markupPercentage: '',
+    fixedFee: '',
+    isActive: true
+  });
+
+  // Reconciliation State
+  const [reconciling, setReconciling] = useState(false);
+  const [reconRuns, setReconRuns] = useState<any[]>([]);
+  const [reconRecords, setReconRecords] = useState<any[]>([]);
+  const [reconTotal, setReconTotal] = useState(0);
+  const [reconFilterType, setReconFilterType] = useState('all');
+  const [reconFilterStatus, setReconFilterStatus] = useState('all');
 
   // Activations & Profit State
   const [activationsReport, setActivationsReport] = useState<{
@@ -86,6 +134,62 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
       }
     } catch (err: any) {
       showToast(err.message || 'Failed to load customer configuration', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadPrices = async () => {
+    try {
+      setLoading(true);
+      const res = await api.virtualNumbers.grizzlyCustomer.getCachedPrices({
+        countryId: priceFilterCountry || undefined,
+        serviceCode: priceFilterService || undefined,
+        limit: 50
+      });
+      if (res.success) {
+        setCachedPrices(res.prices || []);
+        setPricesTotal(res.total || 0);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to load cached prices', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadProviderRules = async () => {
+    try {
+      setLoading(true);
+      const res = await api.virtualNumbers.grizzlyCustomer.getProviderRules();
+      if (res.success) {
+        setProviderRules(res.rules || []);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to load provider rules', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadReconciliation = async () => {
+    try {
+      setLoading(true);
+      const [runsRes, recordsRes] = await Promise.all([
+        api.virtualNumbers.grizzlyCustomer.getReconciliationRuns({ limit: 10 }),
+        api.virtualNumbers.grizzlyCustomer.getReconciliationRecords({
+          discrepancyType: reconFilterType !== 'all' ? reconFilterType : undefined,
+          resolutionStatus: reconFilterStatus !== 'all' ? reconFilterStatus : undefined,
+          limit: 50
+        })
+      ]);
+      if (runsRes.success) setReconRuns(runsRes.runs || []);
+      if (recordsRes.success) {
+        setReconRecords(recordsRes.records || []);
+        setReconTotal(recordsRes.total || 0);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to load reconciliation data', 'error');
     } finally {
       setLoading(false);
     }
@@ -122,9 +226,12 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
 
   useEffect(() => {
     if (activeSubView === 'config') loadConfig();
+    if (activeSubView === 'pricing') loadPrices();
+    if (activeSubView === 'providers') loadProviderRules();
+    if (activeSubView === 'reconciliation') loadReconciliation();
     if (activeSubView === 'activations') loadActivations();
     if (activeSubView === 'logs') loadLogs();
-  }, [activeSubView]);
+  }, [activeSubView, priceFilterCountry, priceFilterService, reconFilterType, reconFilterStatus]);
 
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,7 +250,16 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
         timeout_seconds: parseInt(config.timeout_seconds, 10) || 15,
         markup_percentage: parseFloat(config.markup_percentage) || 0,
         fixed_fee: parseFloat(config.fixed_fee) || 0,
-        customer_daily_limit: parseInt(config.customer_daily_limit, 10) || 50
+        customer_daily_limit: parseInt(config.customer_daily_limit, 10) || 50,
+        pricing_endpoint: config.pricing_endpoint,
+        price_sync_interval_minutes: parseInt(config.price_sync_interval_minutes, 10) || 60,
+        auto_price_sync: Boolean(config.auto_price_sync),
+        reconciliation_interval_minutes: parseInt(config.reconciliation_interval_minutes, 10) || 30,
+        auto_reconciliation: Boolean(config.auto_reconciliation),
+        preferred_providers: config.preferred_providers,
+        min_profit: parseFloat(config.min_profit) || 2,
+        max_acceptable_provider_cost: parseFloat(config.max_acceptable_provider_cost) || 100,
+        currency_conversion_rate: parseFloat(config.currency_conversion_rate) || 1
       });
 
       if (res.success) {
@@ -154,6 +270,94 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
       showToast(err.message || 'Failed to save configuration', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSyncPrices = async () => {
+    try {
+      setSyncingPrices(true);
+      const res = await api.virtualNumbers.grizzlyCustomer.syncPrices({
+        endpoint: syncEndpoint
+      });
+      if (res.success) {
+        showToast(`Synchronized ${res.syncedCount} country-service prices via ${res.endpoint}!`);
+        loadPrices();
+      } else {
+        showToast(res.error || 'Failed to synchronize prices', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Price sync failed', 'error');
+    } finally {
+      setSyncingPrices(false);
+    }
+  };
+
+  const handleRunReconciliation = async () => {
+    if (!confirm('Run reconciliation against GrizzlySMS active activations now?')) return;
+    try {
+      setReconciling(true);
+      const res = await api.virtualNumbers.grizzlyCustomer.runReconciliation();
+      if (res.success && res.summary) {
+        showToast(`Reconciliation complete! Matched: ${res.summary.matchedCount}, Discrepancies: ${res.summary.discrepancyCount}`);
+        loadReconciliation();
+      } else {
+        showToast(res.error || 'Reconciliation failed', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Reconciliation error', 'error');
+    } finally {
+      setReconciling(false);
+    }
+  };
+
+  const handleResolveRecord = async (recordId: string, action: 'resolve' | 'ignore') => {
+    try {
+      const res = await api.virtualNumbers.grizzlyCustomer.resolveReconciliationRecord(recordId, { action });
+      if (res.success) {
+        showToast(`Record marked as ${action}d`);
+        loadReconciliation();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update record', 'error');
+    }
+  };
+
+  const handleSaveRule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await api.virtualNumbers.grizzlyCustomer.saveProviderRule({
+        scope: newRule.scope,
+        countryId: newRule.countryId || null,
+        serviceCode: newRule.serviceCode || null,
+        allowedProviderIds: newRule.allowedProviderIds || null,
+        excludedProviderIds: newRule.excludedProviderIds || null,
+        preferredProviderId: newRule.preferredProviderId || null,
+        minPrice: newRule.minPrice ? parseFloat(newRule.minPrice) : null,
+        maxPrice: newRule.maxPrice ? parseFloat(newRule.maxPrice) : null,
+        markupPercentage: newRule.markupPercentage ? parseFloat(newRule.markupPercentage) : null,
+        fixedFee: newRule.fixedFee ? parseFloat(newRule.fixedFee) : null,
+        isActive: newRule.isActive
+      });
+      if (res.success) {
+        showToast('Provider selection rule saved successfully');
+        setShowAddRuleModal(false);
+        loadProviderRules();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to save rule', 'error');
+    }
+  };
+
+  const handleDeleteRule = async (id: string) => {
+    if (!confirm('Delete this provider selection rule?')) return;
+    try {
+      const res = await api.virtualNumbers.grizzlyCustomer.deleteProviderRule(id);
+      if (res.success) {
+        showToast('Rule deleted');
+        loadProviderRules();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete rule', 'error');
     }
   };
 

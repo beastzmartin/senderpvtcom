@@ -455,6 +455,86 @@ CREATE TABLE IF NOT EXISTS grizzly_customer_api_logs (
 CREATE INDEX IF NOT EXISTS idx_grizzly_cust_logs_corr ON grizzly_customer_api_logs(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_grizzly_cust_logs_action ON grizzly_customer_api_logs(action);
 CREATE INDEX IF NOT EXISTS idx_grizzly_cust_logs_created ON grizzly_customer_api_logs(created_at);
+
+-- 23. Normalized Customer Prices & Provider Comparison Cache
+CREATE TABLE IF NOT EXISTS grizzly_customer_prices (
+  id TEXT PRIMARY KEY,
+  country_id TEXT NOT NULL,
+  country_name TEXT,
+  service_code TEXT NOT NULL,
+  service_name TEXT,
+  pricing_source TEXT DEFAULT 'getPricesV3',
+  overall_price REAL DEFAULT 0.0,
+  overall_quantity INTEGER DEFAULT 0,
+  tier_prices TEXT, -- JSON map
+  providers_data TEXT, -- JSON array of [{ providerId, count, price, lowestPrice, highestPrice }]
+  lowest_provider_price REAL,
+  highest_provider_price REAL,
+  raw_response TEXT,
+  is_stale INTEGER DEFAULT 0,
+  last_synced_at TEXT DEFAULT (datetime('now')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_prices_cs ON grizzly_customer_prices(country_id, service_code);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_prices_srv ON grizzly_customer_prices(service_code);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_prices_synced ON grizzly_customer_prices(last_synced_at);
+
+-- 24. GrizzlySMS Provider Rules & Selection Preferences
+CREATE TABLE IF NOT EXISTS grizzly_provider_rules (
+  id TEXT PRIMARY KEY,
+  scope TEXT DEFAULT 'global' CHECK(scope IN ('global', 'country', 'service', 'country_service')),
+  country_id TEXT,
+  service_code TEXT,
+  allowed_provider_ids TEXT,
+  excluded_provider_ids TEXT,
+  preferred_provider_id TEXT,
+  min_price REAL,
+  max_price REAL,
+  markup_percentage REAL,
+  fixed_fee REAL,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_prov_rules_scope ON grizzly_provider_rules(scope, is_active);
+
+-- 25. Active Activations Reconciliation Runs & Discrepancies
+CREATE TABLE IF NOT EXISTS grizzly_reconciliation_runs (
+  id TEXT PRIMARY KEY,
+  total_remote INTEGER DEFAULT 0,
+  total_local INTEGER DEFAULT 0,
+  matched_count INTEGER DEFAULT 0,
+  missing_locally_count INTEGER DEFAULT 0,
+  missing_remotely_count INTEGER DEFAULT 0,
+  discrepancy_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'completed',
+  error_message TEXT,
+  run_duration_ms INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS grizzly_reconciliation_records (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES grizzly_reconciliation_runs(id) ON DELETE CASCADE,
+  provider_activation_id TEXT NOT NULL,
+  local_activation_id TEXT,
+  user_id TEXT,
+  phone_number TEXT,
+  service_code TEXT,
+  country_code TEXT,
+  provider_cost REAL,
+  local_cost REAL,
+  provider_status TEXT,
+  local_status TEXT,
+  discrepancy_type TEXT NOT NULL CHECK(discrepancy_type IN ('matched', 'missing_locally', 'missing_remotely', 'status_mismatch', 'cost_mismatch', 'requires_review')),
+  resolution_status TEXT DEFAULT 'pending' CHECK(resolution_status IN ('pending', 'resolved', 'ignored')),
+  resolution_notes TEXT,
+  reconciled_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_recon_rec_run ON grizzly_reconciliation_records(run_id);
+CREATE INDEX IF NOT EXISTS idx_grizzly_recon_rec_prov_id ON grizzly_reconciliation_records(provider_activation_id);
+CREATE INDEX IF NOT EXISTS idx_grizzly_recon_rec_type ON grizzly_reconciliation_records(discrepancy_type);
 `;
 
 export function initGrizzlyDatabase(db: Database.Database): void {
@@ -500,6 +580,75 @@ export function initGrizzlyDatabase(db: Database.Database): void {
   } catch {}
   try {
     db.prepare("ALTER TABLE grizzly_call_records ADD COLUMN next_retry_at TEXT").run();
+  } catch {}
+
+  // Customer API & V2/V3 enhancements
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN verification_type INTEGER DEFAULT NULL").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN sms_history TEXT DEFAULT '[]'").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN can_get_another_sms INTEGER DEFAULT 1").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN currency_code TEXT DEFAULT 'RUB'").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN currency_numeric INTEGER DEFAULT 643").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN discount REAL DEFAULT 0.0").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN repeated INTEGER DEFAULT 0").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN activation_time TEXT").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN last_polled_at TEXT").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN reconciliation_status TEXT DEFAULT 'pending'").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_activations ADD COLUMN last_reconciled_at TEXT").run();
+  } catch {}
+
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN pricing_endpoint TEXT DEFAULT 'getPricesV3'").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN price_sync_interval_minutes INTEGER DEFAULT 60").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN auto_price_sync INTEGER DEFAULT 1").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN reconciliation_interval_minutes INTEGER DEFAULT 30").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN auto_reconciliation INTEGER DEFAULT 1").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN preferred_providers TEXT DEFAULT ''").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN min_profit REAL DEFAULT 2.0").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN max_acceptable_provider_cost REAL DEFAULT 100.0").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN currency_conversion_rate REAL DEFAULT 1.0").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN last_price_sync_at TEXT").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_customer_config ADD COLUMN last_reconciliation_at TEXT").run();
   } catch {}
 
   db.exec(GRIZZLY_SCHEMA_SQL);

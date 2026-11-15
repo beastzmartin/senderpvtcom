@@ -1552,6 +1552,60 @@ export const api = {
           message?: string;
         }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/check-sms`),
 
+      checkSmsV2: (activationId: string) =>
+        request<{
+          success: boolean;
+          status: 'WAITING_SMS' | 'SMS_RECEIVED' | 'CANCELLED' | 'ERROR';
+          hasSms: boolean;
+          code?: string;
+          text?: string;
+          dateTime?: string;
+          verificationType?: number;
+          smsHistory: any[];
+          canGetAnotherSms: boolean;
+          message?: string;
+          error?: string;
+        }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/check-sms-v2`),
+
+      getSmsHistory: (activationId: string) =>
+        request<{
+          success: boolean;
+          activationId: string;
+          providerActivationId: string;
+          phoneNumber: string;
+          status: string;
+          smsHistory: any[];
+          canGetAnotherSms: boolean;
+        }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/sms-history`),
+
+      getProviderComparison: (params: { country?: string | number; service: string }) => {
+        const query = new URLSearchParams();
+        query.set('service', params.service);
+        if (params.country !== undefined) query.set('country', String(params.country));
+        return request<{
+          success: boolean;
+          comparison: {
+            country: string;
+            service: string;
+            overallPrice: number;
+            overallQuantity: number;
+            pricingSource: string;
+            isStale: boolean;
+            lastSyncedAt: string | null;
+            providers: Array<{
+              providerId: string;
+              availableQuantity: number;
+              priceOptions: number[];
+              lowestPrice: number;
+              highestPrice: number;
+              country: string;
+              service: string;
+              lastUpdated: string;
+            }>;
+          };
+        }>(`/virtual-numbers/grizzly-customer/provider-comparison?${query.toString()}`);
+      },
+
       cancelActivation: (activationId: string) =>
         request<{ success: boolean; message: string }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/cancel`, {
           method: 'POST'
@@ -1599,7 +1653,105 @@ export const api = {
           totalProfit: number;
           rows: any[];
         }>(`/virtual-numbers/admin/grizzly-customer/activations?${query.toString()}`);
-      }
+      },
+
+      // --- Advanced Pricing & Provider Comparison Endpoints ---
+      syncPrices: (data?: { endpoint?: 'getPrices' | 'getPricesV2' | 'getPricesV3'; country?: string; service?: string }) =>
+        request<{
+          success: boolean;
+          endpoint: string;
+          syncedCount: number;
+          durationMs: number;
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/sync-prices', {
+          method: 'POST',
+          body: JSON.stringify(data || {})
+        }),
+
+      getCachedPrices: (params?: { countryId?: string; serviceCode?: string; search?: string; limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.countryId) query.set('countryId', params.countryId);
+        if (params?.serviceCode) query.set('serviceCode', params.serviceCode);
+        if (params?.search) query.set('search', params.search);
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; prices: any[] }>(`/virtual-numbers/admin/grizzly-customer/prices?${query.toString()}`);
+      },
+
+      getProviderRules: () =>
+        request<{ success: boolean; rules: any[] }>('/virtual-numbers/admin/grizzly-customer/provider-rules'),
+
+      saveProviderRule: (data: any) =>
+        request<{ success: boolean; rule: any }>('/virtual-numbers/admin/grizzly-customer/provider-rules', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      deleteProviderRule: (id: string) =>
+        request<{ success: boolean }>(`/virtual-numbers/admin/grizzly-customer/provider-rules/${id}`, {
+          method: 'DELETE'
+        }),
+
+      // --- Active Activations & Reconciliation Endpoints ---
+      runReconciliation: () =>
+        request<{
+          success: boolean;
+          summary?: {
+            runId: string;
+            totalRemote: number;
+            totalLocal: number;
+            matchedCount: number;
+            missingLocallyCount: number;
+            missingRemotelyCount: number;
+            discrepancyCount: number;
+            durationMs: number;
+            status: string;
+            errorMessage?: string;
+            createdAt: string;
+          };
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/reconcile', {
+          method: 'POST'
+        }),
+
+      getReconciliationRuns: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; runs: any[] }>(`/virtual-numbers/admin/grizzly-customer/reconciliation/runs?${query.toString()}`);
+      },
+
+      getReconciliationRecords: (params?: {
+        runId?: string;
+        discrepancyType?: string;
+        resolutionStatus?: string;
+        search?: string;
+        limit?: number;
+        offset?: number;
+      }) => {
+        const query = new URLSearchParams();
+        if (params?.runId) query.set('runId', params.runId);
+        if (params?.discrepancyType) query.set('discrepancyType', params.discrepancyType);
+        if (params?.resolutionStatus) query.set('resolutionStatus', params.resolutionStatus);
+        if (params?.search) query.set('search', params.search);
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; records: any[] }>(`/virtual-numbers/admin/grizzly-customer/reconciliation/records?${query.toString()}`);
+      },
+
+      resolveReconciliationRecord: (id: string, data: { action: 'resolve' | 'ignore'; notes?: string }) =>
+        request<{ success: boolean }>(`/virtual-numbers/admin/grizzly-customer/reconciliation/records/${id}/resolve`, {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      getRemoteActiveActivations: () =>
+        request<{
+          success: boolean;
+          activations: any[];
+          rawResponse: string;
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/remote-active-activations')
     },
 
     // --- GrizzlySMS Partner Protocol Admin API ---

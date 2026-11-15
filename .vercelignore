@@ -1,0 +1,7 @@
+server
+extension
+scratch
+Dockerfile
+docker-compose.yml
+.git
+.env

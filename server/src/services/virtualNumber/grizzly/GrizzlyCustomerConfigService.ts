@@ -16,6 +16,17 @@ export interface GrizzlyCustomerConfigData {
   markup_percentage?: number;
   fixed_fee?: number;
   customer_daily_limit?: number;
+  pricing_endpoint?: string;
+  price_sync_interval_minutes?: number;
+  auto_price_sync?: boolean | number;
+  reconciliation_interval_minutes?: number;
+  auto_reconciliation?: boolean | number;
+  preferred_providers?: string;
+  min_profit?: number;
+  max_acceptable_provider_cost?: number;
+  currency_conversion_rate?: number;
+  last_price_sync_at?: string;
+  last_reconciliation_at?: string;
   cached_balance?: number;
   cached_balance_currency?: string;
   last_health_check_at?: string;
@@ -91,14 +102,26 @@ export class GrizzlyCustomerConfigService {
     const markupPercentage = data.markup_percentage !== undefined ? Number(data.markup_percentage) : (current?.markup_percentage ?? 25.0);
     const fixedFee = data.fixed_fee !== undefined ? Number(data.fixed_fee) : (current?.fixed_fee ?? 5.0);
     const customerDailyLimit = data.customer_daily_limit !== undefined ? Number(data.customer_daily_limit) : (current?.customer_daily_limit ?? 50);
+    const pricingEndpoint = data.pricing_endpoint?.trim() || current?.pricing_endpoint || 'getPricesV3';
+    const priceSyncInterval = data.price_sync_interval_minutes !== undefined ? Number(data.price_sync_interval_minutes) : (current?.price_sync_interval_minutes ?? 60);
+    const autoPriceSync = data.auto_price_sync !== undefined ? (data.auto_price_sync ? 1 : 0) : (current?.auto_price_sync ?? 1);
+    const reconciliationInterval = data.reconciliation_interval_minutes !== undefined ? Number(data.reconciliation_interval_minutes) : (current?.reconciliation_interval_minutes ?? 30);
+    const autoReconciliation = data.auto_reconciliation !== undefined ? (data.auto_reconciliation ? 1 : 0) : (current?.auto_reconciliation ?? 1);
+    const preferredProviders = data.preferred_providers !== undefined ? data.preferred_providers.trim() : (current?.preferred_providers ?? '');
+    const minProfit = data.min_profit !== undefined ? Number(data.min_profit) : (current?.min_profit ?? 2.0);
+    const maxAcceptableCost = data.max_acceptable_provider_cost !== undefined ? Number(data.max_acceptable_provider_cost) : (current?.max_acceptable_provider_cost ?? 100.0);
+    const currencyConversionRate = data.currency_conversion_rate !== undefined ? Number(data.currency_conversion_rate) : (current?.currency_conversion_rate ?? 1.0);
 
     db.prepare(`
       INSERT INTO grizzly_customer_config (
         id, is_enabled, api_key, base_url, default_country, min_price, max_price,
         included_provider_ids, excluded_provider_ids, default_phone_exceptions,
-        timeout_seconds, markup_percentage, fixed_fee, customer_daily_limit, updated_at
+        timeout_seconds, markup_percentage, fixed_fee, customer_daily_limit,
+        pricing_endpoint, price_sync_interval_minutes, auto_price_sync,
+        reconciliation_interval_minutes, auto_reconciliation, preferred_providers,
+        min_profit, max_acceptable_provider_cost, currency_conversion_rate, updated_at
       ) VALUES (
-        'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+        'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
       )
       ON CONFLICT(id) DO UPDATE SET
         is_enabled = excluded.is_enabled,
@@ -114,6 +137,15 @@ export class GrizzlyCustomerConfigService {
         markup_percentage = excluded.markup_percentage,
         fixed_fee = excluded.fixed_fee,
         customer_daily_limit = excluded.customer_daily_limit,
+        pricing_endpoint = excluded.pricing_endpoint,
+        price_sync_interval_minutes = excluded.price_sync_interval_minutes,
+        auto_price_sync = excluded.auto_price_sync,
+        reconciliation_interval_minutes = excluded.reconciliation_interval_minutes,
+        auto_reconciliation = excluded.auto_reconciliation,
+        preferred_providers = excluded.preferred_providers,
+        min_profit = excluded.min_profit,
+        max_acceptable_provider_cost = excluded.max_acceptable_provider_cost,
+        currency_conversion_rate = excluded.currency_conversion_rate,
         updated_at = datetime('now')
     `).run(
       isEnabled,
@@ -128,7 +160,16 @@ export class GrizzlyCustomerConfigService {
       timeoutSeconds,
       markupPercentage,
       fixedFee,
-      customerDailyLimit
+      customerDailyLimit,
+      pricingEndpoint,
+      priceSyncInterval,
+      autoPriceSync,
+      reconciliationInterval,
+      autoReconciliation,
+      preferredProviders,
+      minProfit,
+      maxAcceptableCost,
+      currencyConversionRate
     );
 
     return this.getConfig(true);
