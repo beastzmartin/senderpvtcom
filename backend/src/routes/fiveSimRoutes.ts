@@ -52,6 +52,14 @@ router.put('/vendor/prices', requireAuth, requireAdmin, controller.createVendorP
 router.post('/vendor/prices', requireAuth, requireAdmin, controller.updateVendorPrice);
 router.post('/vendor/prices/disable', requireAuth, requireAdmin, controller.toggleVendorPrice);
 
+// --- Part 9: Reference Catalog (Countries, Products, Aliases) ---
+router.get('/reference/countries', controller.getReferenceCountries);
+router.get('/reference/products', controller.getReferenceProducts);
+router.get('/reference/resolve', controller.resolveReference);
+
+// --- Part 10: 10-Point System Diagnostics & Checklist ---
+router.get('/diagnostics', requireAuth, requireAdmin, controller.getDiagnostics);
+
 // --- Full Sync Action ---
 router.post('/sync', requireAuth, requireAdmin, controller.syncAll);
 

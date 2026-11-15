@@ -69,7 +69,10 @@ import {
   FiveSimVendorWallets,
   FiveSimVendorPriceItem,
   FiveSimVendorPricesResponse,
-  FiveSimVendorWithdrawParams
+  FiveSimVendorWithdrawParams,
+  FiveSimSpecialCountryMapping,
+  FiveSimSpecialProductMapping,
+  FiveSimDiagnosticsReport
 } from '../types';
 
 const getApiBase = (): string => {
@@ -1784,6 +1787,28 @@ export const api = {
       request<{ success: boolean; message: string; result: any }>('/fivesim/vendor/prices/disable', {
         method: 'POST',
         body: JSON.stringify(data)
-      })
+      }),
+
+    // --- Part 9: Reference Catalog ---
+    getReferenceCountries: () =>
+      request<{ success: boolean; count: number; countries: FiveSimSpecialCountryMapping[] }>('/fivesim/reference/countries'),
+
+    getReferenceProducts: (params?: { category?: string; search?: string }) => {
+      const query = new URLSearchParams();
+      if (params?.category) query.set('category', params.category);
+      if (params?.search) query.set('search', params.search);
+      return request<{ success: boolean; count: number; products: FiveSimSpecialProductMapping[] }>(`/fivesim/reference/products?${query.toString()}`);
+    },
+
+    resolveReference: (queryText: string, type: 'product' | 'country' = 'product') => {
+      const query = new URLSearchParams();
+      query.set('query', queryText);
+      query.set('type', type);
+      return request<{ success: boolean; query: string; resolvedSlug: string }>(`/fivesim/reference/resolve?${query.toString()}`);
+    },
+
+    // --- Part 10: 10-Point System Diagnostics ---
+    getDiagnostics: () =>
+      request<{ success: boolean; report: FiveSimDiagnosticsReport }>('/fivesim/diagnostics')
   }
 };

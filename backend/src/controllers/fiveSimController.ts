@@ -5,6 +5,8 @@ import { FiveSimPriceLimitsService } from '../services/virtualNumber/fivesim/Fiv
 import { FiveSimCatalogService } from '../services/virtualNumber/fivesim/FiveSimCatalogService.js';
 import { FiveSimOrderService } from '../services/virtualNumber/fivesim/FiveSimOrderService.js';
 import { FiveSimVendorService } from '../services/virtualNumber/fivesim/FiveSimVendorService.js';
+import { FiveSimReferenceService } from '../services/virtualNumber/fivesim/FiveSimReferenceService.js';
+import { FiveSimDiagnosticsService } from '../services/virtualNumber/fivesim/FiveSimDiagnosticsService.js';
 
 export class FiveSimController {
   private configService: FiveSimConfigService;
@@ -13,6 +15,8 @@ export class FiveSimController {
   private catalogService: FiveSimCatalogService;
   private orderService: FiveSimOrderService;
   private vendorService: FiveSimVendorService;
+  private referenceService: FiveSimReferenceService;
+  private diagnosticsService: FiveSimDiagnosticsService;
 
   constructor() {
     this.configService = FiveSimConfigService.getInstance();
@@ -21,6 +25,8 @@ export class FiveSimController {
     this.catalogService = new FiveSimCatalogService();
     this.orderService = FiveSimOrderService.getInstance();
     this.vendorService = FiveSimVendorService.getInstance();
+    this.referenceService = FiveSimReferenceService.getInstance();
+    this.diagnosticsService = new FiveSimDiagnosticsService();
   }
 
   // =========================================================================
@@ -630,6 +636,60 @@ export class FiveSimController {
         message: Disable ? 'Vendor prices disabled.' : 'Vendor prices enabled.',
         result
       });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  // =========================================================================
+  // PART 9: REFERENCE DIRECTORY (COUNTRIES, OPERATORS, PRODUCTS)
+  // =========================================================================
+
+  public getReferenceCountries = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const countries = this.referenceService.getReferenceCountries();
+      res.json({ success: true, count: countries.length, countries });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public getReferenceProducts = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const category = req.query.category as string;
+      const search = req.query.search as string;
+      const products = this.referenceService.getCatalogProducts({ category, search });
+      res.json({ success: true, count: products.length, products });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public resolveReference = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const query = (req.query.query as string) || '';
+      const type = (req.query.type as string) || 'product'; // 'product' or 'country'
+
+      if (type === 'country') {
+        const resolvedSlug = this.referenceService.resolveCountrySlug(query);
+        res.json({ success: true, query, resolvedSlug });
+      } else {
+        const resolvedSlug = this.referenceService.resolveProductSlug(query);
+        res.json({ success: true, query, resolvedSlug });
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  // =========================================================================
+  // PART 10: 10-POINT DIAGNOSTICS & SYSTEM INTEGRATION CHECKLIST
+  // =========================================================================
+
+  public getDiagnostics = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const report = await this.diagnosticsService.runFullDiagnostics();
+      res.json({ success: true, report });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

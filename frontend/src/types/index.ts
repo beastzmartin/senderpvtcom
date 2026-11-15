@@ -1192,6 +1192,51 @@ export interface FiveSimVendorWithdrawParams {
   fee: string;
 }
 
+// Parts 9 & 10 Types
+export interface FiveSimSpecialCountryMapping {
+  slug: string;
+  officialName: string;
+  iso: string;
+  prefix: string;
+  flag: string;
+  aliases: string[];
+}
+
+export interface FiveSimSpecialProductMapping {
+  slug: string;
+  name: string;
+  category: 'messaging' | 'social' | 'ai' | 'ecommerce' | 'delivery' | 'travel' | 'finance' | 'entertainment' | 'hosting' | 'other';
+  aliases: string[];
+  popular?: boolean;
+}
+
+export interface FiveSimChecklistItem {
+  id: string;
+  title: string;
+  part: string;
+  status: 'passed' | 'warning' | 'failed';
+  details: string;
+  recommendation?: string;
+}
+
+export interface FiveSimDiagnosticsReport {
+  timestamp: string;
+  overallHealth: 'optimal' | 'attention_needed' | 'critical';
+  checklist: FiveSimChecklistItem[];
+  accountStats: {
+    balance: number;
+    rating: number;
+    email?: string;
+    vendor?: string;
+  };
+  sampleCodeSnippets: {
+    nodejs: string;
+    curl: string;
+    python: string;
+  };
+}
+
+
 
 
 

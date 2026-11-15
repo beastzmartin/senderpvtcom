@@ -12,7 +12,11 @@ import {
   FiveSimFlashNotification,
   FiveSimVendorWallets,
   FiveSimVendorPriceItem,
-  FiveSimVendorWithdrawParams
+  FiveSimVendorWithdrawParams,
+  FiveSimSpecialCountryMapping,
+  FiveSimSpecialProductMapping,
+  FiveSimChecklistItem,
+  FiveSimDiagnosticsReport
 } from '../../../types';
 import {
   Radio,
@@ -55,13 +59,22 @@ import {
   ArrowDownToLine,
   Volume2,
   ShieldAlert,
-  Edit2
+  Edit2,
+  BookOpen,
+  Activity,
+  FileCode,
+  Terminal,
+  Cpu,
+  Server,
+  AlertCircle,
+  Code2,
+  ListFilter
 } from 'lucide-react';
 
 export const FiveSimAdminConsole: React.FC = () => {
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<
-    'rates' | 'live-orders' | 'profile' | 'max-prices' | 'orders' | 'payments' | 'vendor' | 'settings'
+    'rates' | 'live-orders' | 'profile' | 'max-prices' | 'orders' | 'payments' | 'vendor' | 'reference' | 'diagnostics' | 'settings'
   >('rates');
 
   const { socket } = useWhatsApp();
@@ -138,6 +151,22 @@ export const FiveSimAdminConsole: React.FC = () => {
   const [newVendorOperator, setNewVendorOperator] = useState<string>('virtual59');
   const [newVendorPrice, setNewVendorPrice] = useState<number>(1.5);
   const [isSubmittingVendorPrice, setIsSubmittingVendorPrice] = useState<boolean>(false);
+
+  // Part 9: Service & Country Reference Directory
+  const [referenceCountries, setReferenceCountries] = useState<FiveSimSpecialCountryMapping[]>([]);
+  const [referenceProducts, setReferenceProducts] = useState<FiveSimSpecialProductMapping[]>([]);
+  const [loadingReference, setLoadingReference] = useState<boolean>(false);
+  const [refProductCategory, setRefProductCategory] = useState<string>('all');
+  const [refSearchQuery, setRefSearchQuery] = useState<string>('');
+  const [refCountrySearch, setRefCountrySearch] = useState<string>('');
+  const [aliasInput, setAliasInput] = useState<string>('');
+  const [aliasResolvedResult, setAliasResolvedResult] = useState<{ query: string; resolvedSlug: string } | null>(null);
+  const [isResolvingAlias, setIsResolvingAlias] = useState<boolean>(false);
+
+  // Part 10: 10-Point Integration Diagnostics
+  const [diagnosticsReport, setDiagnosticsReport] = useState<FiveSimDiagnosticsReport | null>(null);
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState<boolean>(false);
+  const [activeCodeSnippetTab, setActiveCodeSnippetTab] = useState<'nodejs' | 'curl' | 'python'>('nodejs');
 
   // Settings form
   const [apiKeyInput, setApiKeyInput] = useState<string>('');
@@ -303,6 +332,10 @@ export const FiveSimAdminConsole: React.FC = () => {
       loadRates(selectedCountry, selectedProduct);
     } else if (activeTab === 'vendor') {
       loadVendorData();
+    } else if (activeTab === 'reference' && referenceCountries.length === 0) {
+      loadReferenceData();
+    } else if (activeTab === 'diagnostics') {
+      loadDiagnostics();
     }
   }, [selectedCountry, selectedProduct, activeTab]);
 
@@ -809,6 +842,68 @@ export const FiveSimAdminConsole: React.FC = () => {
     return { text, percent, isExpired: false, totalSeconds };
   };
 
+  // Part 9 Reference handlers
+  const loadReferenceData = async () => {
+    try {
+      setLoadingReference(true);
+      const [countriesRes, productsRes] = await Promise.all([
+        api.fiveSim.getReferenceCountries(),
+        api.fiveSim.getReferenceProducts()
+      ]);
+      if (countriesRes.success) setReferenceCountries(countriesRes.countries);
+      if (productsRes.success) setReferenceProducts(productsRes.products);
+    } catch (err: any) {
+      showToast(`Failed to load reference lists: ${err.message}`, 'error');
+    } finally {
+      setLoadingReference(false);
+    }
+  };
+
+  const handleResolveAlias = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!aliasInput.trim()) return;
+    try {
+      setIsResolvingAlias(true);
+      const res = await api.fiveSim.resolveReference(aliasInput.trim(), 'product');
+      if (res.success) {
+        setAliasResolvedResult({ query: res.query, resolvedSlug: res.resolvedSlug });
+        showToast(`Resolved "${res.query}" → "${res.resolvedSlug}"`, 'success');
+      }
+    } catch (err: any) {
+      showToast(`Failed to resolve alias: ${err.message}`, 'error');
+    } finally {
+      setIsResolvingAlias(false);
+    }
+  };
+
+  const handleSelectReferenceProduct = (slug: string) => {
+    setSelectedProduct(slug);
+    setActiveTab('rates');
+    showToast(`Switched to Live Catalog for "${slug}"`, 'info');
+  };
+
+  const handleSelectReferenceCountry = (slug: string) => {
+    setSelectedCountry(slug);
+    setActiveTab('rates');
+    showToast(`Switched to Live Catalog for country "${slug}"`, 'info');
+  };
+
+  // Part 10 Diagnostics handlers
+  const loadDiagnostics = async () => {
+    try {
+      setLoadingDiagnostics(true);
+      const res = await api.fiveSim.getDiagnostics();
+      if (res.success) {
+        setDiagnosticsReport(res.report);
+        showToast('System diagnostics self-test completed successfully!', 'success');
+      }
+    } catch (err: any) {
+      showToast(`Failed to run diagnostics: ${err.message}`, 'error');
+    } finally {
+      setLoadingDiagnostics(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Toast notification */}
@@ -858,13 +953,74 @@ export const FiveSimAdminConsole: React.FC = () => {
         </div>
       )}
 
+      {/* Low Balance Warning Banner (Threshold: 50 RUB) */}
+      {config?.apiKey && (profile?.balance ?? config?.balance ?? 100) < 50 && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/15 to-orange-500/10 border border-amber-300 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 text-amber-900 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <div className="text-xs font-black uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                <span>⚠️ Low Account Balance Warning (Under 50 RUB)</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-amber-200/80 rounded font-mono font-bold">
+                  {(profile?.balance ?? config?.balance ?? 0).toFixed(2)} RUB
+                </span>
+              </div>
+              <p className="text-xs text-amber-700 font-medium mt-0.5">
+                Your 5SIM balance is below 50 RUB. New activations and rental orders may fail due to insufficient funds. Please top up your account to ensure uninterrupted service.
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://5sim.net/payment"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-xs"
+          >
+            <span>Top Up Balance</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      )}
+
+      {/* Rating Score Safeguard Banner (< 90) */}
+      {config?.apiKey && (profile?.rating ?? config?.rating ?? 100) < 90 && (
+        <div className="bg-gradient-to-r from-rose-500/10 via-rose-500/15 to-red-500/10 border border-rose-300 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 text-rose-900 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center shrink-0">
+              <ShieldAlert className="w-5 h-5 text-rose-600" />
+            </div>
+            <div>
+              <div className="text-xs font-black uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
+                <span>⚠️ 5SIM Rating Score Alert</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-rose-200/80 rounded font-mono font-bold">
+                  {profile?.rating ?? config?.rating}/96
+                </span>
+              </div>
+              <p className="text-xs text-rose-700 font-medium mt-0.5">
+                Your rating score has fallen below 90. If your rating drops to 0, 5SIM automatically locks your account from purchasing numbers for 24 hours. Keep orders active or cancel before 14m to avoid -0.15 timeout penalties.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('diagnostics')}
+            className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-xs"
+          >
+            <span>Check Diagnostics</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="bg-gradient-to-r from-sky-950 via-indigo-950 to-slate-950 text-white rounded-3xl p-6 shadow-md flex flex-wrap items-center justify-between gap-4 border border-sky-900/40">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-500/25 text-sky-200 border border-sky-400/30 flex items-center gap-1">
               <Zap className="w-3 h-3 text-sky-400" />
-              Official 5SIM Integration (Parts 0 - 8 Complete)
+              Official 5SIM Integration (Parts 0 - 10 Complete)
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1011,6 +1167,37 @@ export const FiveSimAdminConsole: React.FC = () => {
         >
           <Wallet className="w-4 h-4" />
           <span>Vendor & Reseller Hub (Part 8)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('reference')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'reference'
+              ? 'bg-sky-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Service & Country Directory (Part 9)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('diagnostics')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'diagnostics'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Activity className="w-4 h-4" />
+          <span>10-Point Diagnostics (Part 10)</span>
+          {diagnosticsReport?.overallHealth === 'critical' ? (
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+          ) : diagnosticsReport?.overallHealth === 'attention_needed' ? (
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          )}
         </button>
 
         <button
@@ -2210,6 +2397,612 @@ export const FiveSimAdminConsole: React.FC = () => {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 9: SERVICE & COUNTRY REFERENCE DIRECTORY (PART 9) */}
+      {/* ========================================================================= */}
+      {activeTab === 'reference' && (
+        <div className="space-y-6">
+          {/* Section 1: Hero & Real-time Alias Resolver */}
+          <div className="bg-gradient-to-br from-indigo-900 via-sky-900 to-slate-900 text-white rounded-3xl p-6 shadow-md border border-indigo-800/40 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-400/20 text-sky-200 border border-sky-400/30">
+                    Part 9: Canonical Slugs & Product Aliases
+                  </span>
+                  <span className="text-xs text-sky-300 font-mono">150+ Countries • 200+ App Slugs</span>
+                </div>
+                <h2 className="text-base font-black text-white flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-sky-400" />
+                  5SIM Reference Directory & Alias Resolver
+                </h2>
+                <p className="text-xs text-slate-300 max-w-2xl">
+                  5SIM requires strict lowercase canonical slugs for all API orders. Use our instant resolver to convert common brand names, regional apps, or misspelled countries into official API parameters.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={loadReferenceData}
+                disabled={loadingReference}
+                className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-white/10 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingReference ? 'animate-spin' : ''}`} />
+                <span>Reload Directory</span>
+              </button>
+            </div>
+
+            {/* Interactive Live Resolver Box */}
+            <form onSubmit={handleResolveAlias} className="bg-white/10 backdrop-blur-md rounded-2xl p-3.5 border border-white/15 space-y-3">
+              <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                <div className="relative flex-1 w-full">
+                  <Search className="w-4 h-4 text-sky-300 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={aliasInput}
+                    onChange={(e) => setAliasInput(e.target.value)}
+                    placeholder="Type any brand or app (e.g. Blinkit, ChatGPT, Alibaba, inDrive, WhatsApp Business, Bhutan)..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-black/20 border border-white/20 rounded-xl text-xs text-white placeholder:text-slate-400 focus:outline-hidden focus:border-sky-400 focus:bg-black/30 font-medium"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isResolvingAlias || !aliasInput.trim()}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-black rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{isResolvingAlias ? 'Resolving...' : 'Resolve Alias'}</span>
+                </button>
+              </div>
+
+              {/* Resolved Output Pill */}
+              {aliasResolvedResult && (
+                <div className="bg-emerald-950/70 border border-emerald-500/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-emerald-200">
+                  <div className="flex items-center gap-2 text-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>
+                      Input: <strong className="text-white">"{aliasResolvedResult.query}"</strong> → Official 5SIM Slug:
+                      <code className="ml-1.5 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono font-bold text-xs border border-emerald-500/30">
+                        {aliasResolvedResult.resolvedSlug}
+                      </code>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(aliasResolvedResult.resolvedSlug, 'API Slug')}
+                      className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Copy Slug</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectReferenceProduct(aliasResolvedResult.resolvedSlug)}
+                      className="px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg text-[11px] font-black transition flex items-center gap-1 shadow-xs"
+                    >
+                      <Zap className="w-3 h-3" />
+                      <span>Check Live Rates</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </form>
+          </div>
+
+          {/* Section 2: Canonical Country Slugs & Physical vs Virtual Architecture */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Special Country Slugs */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-2xs space-y-4 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-sky-600" />
+                    Special Canonical Country Slugs (Part 9.1)
+                  </h3>
+                  <span className="text-[11px] font-bold text-slate-400">Strict Naming Rule</span>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  5SIM uses unique non-standard country slugs for certain jurisdictions. Passing standard ISO codes or common country names will result in <code className="font-mono text-rose-600">BAD_COUNTRY</code> errors.
+                </p>
+
+                {/* Country Search Filter */}
+                <div className="relative pt-1">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={refCountrySearch}
+                    onChange={(e) => setRefCountrySearch(e.target.value)}
+                    placeholder="Search country name, slug, or dial code..."
+                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-sky-500"
+                  />
+                </div>
+
+                <div className="overflow-x-auto max-h-72 overflow-y-auto scrollbar-thin border border-slate-100 rounded-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 sticky top-0">
+                      <tr>
+                        <th className="py-2.5 px-3">Country</th>
+                        <th className="py-2.5 px-3">Dial Prefix</th>
+                        <th className="py-2.5 px-3">Canonical Slug</th>
+                        <th className="py-2.5 px-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {referenceCountries
+                        .filter(
+                          (c) =>
+                            !refCountrySearch ||
+                            c.officialName.toLowerCase().includes(refCountrySearch.toLowerCase()) ||
+                            c.slug.toLowerCase().includes(refCountrySearch.toLowerCase()) ||
+                            c.prefix.includes(refCountrySearch)
+                        )
+                        .map((c) => (
+                          <tr key={c.slug} className="hover:bg-slate-50/80 transition">
+                            <td className="py-2 px-3 flex items-center gap-2">
+                              <span className="text-base">{c.flag}</span>
+                              <span className="font-bold text-slate-900">{c.officialName}</span>
+                            </td>
+                            <td className="py-2 px-3 font-mono text-slate-600">{c.prefix}</td>
+                            <td className="py-2 px-3">
+                              <code className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 font-mono font-bold text-[11px] border border-sky-100">
+                                {c.slug}
+                              </code>
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleSelectReferenceCountry(c.slug)}
+                                className="px-2 py-1 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 rounded-lg text-[10px] font-bold transition"
+                              >
+                                Select
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Physical vs Virtual SIM Architecture Card */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-2xs space-y-4 flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-indigo-600" />
+                    Physical SIM vs. Virtual (VOIP) Operators (Part 9.3)
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    Carrier Architecture
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  5SIM groups telecom operators into two distinct tiers. Selecting the right operator tier is critical for high SMS receipt rates:
+                </p>
+
+                {/* Comparison Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* Physical Operators */}
+                  <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <h4 className="text-xs font-black text-emerald-950 uppercase">Physical SIM Lines</h4>
+                    </div>
+                    <div className="text-[11px] text-emerald-900/90 space-y-1">
+                      <p><strong>Examples:</strong> vodafone, o2, airtel, telkomsel, tim, claro, three, ee</p>
+                      <p><strong>Success Rate:</strong> ~95% - 99%</p>
+                      <p><strong>Best For:</strong> WhatsApp, Telegram, Google, Banking, strict fraud-filtered apps.</p>
+                      <p className="text-[10px] text-emerald-700 italic">Authentic GSM hardware base stations.</p>
+                    </div>
+                  </div>
+
+                  {/* Virtual Operators */}
+                  <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      <h4 className="text-xs font-black text-amber-950 uppercase">Virtual / VOIP Lines</h4>
+                    </div>
+                    <div className="text-[11px] text-amber-900/90 space-y-1">
+                      <p><strong>Examples:</strong> virtual59, virtual4, virtual21, virtual0</p>
+                      <p><strong>Success Rate:</strong> ~70% - 85%</p>
+                      <p><strong>Best For:</strong> Bulk scrapers, forums, casual games, low-cost testing.</p>
+                      <p className="text-[10px] text-amber-700 italic">May be flagged by banking anti-VOIP filters.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-start gap-2">
+                  <Info className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Auto-Selection Tip:</strong> Our order engine prioritizes physical carriers when you select <code className="font-mono font-bold text-slate-800">operator: "any"</code>, falling back to virtual pools if physical stock is depleted.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Full Service & App Directory with Category Filtering */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-2xs space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-sky-600" />
+                  Official Product & Service Catalog
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Search across popular consumer apps, enterprise services, and hosting rental products.
+                </p>
+              </div>
+
+              {/* Product Search */}
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={refSearchQuery}
+                  onChange={(e) => setRefSearchQuery(e.target.value)}
+                  placeholder="Filter services by name or alias..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+            </div>
+
+            {/* Category Filter Tabs */}
+            <div className="flex items-center gap-1.5 flex-wrap border-b border-slate-100 pb-3">
+              {[
+                { id: 'all', label: 'All Services' },
+                { id: 'messaging', label: '💬 Messaging' },
+                { id: 'social', label: '👥 Social Networks' },
+                { id: 'ai', label: '🤖 AI & Tech' },
+                { id: 'ecommerce', label: '🛒 E-Commerce' },
+                { id: 'delivery', label: '🛵 Delivery & Food' },
+                { id: 'travel', label: '🚕 Ride & Travel' },
+                { id: 'finance', label: '💳 Fintech & Banking' },
+                { id: 'hosting', label: '⏱️ Hosting Rentals' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setRefProductCategory(tab.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                    refProductCategory === tab.id
+                      ? 'bg-sky-600 text-white shadow-2xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Services Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-[500px] overflow-y-auto scrollbar-thin pr-1">
+              {referenceProducts
+                .filter((p) => {
+                  const matchCategory = refProductCategory === 'all' || p.category === refProductCategory;
+                  const matchSearch =
+                    !refSearchQuery ||
+                    p.name.toLowerCase().includes(refSearchQuery.toLowerCase()) ||
+                    p.slug.toLowerCase().includes(refSearchQuery.toLowerCase()) ||
+                    p.aliases.some((a) => a.toLowerCase().includes(refSearchQuery.toLowerCase()));
+                  return matchCategory && matchSearch;
+                })
+                .map((product) => (
+                  <div
+                    key={product.slug}
+                    className="p-3.5 rounded-2xl border border-slate-100 hover:border-sky-300 hover:shadow-xs transition bg-slate-50/50 hover:bg-white flex flex-col justify-between space-y-3"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 text-xs">{product.name}</span>
+                          {product.popular && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-100 text-amber-700 flex items-center gap-0.5">
+                              <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                              Popular
+                            </span>
+                          )}
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600">
+                          {product.category}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">Slug:</span>
+                        <code className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 font-mono font-black text-xs border border-sky-100">
+                          {product.slug}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(product.slug, 'Product Slug')}
+                          className="text-slate-400 hover:text-slate-700 p-0.5"
+                          title="Copy Slug"
+                        >
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      {product.aliases.length > 0 && (
+                        <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                          <span className="text-[10px] text-slate-400 font-semibold">Aliases:</span>
+                          {product.aliases.slice(0, 3).map((a) => (
+                            <span
+                              key={a}
+                              className="px-1.5 py-0.2 rounded-md bg-white border border-slate-200 text-[10px] font-medium text-slate-600"
+                            >
+                              {a}
+                            </span>
+                          ))}
+                          {product.aliases.length > 3 && (
+                            <span className="text-[10px] text-slate-400 font-semibold">
+                              +{product.aliases.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectReferenceProduct(product.slug)}
+                        className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs"
+                      >
+                        <Zap className="w-3 h-3" />
+                        <span>Check Live Rates</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 10: 10-POINT INTEGRATION & HEALTH DIAGNOSTICS (PART 10) */}
+      {/* ========================================================================= */}
+      {activeTab === 'diagnostics' && (
+        <div className="space-y-6">
+          {/* Diagnostics Header & Score Card */}
+          <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 text-white rounded-3xl p-6 shadow-md border border-slate-800 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                    <Activity className="w-3 h-3 text-emerald-400" />
+                    Part 10: 10-Point Integration Certification
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono">
+                    Last Run: {diagnosticsReport ? new Date(diagnosticsReport.timestamp).toLocaleTimeString() : 'Never'}
+                  </span>
+                </div>
+                <h2 className="text-base font-black text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  System Health & Gateway Diagnostics Self-Test
+                </h2>
+                <p className="text-xs text-slate-300 max-w-2xl">
+                  Automated verification suite validating API tokens, 5SIM gateway latency, rating anti-ban monitors, 14-minute rating auto-cancellation, plain-text response parsers, and SQLite schema indexes.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {/* Health Score Pill */}
+                <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3">
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Gateway Health</div>
+                    <div className="text-sm font-black flex items-center gap-1.5">
+                      {diagnosticsReport?.overallHealth === 'optimal' ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <span className="text-emerald-400">Optimal (10/10)</span>
+                        </>
+                      ) : diagnosticsReport?.overallHealth === 'attention_needed' ? (
+                        <>
+                          <AlertTriangle className="w-4 h-4 text-amber-400" />
+                          <span className="text-amber-400">Attention Needed</span>
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-4 h-4 text-rose-400" />
+                          <span className="text-rose-400">Critical Issues</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={loadDiagnostics}
+                  disabled={loadingDiagnostics}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/30"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingDiagnostics ? 'animate-spin' : ''}`} />
+                  <span>{loadingDiagnostics ? 'Evaluating Engine...' : 'Run Diagnostics Self-Test'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            {diagnosticsReport?.accountStats && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-white/10">
+                <div className="p-3 rounded-2xl bg-white/5 border border-white/10">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">Live Account Balance</div>
+                  <div className="text-base font-black font-mono text-sky-300">
+                    {diagnosticsReport.accountStats.balance.toFixed(2)} RUB
+                  </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/5 border border-white/10">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">Account Rating Score</div>
+                  <div className="text-base font-black font-mono text-emerald-300">
+                    {diagnosticsReport.accountStats.rating} / 96
+                  </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/5 border border-white/10">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">5SIM Account Email</div>
+                  <div className="text-xs font-bold text-slate-200 truncate mt-1">
+                    {diagnosticsReport.accountStats.email || 'Configured via Token'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/5 border border-white/10">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">Reseller / Vendor Mode</div>
+                  <div className="text-xs font-bold text-slate-200 mt-1">
+                    {diagnosticsReport.accountStats.vendor ? `Active (${diagnosticsReport.accountStats.vendor})` : 'Standard API Client'}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 10-Point Checklist Grid */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-2xs space-y-4">
+            <div>
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <CheckCheck className="w-4 h-4 text-emerald-600" />
+                10-Point Production Integration Checklist (Part 10.7)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Each checklist item evaluates a mission-critical requirement from the official 5SIM specifications.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {diagnosticsReport?.checklist?.map((item, idx) => (
+                <div
+                  key={item.id}
+                  className={`p-4 rounded-2xl border transition space-y-2.5 ${
+                    item.status === 'passed'
+                      ? 'bg-emerald-50/30 border-emerald-200 hover:border-emerald-300'
+                      : item.status === 'warning'
+                      ? 'bg-amber-50/40 border-amber-200 hover:border-amber-300'
+                      : 'bg-rose-50/40 border-rose-200 hover:border-rose-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-6 h-6 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-[10px]">
+                        {idx + 1}
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-slate-900">{item.title}</div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">{item.part}</span>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      {item.status === 'passed' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Passed
+                        </span>
+                      ) : item.status === 'warning' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-amber-600" />
+                          Warning
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
+                          <XCircle className="w-3 h-3 text-rose-600" />
+                          Failed
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                    {item.details}
+                  </p>
+
+                  {item.recommendation && (
+                    <div className="p-2.5 rounded-xl bg-white/80 border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <span>{item.recommendation}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Code Snippets Section */}
+          <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-md border border-slate-800 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                  <Code2 className="w-4 h-4 text-sky-400" />
+                  Integration Code Snippets (Node.js, cURL, Python)
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Ready-to-use production boilerplates featuring Bearer authentication, retry policies, and error handling.
+                </p>
+              </div>
+
+              {/* Language Selector */}
+              <div className="flex items-center gap-1 p-1 bg-slate-800 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setActiveCodeSnippetTab('nodejs')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    activeCodeSnippetTab === 'nodejs'
+                      ? 'bg-sky-600 text-white shadow-2xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Node.js (Axios)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveCodeSnippetTab('curl')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    activeCodeSnippetTab === 'curl'
+                      ? 'bg-sky-600 text-white shadow-2xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  cURL CLI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveCodeSnippetTab('python')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    activeCodeSnippetTab === 'python'
+                      ? 'bg-sky-600 text-white shadow-2xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Python (Requests)
+                </button>
+              </div>
+            </div>
+
+            {/* Code Box */}
+            <div className="relative rounded-2xl bg-black/60 border border-slate-800 p-4 font-mono text-xs text-sky-200 overflow-x-auto">
+              <div className="absolute right-3 top-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const snippet =
+                      diagnosticsReport?.sampleCodeSnippets?.[activeCodeSnippetTab] || '';
+                    copyToClipboard(snippet, `${activeCodeSnippetTab.toUpperCase()} snippet`);
+                  }}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 border border-white/10"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Code</span>
+                </button>
+              </div>
+              <pre className="pr-24 leading-relaxed whitespace-pre font-mono text-[11px]">
+                {diagnosticsReport?.sampleCodeSnippets?.[activeCodeSnippetTab] || '// Loading snippet...'}
+              </pre>
+            </div>
           </div>
         </div>
       )}
