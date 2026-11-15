@@ -14,7 +14,7 @@
   function captureAutoExtractImmediate() {
     try {
       const fullUrl = window.location.href;
-      if (fullUrl.includes('auto_extract') || fullUrl.includes('token=')) {
+      if (fullUrl.includes('auto_extract') || fullUrl.includes('token=') || fullUrl.includes('backend=')) {
         let count = 50;
         const countMatch = fullUrl.match(/auto_extract=(\d+)/);
         if (countMatch) count = parseInt(countMatch[1], 10);
@@ -27,13 +27,27 @@
         const tokenMatch = fullUrl.match(/[?&#]token=([a-zA-Z0-9._-]+)/);
         if (tokenMatch) {
           token = tokenMatch[1];
+        }
+
+        let backend = null;
+        const backendMatch = fullUrl.match(/[?&#]backend=([^&#]+)/);
+        if (backendMatch) {
           try {
-            chrome.runtime.sendMessage({ type: 'AUTH_PAIR_TOKEN', payload: { token } });
+            backend = decodeURIComponent(backendMatch[1]);
           } catch (e) {}
         }
 
-        sessionStorage.setItem('__gmap_pending_auto_extract', JSON.stringify({ count, jobId, token }));
-        console.log('[Maps Extractor Pro] Captured immediate auto_extract command:', { count, jobId, hasToken: !!token });
+        if (token || backend) {
+          try {
+            chrome.runtime.sendMessage({
+              type: 'AUTH_PAIR_BACKEND_AND_TOKEN',
+              payload: { token, backend }
+            });
+          } catch (e) {}
+        }
+
+        sessionStorage.setItem('__gmap_pending_auto_extract', JSON.stringify({ count, jobId, token, backend }));
+        console.log('[Maps Extractor Pro] Captured immediate auto_extract command:', { count, jobId, hasToken: !!token, backend });
       }
     } catch (e) {}
   }
@@ -149,6 +163,18 @@
           syncBtn.disabled = false;
           syncBtn.style.opacity = '1';
         }
+
+        if (chrome.runtime.lastError) {
+          const err = chrome.runtime.lastError.message || 'Worker not responding';
+          console.warn('[HUD Sync] Extension lastError:', err);
+          updateHudSyncNote('⚠️ Sync timeout. Click Export CSV to keep leads', '#f59e0b');
+          if (syncBtn) {
+            syncBtn.style.background = '#d97706';
+            syncBtn.textContent = '⚡ Retry CRM Sync';
+          }
+          return;
+        }
+
         if (res && res.success) {
           const syncedCount = res.count !== undefined ? res.count : leadsToPush.length;
           updateHudSyncNote(`✓ ${syncedCount} Leads Saved to Cloud CRM!`, '#10b981');
@@ -157,8 +183,8 @@
             syncBtn.textContent = '✓ Synced to CRM (Re-Sync)';
           }
         } else {
-          const errMsg = res?.error || res?.message || 'Sync failed. Check extension connection.';
-          updateHudSyncNote(`⚠️ ${errMsg.slice(0, 38)}`, '#f59e0b');
+          const errMsg = res?.error || res?.message || 'Sync failed. Open dashboard tab or export CSV.';
+          updateHudSyncNote(`⚠️ ${errMsg.slice(0, 42)}`, '#f59e0b');
           if (syncBtn) {
             syncBtn.style.background = '#d97706';
             syncBtn.textContent = '⚡ Retry CRM Sync';
@@ -172,7 +198,7 @@
         syncBtn.style.opacity = '1';
         syncBtn.textContent = '⚡ Retry CRM Sync';
       }
-      updateHudSyncNote('⚠️ Background sync waiting. Click to retry.', '#f59e0b');
+      updateHudSyncNote('⚠️ Background sync waiting. Export CSV anytime.', '#f59e0b');
     }
   }
   window.syncLeadsDirectly = syncLeadsDirectly;

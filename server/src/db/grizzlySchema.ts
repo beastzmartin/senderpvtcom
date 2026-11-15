@@ -317,6 +317,21 @@ export function initGrizzlyDatabase(db: Database.Database): void {
     db.prepare("ALTER TABLE grizzly_activations ADD COLUMN cancellation_reason TEXT").run();
   } catch {}
   try {
+    db.prepare("ALTER TABLE grizzly_sms_messages ADD COLUMN sms_id INTEGER").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_sms_messages ADD COLUMN delivery_status TEXT DEFAULT 'pending'").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_sms_messages ADD COLUMN push_status TEXT DEFAULT 'PENDING_RETRY'").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_sms_messages ADD COLUMN delivered_at TEXT").run();
+  } catch {}
+  try {
+    db.prepare("ALTER TABLE grizzly_sms_messages ADD COLUMN last_error TEXT").run();
+  } catch {}
+  try {
     db.prepare("ALTER TABLE grizzly_sms_messages ADD COLUMN next_retry_at TEXT").run();
   } catch {}
   try {

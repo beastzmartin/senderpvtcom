@@ -129,6 +129,7 @@ export class GrizzlySmsQueueService {
         db.prepare(`
           UPDATE grizzly_sms_messages
           SET delivery_status = 'delivered',
+              push_status = 'DELIVERED',
               forwarding_status = 'forwarded',
               provider_response = ?,
               delivered_at = datetime('now')

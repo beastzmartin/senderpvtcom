@@ -63,10 +63,12 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
     const combined = kw && loc ? `${kw} in ${loc}` : (kw || loc || 'local businesses');
     const encoded = encodeURIComponent(combined);
     const parsedCount = parseInt(String(count), 10) || 50;
-    const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || '') : '';
+    const token = typeof window !== 'undefined' ? (localStorage.getItem('wa_auth_token') || localStorage.getItem('token') || '') : '';
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const backendParam = currentOrigin ? `&backend=${encodeURIComponent(currentOrigin)}` : '';
     const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-    const queryParams = `?auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}${tokenParam}`;
-    const hash = `#auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}${tokenParam}`;
+    const queryParams = `?auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}${tokenParam}${backendParam}`;
+    const hash = `#auto_extract=${parsedCount}${jobId ? `&job_id=${jobId}` : ''}${tokenParam}${backendParam}`;
 
     switch (sourceId) {
       case 'google_maps':

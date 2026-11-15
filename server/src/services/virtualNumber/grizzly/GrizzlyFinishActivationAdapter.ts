@@ -5,6 +5,12 @@ import { GrizzlyPartnerProtocolService } from './GrizzlyPartnerProtocolService.j
 import { GRIZZLY_STATUS, GrizzlyFinishActivationCallback } from './types.js';
 
 export class GrizzlyFinishActivationAdapter {
+  private static instance = new GrizzlyFinishActivationAdapter();
+
+  public static async handleCallback(callback: GrizzlyFinishActivationCallback): Promise<{ status: 'SUCCESS' | 'ERROR'; error?: string }> {
+    return this.instance.handleCallback(callback);
+  }
+
   /**
    * Process FINISH_ACTIVATION callback according to official GrizzlySMS status table:
    * Status 1: Number issuance prohibited
@@ -57,7 +63,7 @@ export class GrizzlyFinishActivationAdapter {
 
       if (grizzlyStatus === GRIZZLY_STATUS.PROHIBITED) {
         // Status 1: Number issuance prohibited
-        internalStatus = 'prohibited';
+        internalStatus = 'cancelled';
 
         // Record in prohibited numbers table
         db.prepare(`
@@ -143,12 +149,12 @@ export class GrizzlyFinishActivationAdapter {
 
       } else if (grizzlyStatus === GRIZZLY_STATUS.RETURNED) {
         // Status 5: Activation returned
-        internalStatus = 'returned';
+        internalStatus = 'cancelled';
 
         // Record customer refund in provider accounting
         db.prepare(`
           UPDATE grizzly_provider_accounting
-          SET settlement_status = 'refunded', notes = ?, updated_at = datetime('now')
+          SET settlement_status = 'cancelled', notes = ?, updated_at = datetime('now')
           WHERE activation_id = ?
         `).run(callback.reason || 'Activation returned (Status 5 refund)', activationId);
 

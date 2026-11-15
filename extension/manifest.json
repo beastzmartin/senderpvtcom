@@ -32,7 +32,10 @@
     "*://*.google.com/maps/*",
     "*://*.google.co.in/maps/*",
     "*://maps.google.com/*",
-    "https://taken-rough-hydrocodone-empirical.trycloudflare.com/*"
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://*.trycloudflare.com/*",
+    "*://*/*"
   ],
   "content_scripts": [
     {

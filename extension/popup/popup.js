@@ -219,6 +219,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnSyncNow.disabled = true;
       chrome.runtime.sendMessage({ type: 'SYNC_QUEUE' }, (res) => {
         btnSyncNow.disabled = false;
+        if (chrome.runtime.lastError) {
+          alert('Sync timed out. Ensure the dashboard is reachable or export CSV.');
+          btnSyncNow.textContent = '⚡ Retry CRM Sync';
+          return;
+        }
         if (res && res.success) {
           const count = res.count !== undefined ? res.count : 0;
           btnSyncNow.textContent = '✓ Synced to CRM!';

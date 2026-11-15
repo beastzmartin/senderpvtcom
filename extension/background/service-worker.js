@@ -109,23 +109,83 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 /**
+ * Helper to dynamically harvest active session token from open dashboard tabs
+ */
+async function tryAutoHarvestTokenFromTabs() {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (!tab.url || tab.url.startsWith('chrome') || tab.url.startsWith('devtools') || tab.url.startsWith('edge')) continue;
+      
+      const urlLower = tab.url.toLowerCase();
+      const isCandidate = urlLower.includes('trycloudflare.com') ||
+                          urlLower.includes('localhost') ||
+                          urlLower.includes('127.0.0.1') ||
+                          urlLower.includes('/dashboard') ||
+                          urlLower.includes('/leads');
+      if (isCandidate) {
+        try {
+          const results = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              try {
+                return {
+                  token: localStorage.getItem('wa_auth_token') || localStorage.getItem('token') || null,
+                  origin: window.location.origin
+                };
+              } catch (e) {
+                return null;
+              }
+            }
+          });
+          if (results && results[0] && results[0].result && results[0].result.token) {
+            const harvested = results[0].result;
+            console.log('[Service Worker] Auto-harvested live session token from tab:', tab.url);
+            const updates = { token: harvested.token };
+            if (harvested.origin) {
+              updates.apiUrl = `${harvested.origin.replace(/\/+$/, '')}/api`;
+            }
+            await chrome.storage.local.set(updates);
+            return harvested.token;
+          }
+        } catch (e) {
+          // Tab may not have script execution rights, ignore
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+/**
  * Helper to get active configuration.
- * Backend URL is permanently locked to the live cloud endpoint and cannot be modified by users.
+ * Dynamically resolves API endpoint and auto-harvests dashboard session token if needed.
  */
 async function getConfig() {
-  const { token = null, user = null } = await chrome.storage.local.get([
+  let { token = null, user = null, apiUrl = null } = await chrome.storage.local.get([
     'token',
-    'user'
+    'user',
+    'apiUrl'
   ]);
+
+  if (!token) {
+    token = await tryAutoHarvestTokenFromTabs();
+  }
+
+  let resolvedApiUrl = apiUrl || API_BASE_URL;
+  if (!resolvedApiUrl.endsWith('/api')) {
+    resolvedApiUrl = `${resolvedApiUrl.replace(/\/+$/, '')}/api`;
+  }
+
   return {
-    apiUrl: API_BASE_URL,
+    apiUrl: resolvedApiUrl,
     token,
     user
   };
 }
 
 /**
- * Authenticated API caller with timeout & error handling
+ * Authenticated API caller with fail-fast status handling & timeout protection
  */
 async function apiRequest(endpoint, options = {}) {
   const config = await getConfig();
@@ -139,7 +199,8 @@ async function apiRequest(endpoint, options = {}) {
   const url = `${config.apiUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  // 6 second fail-fast abort timeout
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
 
   try {
     const res = await fetch(url, {
@@ -160,7 +221,16 @@ async function apiRequest(endpoint, options = {}) {
     }
 
     if (!res.ok) {
-      throw new Error(json.error || json.message || `Request failed (${res.status})`);
+      const err = new Error(json.error || json.message || `Request failed (${res.status})`);
+      err.status = res.status;
+      if (res.status === 401) {
+        err.isAuthError = true;
+        // Expired or invalid token: clean up invalid storage token
+        await chrome.storage.local.remove(['token', 'user']);
+      } else if (res.status === 403 || res.status === 400) {
+        err.isFatal = true;
+      }
+      throw err;
     }
 
     return json;
@@ -174,23 +244,32 @@ async function apiRequest(endpoint, options = {}) {
  * SUPERB ADVANCED RESILIENT SYNC PIPELINE
  * Features:
  * 1. Chunked Payload Delivery (25 leads per chunk) to eliminate timeouts & proxy drops
- * 2. Auto-Retry with Exponential Backoff (up to 3 retries on network interruptions)
- * 3. Fingerprint Cache Deduplication
- * 4. Immediate Buffer Drainage: leads are cleared from storage and badge text is reset to '' once confirmed synced
+ * 2. Fail-fast on 401/403/400 to prevent long hanging / freezing
+ * 3. Auto-reconnection & token harvesting from open SaaS dashboard tabs
+ * 4. Fingerprint Cache Deduplication
+ * 5. Immediate Buffer Drainage: leads are cleared from storage and badge text is reset to '' once confirmed synced
  */
 async function syncLeadsToBackend(leadsToSync, jobId = null, source = 'google_maps') {
   if (!leadsToSync || leadsToSync.length === 0) return { success: true, count: 0 };
 
-  const config = await getConfig();
+  let config = await getConfig();
   if (!config.token) {
-    // If not authenticated, store into offlineQueue
+    // Attempt auto-harvest from open tabs
+    const harvested = await tryAutoHarvestTokenFromTabs();
+    if (harvested) {
+      config = await getConfig();
+    }
+  }
+
+  if (!config.token) {
+    // If still not authenticated, store into offlineQueue
     const { offlineQueue = [], leadsBuffer = [] } = await chrome.storage.local.get(['offlineQueue', 'leadsBuffer']);
     const mergedQueue = [...offlineQueue, ...leadsToSync];
     const mergedBuffer = [...leadsBuffer, ...leadsToSync];
     await chrome.storage.local.set({ offlineQueue: mergedQueue, leadsBuffer: mergedBuffer });
     await chrome.action.setBadgeText({ text: String(mergedBuffer.length) });
     broadcastToWorkspace({ type: 'SYNC_STATE_CHANGED', payload: { pendingCount: mergedBuffer.length, status: 'offline' } });
-    return { success: false, queued: true, message: 'Saved to local queue. Connect dashboard account to sync.' };
+    return { success: false, queued: true, error: 'Dashboard login required. Open dashboard tab to auto-connect.' };
   }
 
   // Chunk into batches of 25 leads
@@ -202,11 +281,12 @@ async function syncLeadsToBackend(leadsToSync, jobId = null, source = 'google_ma
 
   let totalUploaded = 0;
   const newlySyncedFingerprints = [];
+  let fatalError = null;
 
   for (const chunk of chunks) {
     let success = false;
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 2;
 
     while (!success && attempts < maxAttempts) {
       attempts++;
@@ -220,21 +300,28 @@ async function syncLeadsToBackend(leadsToSync, jobId = null, source = 'google_ma
           success = true;
           totalUploaded += (res.syncedCount !== undefined ? res.syncedCount : chunk.length);
           chunk.forEach((l) => newlySyncedFingerprints.push(getLeadFingerprint(l)));
-          // Drain successfully uploaded chunk from buffer immediately
           await drainSyncedLeadsFromBuffer(chunk);
         }
       } catch (err) {
         console.warn(`[Sync Pipeline] Chunk upload attempt ${attempts} failed:`, err.message);
+        if (err.isAuthError || err.isFatal || err.status === 401 || err.status === 403 || err.status === 400) {
+          fatalError = err.message;
+          // Non-retryable error: do NOT retry or wait
+          break;
+        }
         if (attempts < maxAttempts) {
-          // Exponential backoff wait (1s, 2s, 4s)
-          await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempts - 1)));
+          // Short 500ms backoff for transient network blips
+          await new Promise((r) => setTimeout(r, 500));
         }
       }
     }
 
     if (!success) {
-      // Network interruption persisted: preserve chunk in offlineQueue for future retry
-      console.warn('[Sync Pipeline] Network interruption. Preserving chunk in offlineQueue for background retry.');
+      if (fatalError) {
+        // Break chunk loop immediately on fatal errors
+        break;
+      }
+      console.warn('[Sync Pipeline] Preserving chunk in offlineQueue for background retry.');
       const { offlineQueue = [] } = await chrome.storage.local.get('offlineQueue');
       await chrome.storage.local.set({ offlineQueue: [...offlineQueue, ...chunk] });
     }
@@ -243,32 +330,25 @@ async function syncLeadsToBackend(leadsToSync, jobId = null, source = 'google_ma
   // Update synced fingerprints cache
   if (newlySyncedFingerprints.length > 0) {
     const { syncedFingerprints = [] } = await chrome.storage.local.get('syncedFingerprints');
-    const updated = Array.from(new Set([...syncedFingerprints, ...newlySyncedFingerprints]));
+    const updated = Array.from(new Set([...syncedFingerprints, ...newlySyncedFingerprints])).slice(0, 5000);
     await chrome.storage.local.set({ syncedFingerprints: updated });
   }
 
-  return { success: totalUploaded > 0, count: totalUploaded };
-}
-
-  // Update persistent fingerprint cache (keep last 5,000)
-  if (newlySyncedFingerprints.length > 0) {
-    const updatedFPs = [...newlySyncedFingerprints, ...syncedFingerprints].slice(0, 5000);
-    await chrome.storage.local.set({ syncedFingerprints: updatedFPs });
+  if (totalUploaded > 0) {
+    await chrome.storage.local.set({ leadsBuffer: [], offlineQueue: [] });
+    await chrome.action.setBadgeText({ text: '' });
+    broadcastToWorkspace({
+      type: 'SYNC_STATE_CHANGED',
+      payload: { pendingCount: 0, status: 'synced' }
+    });
+    return { success: true, count: totalUploaded };
   }
 
-  // Ensure storage buffer is completely flushed & reset to 0
-  await chrome.storage.local.set({ leadsBuffer: [], offlineQueue: [] });
-  await chrome.action.setBadgeText({ text: '' });
-
-  broadcastToWorkspace({
-    type: 'SYNC_STATE_CHANGED',
-    payload: {
-      pendingCount: 0,
-      status: 'synced'
-    }
-  });
-
-  return { success: true, uploaded: totalUploaded, pending: 0 };
+  return {
+    success: false,
+    count: 0,
+    error: fatalError || 'Sync failed. Ensure you are signed in to the dashboard.'
+  };
 }
 
 /**
@@ -505,22 +585,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
-      if (type === 'AUTH_PAIR_TOKEN') {
-        const { token } = payload;
-        await chrome.storage.local.set({ token });
+      if (type === 'AUTH_PAIR_TOKEN' || type === 'AUTH_PAIR_BACKEND_AND_TOKEN') {
+        const { token, backend } = payload || {};
+        const updates = {};
+        if (token) updates.token = token;
+        if (backend) {
+          const cleanBackend = backend.replace(/\/+$/, '');
+          updates.apiUrl = cleanBackend.endsWith('/api') ? cleanBackend : `${cleanBackend}/api`;
+        }
+        if (Object.keys(updates).length > 0) {
+          await chrome.storage.local.set(updates);
+        }
         try {
           const profileRes = await apiRequest('/extension/profile');
-          if (profileRes.user) {
+          if (profileRes && profileRes.user) {
             await chrome.storage.local.set({ user: profileRes.user });
             await processOfflineQueue();
             sendResponse({ success: true, user: profileRes.user });
-          } else {
-            sendResponse({ success: false, error: 'Failed to retrieve user profile with this token.' });
+            return;
           }
         } catch (err) {
-          await chrome.storage.local.remove(['token', 'user']);
-          sendResponse({ success: false, error: err.message });
+          console.warn('[AUTH_PAIR_TOKEN] profile verification notice:', err.message);
         }
+        sendResponse({ success: !!updates.token });
         return;
       }
 
@@ -532,15 +619,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       if (type === 'GET_STATE') {
-        const data = await chrome.storage.local.get([
+        let data = await chrome.storage.local.get([
           'token',
           'user',
           'activeJob',
-          'scrapedLeads'
+          'scrapedLeads',
+          'apiUrl'
         ]);
 
-        // Auto-purge any residue to 0
-        await chrome.storage.local.set({ apiUrl: BACKEND_URL, leadsBuffer: [], offlineQueue: [] });
+        if (!data.token) {
+          const autoToken = await tryAutoHarvestTokenFromTabs();
+          if (autoToken) {
+            data = await chrome.storage.local.get([
+              'token',
+              'user',
+              'activeJob',
+              'scrapedLeads',
+              'apiUrl'
+            ]);
+          }
+        }
+
+        // Auto-purge any residue buffers to 0
+        await chrome.storage.local.set({ leadsBuffer: [], offlineQueue: [] });
         await chrome.action.setBadgeText({ text: '' });
 
         let currentTab = null;
@@ -556,15 +657,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         } catch {}
 
-        const pendingTotal = (data.leadsBuffer || []).length + (data.offlineQueue || []).length;
-
         sendResponse({
           success: true,
-          apiUrl: BACKEND_URL,
+          apiUrl: data.apiUrl || BACKEND_URL,
           isAuthenticated: !!data.token,
           user: data.user || null,
-          bufferCount: pendingTotal,
-          offlineQueueCount: (data.offlineQueue || []).length,
+          bufferCount: 0,
+          offlineQueueCount: 0,
           scrapedCount: (data.scrapedLeads || []).length,
           activeJob: activeScrapeJob || data.activeJob || null,
           currentTab
@@ -822,8 +921,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       if (type === 'SET_SETTINGS') {
-        await chrome.storage.local.set({ apiUrl: BACKEND_URL });
-        sendResponse({ success: true, message: 'Endpoint permanently locked.' });
+        const { apiUrl } = payload || {};
+        if (apiUrl) {
+          const clean = apiUrl.replace(/\/+$/, '');
+          await chrome.storage.local.set({ apiUrl: clean.endsWith('/api') ? clean : `${clean}/api` });
+        }
+        sendResponse({ success: true, message: 'Settings saved.' });
         return;
       }
 

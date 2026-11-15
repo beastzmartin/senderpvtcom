@@ -8,7 +8,9 @@ import {
   Server,
   Activity,
   Phone,
+  PhoneCall,
   ShieldCheck,
+  ShieldAlert,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -24,7 +26,10 @@ import {
   Search,
   ExternalLink,
   Lock,
-  ArrowRight
+  ArrowRight,
+  Send,
+  Ban,
+  Volume2
 } from 'lucide-react';
 
 export const GrizzlyDashboardView: React.FC = () => {
@@ -216,6 +221,44 @@ export const GrizzlyDashboardView: React.FC = () => {
       loadAll();
     } catch (err: any) {
       alert(err.message || 'Failed to finish activation');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleTriggerCall = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!triggerCallData.phone.trim() || !triggerCallData.phoneFrom.trim()) {
+      alert('Please fill in both phone and caller number');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await api.virtualNumbers.grizzly.triggerCall(triggerCallData);
+      showToast('Voice call (PUSH_CALL) queued for dispatch to GrizzlySMS!');
+      setIsTriggerCallOpen(false);
+      loadAll();
+    } catch (err: any) {
+      alert(err.message || 'Failed to trigger call');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleTriggerSms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!triggerSmsData.phone.trim() || !triggerSmsData.text.trim()) {
+      alert('Please fill in phone and SMS text');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await api.virtualNumbers.grizzly.triggerSms(triggerSmsData);
+      showToast('SMS (PUSH_SMS) queued for dispatch to GrizzlySMS!');
+      setIsTriggerSmsOpen(false);
+      loadAll();
+    } catch (err: any) {
+      alert(err.message || 'Failed to trigger SMS');
     } finally {
       setActionLoading(false);
     }
@@ -414,6 +457,30 @@ export const GrizzlyDashboardView: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setSubTab('voice')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+              subTab === 'voice'
+                ? 'bg-rose-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <PhoneCall className="w-4 h-4" />
+            Voice Calls ({voiceCalls.length})
+          </button>
+
+          <button
+            onClick={() => setSubTab('blacklist')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+              subTab === 'blacklist'
+                ? 'bg-red-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Ban className="w-4 h-4" />
+            Blacklist & Quarantine ({cancellations.filter((c: any) => c.is_permanently_excluded).length + quarantine.length + prohibited.length})
+          </button>
+
+          <button
             onClick={() => setSubTab('config')}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
               subTab === 'config'
@@ -446,6 +513,26 @@ export const GrizzlyDashboardView: React.FC = () => {
             >
               <Plus className="w-4 h-4" />
               Add Phone Number
+            </button>
+          )}
+
+          {subTab === 'voice' && (
+            <button
+              onClick={() => setIsTriggerCallOpen(true)}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 flex items-center gap-1.5 shadow-sm"
+            >
+              <PhoneCall className="w-4 h-4" />
+              Trigger Test Call
+            </button>
+          )}
+
+          {subTab === 'sms' && (
+            <button
+              onClick={() => setIsTriggerSmsOpen(true)}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5 shadow-sm"
+            >
+              <Send className="w-4 h-4" />
+              Trigger Test SMS
             </button>
           )}
 
@@ -826,12 +913,21 @@ export const GrizzlyDashboardView: React.FC = () => {
       {/* SUB-TAB 5: SMS FORWARDING QUEUE */}
       {subTab === 'sms' && (
         <div className="space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-900 flex items-start gap-3">
-            <Inbox className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <strong className="font-bold text-amber-950">PUSH_SMS Forwarding Architecture Active</strong>
-              <p className="mt-0.5 text-amber-800">
-                Incoming SMS messages received on allocated numbers are automatically intercepted and recorded here. Outbound HTTP dispatch to GrizzlySMS will activate immediately once PUSH_SMS documentation is supplied.
+          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 text-xs text-indigo-900 flex items-start gap-3">
+            <Inbox className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="flex items-center justify-between">
+                <strong className="font-bold text-indigo-950 text-sm">PUSH_SMS Outbound Dispatch Queue</strong>
+                <button
+                  onClick={() => setIsTriggerSmsOpen(true)}
+                  className="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm flex items-center gap-1.5"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Trigger Test SMS
+                </button>
+              </div>
+              <p className="mt-1 text-indigo-800">
+                Incoming SMS on allocated numbers are dispatched to <code className="bg-indigo-100 px-1 py-0.5 rounded font-mono text-[11px]">https://api.grizzlysms.com/agent/api/sms</code> with stable integer <code className="bg-indigo-100 px-1 py-0.5 rounded font-mono text-[11px]">smsId</code>. Any failure automatically retries every 10 seconds.
               </p>
             </div>
           </div>
@@ -841,47 +937,350 @@ export const GrizzlyDashboardView: React.FC = () => {
               <table className="w-full text-left text-xs text-slate-600">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
                   <tr>
+                    <th className="px-4 py-3">SMS ID</th>
                     <th className="px-4 py-3">Activation</th>
-                    <th className="px-4 py-3">Phone</th>
-                    <th className="px-4 py-3">Sender</th>
-                    <th className="px-4 py-3">Message Content</th>
-                    <th className="px-4 py-3">Received Time</th>
-                    <th className="px-4 py-3">Forwarding Status</th>
+                    <th className="px-4 py-3">Recipient Phone</th>
+                    <th className="px-4 py-3">Sender (phoneFrom)</th>
+                    <th className="px-4 py-3">Message Text</th>
+                    <th className="px-4 py-3">Delivery Status</th>
+                    <th className="px-4 py-3">Retries</th>
+                    <th className="px-4 py-3">Delivered / Time</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {smsMessages.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                        No SMS messages intercepted yet.
+                      <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                        No SMS messages intercepted or queued yet.
                       </td>
                     </tr>
                   ) : (
                     smsMessages.map((m) => (
                       <tr key={m.id} className="hover:bg-slate-50 transition">
                         <td className="px-4 py-3 font-mono font-bold text-slate-900">
-                          #{m.activation_id}
+                          #{m.sms_id || m.id}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-600">
+                          {m.activation_id ? `#${m.activation_id}` : 'Direct'}
                         </td>
                         <td className="px-4 py-3 font-mono font-semibold text-slate-800">
                           +{m.phone_number}
                         </td>
                         <td className="px-4 py-3 font-semibold text-slate-900">{m.sender}</td>
-                        <td className="px-4 py-3 text-slate-800 font-mono text-[11px] max-w-xs truncate">
+                        <td className="px-4 py-3 text-slate-800 font-mono text-[11px] max-w-xs truncate" title={m.message_content}>
                           {m.message_content}
                         </td>
-                        <td className="px-4 py-3 text-slate-400">
-                          {new Date(m.received_timestamp).toLocaleTimeString()}
-                        </td>
                         <td className="px-4 py-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800">
-                            {m.forwarding_status}
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              m.push_status === 'DELIVERED' || m.forwarding_status === 'FORWARDED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : m.push_status === 'FAILED'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {m.push_status || m.forwarding_status || 'PENDING'}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-600">
+                          {m.retry_count || 0}
+                          {m.next_retry_at && m.push_status !== 'DELIVERED' && (
+                            <span className="block text-[9px] text-amber-600">retry in 10s</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-500 text-[11px]">
+                          {m.delivered_at
+                            ? new Date(m.delivered_at).toLocaleTimeString()
+                            : new Date(m.received_timestamp).toLocaleTimeString()}
                         </td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB: VOICE CALLS (PUSH_CALL & PUSH_CALL_RECORD) */}
+      {subTab === 'voice' && (
+        <div className="space-y-4">
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs text-rose-900 flex items-start gap-3">
+            <PhoneCall className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="flex items-center justify-between">
+                <strong className="font-bold text-rose-950 text-sm">Durable Voice & Flashcall Notification Queue (PUSH_CALL)</strong>
+                <button
+                  onClick={() => setIsTriggerCallOpen(true)}
+                  className="px-3 py-1.5 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 shadow-sm flex items-center gap-1.5"
+                >
+                  <PhoneCall className="w-3.5 h-3.5" />
+                  Trigger Test Call
+                </button>
+              </div>
+              <p className="mt-1 text-rose-800">
+                Calls forwarded immediately to <code className="bg-rose-100 px-1 py-0.5 rounded font-mono text-[11px]">https://api.grizzlysms.com/agent/api/sms</code> with stable numeric integer <code className="bg-rose-100 px-1 py-0.5 rounded font-mono text-[11px]">callId</code> and international numeric phone. Never duplicates upon SUCCESS; retries every 10s across server restarts on failure.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="px-4 py-3">Call ID</th>
+                    <th className="px-4 py-3">Activation</th>
+                    <th className="px-4 py-3">Target Phone (Ulong)</th>
+                    <th className="px-4 py-3">Caller (phoneFrom)</th>
+                    <th className="px-4 py-3">Delivery Status</th>
+                    <th className="px-4 py-3">Retries</th>
+                    <th className="px-4 py-3">Next Retry / Delivered</th>
+                    <th className="px-4 py-3">Logged At</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {voiceCalls.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                        No voice calls or flashcall notifications in queue.
+                      </td>
+                    </tr>
+                  ) : (
+                    voiceCalls.map((c) => (
+                      <tr key={c.id} className="hover:bg-slate-50 transition">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-900">
+                          #{c.call_id}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-600">
+                          {c.activation_id ? `#${c.activation_id}` : 'Direct'}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-semibold text-slate-800">
+                          +{c.phone}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-slate-900 font-mono">
+                          +{c.phone_from}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              c.delivery_status === 'DELIVERED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : c.delivery_status === 'FAILED'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {c.delivery_status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-600">
+                          {c.retry_count || 0}
+                        </td>
+                        <td className="px-4 py-3 text-slate-500 font-mono text-[11px]">
+                          {c.delivery_status === 'DELIVERED' ? (
+                            <span className="text-emerald-700 font-bold">
+                              {c.delivered_at ? new Date(c.delivered_at).toLocaleTimeString() : 'Delivered'}
+                            </span>
+                          ) : c.next_retry_at ? (
+                            <span className="text-amber-700">
+                              Retry: {new Date(c.next_retry_at).toLocaleTimeString()}
+                            </span>
+                          ) : (
+                            'Pending queue'
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-[11px]">
+                          {new Date(c.created_at).toLocaleTimeString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB: BLACKLIST, CANCELLATIONS & QUARANTINE */}
+      {subTab === 'blacklist' && (
+        <div className="space-y-6">
+          {/* Compliance Rule Banner */}
+          <div className="bg-gradient-to-r from-red-950 via-slate-900 to-slate-900 rounded-2xl p-5 text-white border border-red-900/50 shadow-md">
+            <h4 className="font-bold text-sm flex items-center gap-2 text-rose-300">
+              <ShieldAlert className="w-5 h-5 text-rose-400" />
+              GrizzlySMS Official Activation Status Compliance Rules
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3 text-xs">
+              <div className="bg-white/10 rounded-xl p-3 border border-white/10">
+                <span className="font-extrabold text-amber-300 block mb-1">Status 4 (Cancelled)</span>
+                <p className="text-white/80 text-[11px]">
+                  Cancellation count tracked atomically per phone & service. If cancelled <strong>&ge; 5 times</strong> for the same service, number is <strong>permanently excluded</strong> for that service (other services unaffected).
+                </p>
+              </div>
+              <div className="bg-white/10 rounded-xl p-3 border border-white/10">
+                <span className="font-extrabold text-rose-300 block mb-1">Status 5 (Returned)</span>
+                <p className="text-white/80 text-[11px]">
+                  Customer refund recorded in financial ledger. Number placed in <strong>quarantine</strong> for that service to prevent automatic reissuance.
+                </p>
+              </div>
+              <div className="bg-white/10 rounded-xl p-3 border border-white/10">
+                <span className="font-extrabold text-purple-300 block mb-1">Status 1 (Prohibited)</span>
+                <p className="text-white/80 text-[11px]">
+                  Issuance prohibited by provider. Marked as prohibited with full audit trail to prevent any inappropriate reallocation.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 1: Cancellations & Blacklisted Numbers */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                <Ban className="w-4 h-4 text-red-600" />
+                Service Cancellations & Permanent Exclusion ({cancellations.length})
+              </h4>
+              <span className="text-xs text-slate-500 font-medium">
+                {cancellations.filter((c: any) => c.is_permanently_excluded).length} permanently excluded
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="px-4 py-3">Phone Number</th>
+                    <th className="px-4 py-3">Service</th>
+                    <th className="px-4 py-3">Cancellations</th>
+                    <th className="px-4 py-3">Exclusion Status</th>
+                    <th className="px-4 py-3">Last Updated</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {cancellations.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                        No cancellations recorded yet. All numbers at 0/5 cancellations.
+                      </td>
+                    </tr>
+                  ) : (
+                    cancellations.map((c) => (
+                      <tr key={c.id} className="hover:bg-slate-50 transition">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-900">
+                          +{c.phone_number}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold text-indigo-700 uppercase">
+                          {c.service || c.service_code}
+                        </td>
+                        <td className="px-4 py-3 font-mono">
+                          <span className={`font-bold ${c.cancellation_count >= 5 ? 'text-red-600' : 'text-slate-800'}`}>
+                            {c.cancellation_count} / 5
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {c.is_permanently_excluded ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-red-100 text-red-800 border border-red-200">
+                              Permanently Excluded
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
+                              Eligible ({5 - c.cancellation_count} left)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-[11px]">
+                          {new Date(c.updated_at).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Section 2: Quarantine & Prohibited */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Quarantine Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-200 bg-slate-50">
+                <h4 className="font-bold text-xs text-rose-800 uppercase tracking-wider flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  Status 5 Quarantine ({quarantine.length})
+                </h4>
+              </div>
+              <div className="overflow-x-auto max-h-72">
+                <table className="w-full text-left text-xs text-slate-600">
+                  <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-2.5">Phone</th>
+                      <th className="px-3 py-2.5">Service</th>
+                      <th className="px-3 py-2.5">Reason</th>
+                      <th className="px-3 py-2.5">Quarantined</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {quarantine.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-6 text-center text-slate-400 text-xs">
+                          No numbers in quarantine.
+                        </td>
+                      </tr>
+                    ) : (
+                      quarantine.map((q) => (
+                        <tr key={q.id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 font-mono font-bold text-slate-900">+{q.phone_number}</td>
+                          <td className="px-3 py-2 font-mono text-indigo-700 uppercase">{q.service || q.service_code}</td>
+                          <td className="px-3 py-2 text-slate-600 text-[11px] truncate max-w-[120px]">{q.reason || 'Returned (Status 5)'}</td>
+                          <td className="px-3 py-2 text-slate-400 text-[10px]">{new Date(q.quarantined_at).toLocaleTimeString()}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Prohibited Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-200 bg-slate-50">
+                <h4 className="font-bold text-xs text-purple-800 uppercase tracking-wider flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-purple-600" />
+                  Status 1 Prohibited ({prohibited.length})
+                </h4>
+              </div>
+              <div className="overflow-x-auto max-h-72">
+                <table className="w-full text-left text-xs text-slate-600">
+                  <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-2.5">Phone</th>
+                      <th className="px-3 py-2.5">Service</th>
+                      <th className="px-3 py-2.5">Reason</th>
+                      <th className="px-3 py-2.5">Logged At</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {prohibited.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-6 text-center text-slate-400 text-xs">
+                          No prohibited numbers recorded.
+                        </td>
+                      </tr>
+                    ) : (
+                      prohibited.map((p) => (
+                        <tr key={p.id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 font-mono font-bold text-slate-900">+{p.phone_number}</td>
+                          <td className="px-3 py-2 font-mono text-purple-700 uppercase">{p.service || p.service_code}</td>
+                          <td className="px-3 py-2 text-slate-600 text-[11px] truncate max-w-[120px]">{p.reason || 'Status 1 Prohibited'}</td>
+                          <td className="px-3 py-2 text-slate-400 text-[10px]">{new Date(p.prohibited_at).toLocaleTimeString()}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -1134,6 +1533,147 @@ export const GrizzlyDashboardView: React.FC = () => {
                   className="px-5 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 shadow-md shadow-emerald-950/10"
                 >
                   {actionLoading ? 'Saving...' : 'Add to Pool'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: TRIGGER TEST VOICE CALL (PUSH_CALL) */}
+      {isTriggerCallOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                <PhoneCall className="w-5 h-5 text-rose-600" />
+                Trigger Test Voice Call (PUSH_CALL)
+              </h3>
+              <button
+                onClick={() => setIsTriggerCallOpen(false)}
+                className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleTriggerCall} className="space-y-4 pt-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Target Number (phone - E.164 Numeric)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="447472190082"
+                  value={triggerCallData.phone}
+                  onChange={(e) => setTriggerCallData({ ...triggerCallData, phone: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Full international number with country code without plus sign.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Caller Number (phoneFrom)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="447472190099"
+                  value={triggerCallData.phoneFrom}
+                  onChange={(e) => setTriggerCallData({ ...triggerCallData, phoneFrom: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                />
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsTriggerCallOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="px-5 py-2 text-xs font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 shadow-md shadow-rose-950/10 flex items-center gap-1.5"
+                >
+                  <PhoneCall className="w-3.5 h-3.5" />
+                  {actionLoading ? 'Dispatching...' : 'Dispatch PUSH_CALL'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: TRIGGER TEST SMS (PUSH_SMS) */}
+      {isTriggerSmsOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                <Send className="w-5 h-5 text-indigo-600" />
+                Trigger Test SMS (PUSH_SMS)
+              </h3>
+              <button
+                onClick={() => setIsTriggerSmsOpen(false)}
+                className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleTriggerSms} className="space-y-4 pt-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Target Number (phone - E.164 Numeric)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="447472190082"
+                  value={triggerSmsData.phone}
+                  onChange={(e) => setTriggerSmsData({ ...triggerSmsData, phone: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Sender (phoneFrom)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Telegram / WhatsApp / 447472190099"
+                  value={triggerSmsData.phoneFrom}
+                  onChange={(e) => setTriggerSmsData({ ...triggerSmsData, phoneFrom: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Message Text (text)</label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Your verification code is: 84920"
+                  value={triggerSmsData.text}
+                  onChange={(e) => setTriggerSmsData({ ...triggerSmsData, text: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                />
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsTriggerSmsOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-md shadow-indigo-950/10 flex items-center gap-1.5"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {actionLoading ? 'Dispatching...' : 'Dispatch PUSH_SMS'}
                 </button>
               </div>
             </form>
