@@ -10,6 +10,7 @@ import { MarketplaceChargingService } from './MarketplaceChargingService.js';
 import { ProviderRegistry } from './provider/ProviderRegistry.js';
 import { MarketplacePricingService } from './MarketplacePricingService.js';
 import { WhiteLabelSanitizer } from './WhiteLabelSanitizer.js';
+import { OutputFlattener } from './OutputFlattener.js';
 
 export class MarketplaceJobService {
   private static instance: MarketplaceJobService | null = null;

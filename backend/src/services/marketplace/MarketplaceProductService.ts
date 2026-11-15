@@ -396,7 +396,6 @@ export class MarketplaceProductService {
       `Classification overridden to ${newClassification}: ${reason}`
     );
   }
-  }
 
   /**
    * Admin: Duplicate product

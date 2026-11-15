@@ -280,7 +280,7 @@ export class MarketplacePricingService {
   public generateMultiCurrencyMatrix(
     product: ProductDefinition
   ): Record<string, { [items: number]: number }> {
-    const currencies = this.currencyService.getActiveCurrencies().map((c) => c.code);
+    const currencies = this.currencyService.getAllCurrencies(true).map((c: any) => c.code);
     const itemSteps = [100, 1000, 10000];
     const matrix: Record<string, { [items: number]: number }> = {};
 
