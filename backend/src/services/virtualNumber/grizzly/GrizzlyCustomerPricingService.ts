@@ -139,7 +139,7 @@ export class GrizzlyCustomerPricingService {
             entry.count,
             entry.cost,
             entry.cost,
-            result.rawResponse,
+            null,
             nowIso,
             nowIso
           );
@@ -211,7 +211,7 @@ export class GrizzlyCustomerPricingService {
               JSON.stringify(tiers),
               minPrice,
               maxPrice,
-              result.rawResponse,
+              null,
               nowIso,
               nowIso
             );
@@ -282,7 +282,7 @@ export class GrizzlyCustomerPricingService {
               JSON.stringify(item.normalizedProviders || []),
               lowestProv,
               highestProv,
-              result.rawResponse,
+              null,
               nowIso,
               nowIso
             );
