@@ -1018,71 +1018,95 @@ export interface VirtualNumberPricingRule {
   is_active: number;
 }
 
-export interface GrizzlyOverview {
-  config: {
-    id: string;
+// ============================================================================
+// 5SIM.NET API Types (Parts 1 - 3)
+// ============================================================================
+
+export interface FiveSimProfile {
+  id: number;
+  email: string;
+  vendor: string;
+  default_forwarding_number: string;
+  balance: number;
+  rating: number;
+  default_country: {
     name: string;
-    slug: string;
-    status: 'enabled' | 'disabled' | 'maintenance';
-    partner_api_endpoint?: string;
-    priority: number;
-    max_active_numbers: number;
-    min_payout: number;
-    max_payout: number;
-    last_successful_request_at?: string;
-    last_error?: string;
-    last_error_at?: string;
-    total_requests_count: number;
-    successful_requests_count: number;
-    failed_requests_count: number;
-    error_rate_percentage: string;
+    iso: string;
+    prefix: string;
   };
-  capacity: {
-    modules: {
-      total: number;
-      active: number;
-      occupied: number;
-      failed: number;
-      maintenance: number;
-    };
-    inventory: {
-      total: number;
-      available: number;
-      allocated: number;
-    };
-    activations: {
-      total: number;
-      live: number;
-      successful: number;
-    };
+  default_operator: {
+    name: string;
   };
-  accounting: {
-    totalTransactions: number;
-    totalRequestedSum: number;
-    totalRewardAmount: number;
-    confirmedRewards: number;
-  };
-  sms: {
-    total: number;
-    forwarded: number;
-    pending: number;
-  };
-  voice?: {
-    total: number;
-    delivered: number;
-    pending: number;
-    retries: number;
-  };
-  statusDistribution?: {
-    prohibited: number;
-    sold: number;
-    cancelled: number;
-    returned: number;
-  };
-  blacklistCount?: number;
-  quarantineCount?: number;
-  failedAllocationsCount: number;
+  frozen_balance: number;
 }
+
+export interface FiveSimSmsItem {
+  id?: number;
+  created_at: string;
+  date: string;
+  sender: string;
+  text: string;
+  code: string;
+}
+
+export interface FiveSimOrderItem {
+  id: number;
+  phone: string;
+  operator: string;
+  product: string;
+  price: number;
+  status: string;
+  expires: string;
+  sms: FiveSimSmsItem[] | null;
+  created_at: string;
+  country: string;
+  forwarding?: boolean;
+  forwarding_number?: string;
+}
+
+export interface FiveSimPaymentItem {
+  ID: number;
+  TypeName: string;
+  ProviderName: string;
+  Amount: number;
+  Balance: number;
+  CreatedAt: string;
+}
+
+export interface FiveSimMaxPriceItem {
+  id: number;
+  product: string;
+  price: number;
+  CreatedAt?: string;
+}
+
+export interface FiveSimConfig {
+  id: string;
+  apiKey: string;
+  apiKeyMasked?: string;
+  baseUrl: string;
+  isEnabled: boolean;
+  autoSync: boolean;
+  maxRequestsPerSec: number;
+  balance: number;
+  frozenBalance: number;
+  rating: number;
+  email?: string;
+  vendor?: string;
+  defaultCountry?: {
+    name: string;
+    iso: string;
+    prefix: string;
+  };
+  defaultOperator?: {
+    name: string;
+  };
+  defaultForwardingNumber?: string;
+  lastSyncAt?: string;
+  lastError?: string;
+  lastErrorAt?: string;
+}
+
 
 
 

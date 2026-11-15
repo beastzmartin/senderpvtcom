@@ -24,10 +24,7 @@ import extensionRoutes from './routes/extensionRoutes.js';
 import walletRoutes from './routes/walletRoutes.js';
 import marketplaceRoutes from './routes/marketplaceRoutes.js';
 import virtualNumberRoutes from './routes/virtualNumberRoutes.js';
-import grizzlyPartnerRoutes from './routes/grizzlyPartnerRoutes.js';
-import { GrizzlyVoiceQueueService } from './services/virtualNumber/grizzly/GrizzlyVoiceQueueService.js';
-import { GrizzlySmsQueueService } from './services/virtualNumber/grizzly/GrizzlySmsQueueService.js';
-import { GrizzlyCustomerSchedulerService } from './services/virtualNumber/grizzly/GrizzlyCustomerSchedulerService.js';
+import fiveSimRoutes from './routes/fiveSimRoutes.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
@@ -77,7 +74,7 @@ app.use('/api/extension', extensionRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/virtual-numbers', virtualNumberRoutes);
-app.use('/api/virtual-numbers', grizzlyPartnerRoutes);
+app.use('/api/fivesim', fiveSimRoutes);
 
 // Dashboard stats endpoint
 const messageController = new MessageController();
@@ -124,11 +121,6 @@ httpServer.listen(config.port, () => {
   // Auto-connect all paired WhatsApp devices on disk
   const waManager = WhatsAppManager.getInstance();
   waManager.autoConnectPairedSessions();
-
-  // Start GrizzlySMS outbound delivery retry queues
-  GrizzlyVoiceQueueService.startWorker();
-  GrizzlySmsQueueService.startWorker();
-  GrizzlyCustomerSchedulerService.startWorker();
 });
 
 // Handle graceful shutdown

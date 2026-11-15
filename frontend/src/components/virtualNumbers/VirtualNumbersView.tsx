@@ -10,7 +10,6 @@ import {
   VirtualNumberAnalytics
 } from '../../types';
 import { PurchaseNumberModal } from './PurchaseNumberModal';
-import { GrizzlyInstantPurchaseModal } from './GrizzlyInstantPurchaseModal';
 import { WalletTopUpModal } from '../marketplace/WalletTopUpModal';
 import {
   Phone,
@@ -37,8 +36,7 @@ import {
   SlidersHorizontal,
   Mail,
   Check,
-  Globe,
-  Zap
+  Globe
 } from 'lucide-react';
 
 export type VirtualNumberTab =
@@ -81,7 +79,6 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
   // Modals
   const [selectedNumberForPurchase, setSelectedNumberForPurchase] = useState<VirtualNumberItem | null>(null);
   const [isTopUpOpen, setIsTopUpOpen] = useState<boolean>(false);
-  const [isGrizzlyModalOpen, setIsGrizzlyModalOpen] = useState<boolean>(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
   const [actionErrorMsg, setActionErrorMsg] = useState<string | null>(null);
 
@@ -249,23 +246,13 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => setIsGrizzlyModalOpen(true)}
-                className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-md shadow-purple-900/30"
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-300" />
-                <span>Instant SMS Number</span>
-              </button>
-
-              <button
-                onClick={() => setIsTopUpOpen(true)}
-                className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Balance</span>
-              </button>
-            </div>
+            <button
+              onClick={() => setIsTopUpOpen(true)}
+              className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Balance</span>
+            </button>
           </div>
         </div>
 
@@ -855,24 +842,6 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
             setIsTopUpOpen(false);
             loadAnalytics();
             showNotification('Wallet funds successfully topped up!');
-          }}
-        />
-      )}
-
-      {/* GrizzlySMS Instant Purchase Modal */}
-      {isGrizzlyModalOpen && (
-        <GrizzlyInstantPurchaseModal
-          isOpen={isGrizzlyModalOpen}
-          walletBalance={walletBalance}
-          onClose={() => setIsGrizzlyModalOpen(false)}
-          onOpenTopUp={() => {
-            setIsGrizzlyModalOpen(false);
-            setIsTopUpOpen(true);
-          }}
-          onPurchaseSuccess={() => {
-            loadRentals();
-            loadAnalytics();
-            showNotification('Virtual number activated successfully.');
           }}
         />
       )}

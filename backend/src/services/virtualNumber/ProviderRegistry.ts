@@ -1,6 +1,6 @@
 import { IVirtualNumberProvider } from './IVirtualNumberProvider.js';
 import { MockVirtualNumberProvider } from './MockVirtualNumberProvider.js';
-import { GrizzlyProviderAdapter } from './grizzly/GrizzlyProviderAdapter.js';
+import { FiveSimProviderAdapter } from './fivesim/FiveSimProviderAdapter.js';
 import { getDatabase } from '../../db/database.js';
 
 export class ProviderRegistry {
@@ -12,9 +12,9 @@ export class ProviderRegistry {
     const mock = new MockVirtualNumberProvider();
     this.registerProvider(mock);
 
-    // Register GrizzlySMS Partner Protocol provider adapter
-    const grizzly = new GrizzlyProviderAdapter();
-    this.registerProvider(grizzly);
+    // Register 5SIM.NET Telecom Protocol Adapter
+    const fivesim = new FiveSimProviderAdapter();
+    this.registerProvider(fivesim);
   }
 
   public static getInstance(): ProviderRegistry {

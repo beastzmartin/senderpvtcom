@@ -5,8 +5,7 @@ import crypto from 'crypto';
 import { config } from '../config.js';
 import { SCHEMA_SQL } from './schema.js';
 import { initVirtualNumberDatabase } from './virtualNumberSeeder.js';
-import { initGrizzlyDatabase } from './grizzlySchema.js';
-import { seedGrizzlyData } from './grizzlySeeder.js';
+import { initFiveSimDatabase } from './fiveSimSchema.js';
 
 let dbInstance: Database.Database | null = null;
 
@@ -1067,9 +1066,8 @@ export function initDatabase(): Database.Database {
     // Initialize Virtual Number Marketplace & Management System Schema and Seed Data
     initVirtualNumberDatabase(db);
 
-    // Initialize GrizzlySMS Partner Protocol Schema and Seed Data
-    initGrizzlyDatabase(db);
-    seedGrizzlyData(db);
+    // Initialize 5SIM.NET Telecom Protocol Schema and Defaults (Parts 0 - 3)
+    initFiveSimDatabase(db);
   } catch (err) {
     console.error('[DB] Error configuring wallet and marketplace tables:', err);
   }
