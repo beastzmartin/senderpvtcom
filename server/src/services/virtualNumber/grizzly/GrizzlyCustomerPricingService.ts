@@ -422,18 +422,22 @@ export class GrizzlyCustomerPricingService {
     let pricingSource = 'estimated';
 
     if (basePrice === undefined || basePrice <= 0) {
-      const priceRow = db.prepare(`
-        SELECT overall_price, lowest_provider_price, pricing_source
-        FROM grizzly_customer_prices
-        WHERE (country_id = ? OR ? = 'any') AND service_code = ?
-        ORDER BY updated_at DESC
-        LIMIT 1
-      `).get(cleanCountry, cleanCountry, cleanService) as any;
+      if (cleanCountry !== 'any') {
+        const priceRow = db.prepare(`
+          SELECT overall_price, lowest_provider_price, pricing_source
+          FROM grizzly_customer_prices
+          WHERE country_id = ? AND service_code = ?
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `).get(cleanCountry, cleanService) as any;
 
-      if (priceRow && priceRow.overall_price > 0) {
-        basePrice = priceRow.lowest_provider_price || priceRow.overall_price;
-        pricingSource = priceRow.pricing_source || 'cached';
-      } else {
+        if (priceRow && priceRow.overall_price > 0) {
+          basePrice = priceRow.lowest_provider_price || priceRow.overall_price;
+          pricingSource = priceRow.pricing_source || 'cached';
+        }
+      }
+
+      if (basePrice === undefined || basePrice <= 0) {
         basePrice = 15.0; // fallback default
         if (['tg', 'wa'].includes(cleanService)) basePrice = 20.0;
         if (['vi', 'ig', 'fb'].includes(cleanService)) basePrice = 12.0;

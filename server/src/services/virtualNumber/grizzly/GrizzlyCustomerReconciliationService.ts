@@ -99,6 +99,14 @@ export class GrizzlyCustomerReconciliationService {
       let missingRemotelyCount = 0;
       let discrepancyCount = 0;
 
+      // 3. Insert initial run record so foreign key constraints on reconciliation_records are satisfied
+      db.prepare(`
+        INSERT INTO grizzly_reconciliation_runs (
+          id, total_remote, total_local, matched_count, missing_locally_count,
+          missing_remotely_count, discrepancy_count, status, run_duration_ms, created_at
+        ) VALUES (?, ?, ?, 0, 0, 0, 0, 'running', 0, datetime('now'))
+      `).run(runId, remoteActivations.length, localActivations.length);
+
       const recordStmt = db.prepare(`
         INSERT INTO grizzly_reconciliation_records (
           id, run_id, provider_activation_id, local_activation_id, user_id,
@@ -285,14 +293,19 @@ export class GrizzlyCustomerReconciliationService {
       const durationMs = Date.now() - startTime;
       const nowIso = new Date().toISOString();
 
-      // 5. Insert Run Record
+      // 5. Update Run Record to completed
       db.prepare(`
-        INSERT INTO grizzly_reconciliation_runs (
-          id, total_remote, total_local, matched_count, missing_locally_count,
-          missing_remotely_count, discrepancy_count, status, run_duration_ms, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)
+        UPDATE grizzly_reconciliation_runs
+        SET total_remote = ?,
+            total_local = ?,
+            matched_count = ?,
+            missing_locally_count = ?,
+            missing_remotely_count = ?,
+            discrepancy_count = ?,
+            status = 'completed',
+            run_duration_ms = ?
+        WHERE id = ?
       `).run(
-        runId,
         remoteActivations.length,
         localActivations.length,
         matchedCount,
@@ -300,7 +313,7 @@ export class GrizzlyCustomerReconciliationService {
         missingRemotelyCount,
         discrepancyCount,
         durationMs,
-        nowIso
+        runId
       );
 
       // Update config with last reconciliation time
@@ -327,12 +340,23 @@ export class GrizzlyCustomerReconciliationService {
       return { success: true, summary };
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
-      db.prepare(`
-        INSERT INTO grizzly_reconciliation_runs (
-          id, total_remote, total_local, matched_count, missing_locally_count,
-          missing_remotely_count, discrepancy_count, status, error_message, run_duration_ms, created_at
-        ) VALUES (?, 0, 0, 0, 0, 0, 0, 'failed', ?, ?, datetime('now'))
-      `).run(runId, err.message, durationMs);
+      const existing = db.prepare('SELECT id FROM grizzly_reconciliation_runs WHERE id = ?').get(runId);
+      if (existing) {
+        db.prepare(`
+          UPDATE grizzly_reconciliation_runs
+          SET status = 'failed',
+              error_message = ?,
+              run_duration_ms = ?
+          WHERE id = ?
+        `).run(err.message, durationMs, runId);
+      } else {
+        db.prepare(`
+          INSERT INTO grizzly_reconciliation_runs (
+            id, total_remote, total_local, matched_count, missing_locally_count,
+            missing_remotely_count, discrepancy_count, status, error_message, run_duration_ms, created_at
+          ) VALUES (?, 0, 0, 0, 0, 0, 0, 'failed', ?, ?, datetime('now'))
+        `).run(runId, err.message, durationMs);
+      }
 
       return {
         success: false,

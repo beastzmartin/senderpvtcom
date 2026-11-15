@@ -437,7 +437,43 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
           }`}
         >
           <Sliders className="w-4 h-4" />
-          Gateway Settings & Pricing
+          Gateway Settings
+        </button>
+
+        <button
+          onClick={() => setActiveSubView('pricing')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+            activeSubView === 'pricing'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Tag className="w-4 h-4" />
+          Pricing Engine & Sync ({pricesTotal})
+        </button>
+
+        <button
+          onClick={() => setActiveSubView('providers')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+            activeSubView === 'providers'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <GitCompare className="w-4 h-4" />
+          Provider Rules ({providerRules.length})
+        </button>
+
+        <button
+          onClick={() => setActiveSubView('reconciliation')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+            activeSubView === 'reconciliation'
+              ? 'bg-amber-600 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <FileCheck2 className="w-4 h-4" />
+          Reconciliation ({reconTotal})
         </button>
 
         <button
@@ -449,7 +485,7 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
           }`}
         >
           <TrendingUp className="w-4 h-4" />
-          Customer Activations & Profit ({activationsReport.total})
+          Customer Activations ({activationsReport.total})
         </button>
 
         <button
@@ -461,7 +497,7 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
           }`}
         >
           <Database className="w-4 h-4" />
-          Outbound getNumber Logs ({logsTotal})
+          Diagnostics Logs ({logsTotal})
         </button>
       </div>
 
@@ -745,6 +781,126 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
             </div>
           </div>
 
+          {/* Section D: Automation, Price Sync & Reconciliation */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-600" />
+              4. Scheduled Automation & Sync Controls
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Preferred Pricing Endpoint
+                </label>
+                <select
+                  value={config.pricing_endpoint || 'getPricesV3'}
+                  onChange={(e) => setConfig({ ...config, pricing_endpoint: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono focus:ring-2 focus:ring-purple-500 bg-white"
+                >
+                  <option value="getPricesV3">getPricesV3 (Multi-provider routing & live prices)</option>
+                  <option value="getPricesV2">getPricesV2 (Price tiers & inventory counts)</option>
+                  <option value="getPrices">getPrices (Standard country-service prices)</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-0.5">Primary endpoint used for price fetching and sync</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Price Sync Interval (Minutes)
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  value={config.price_sync_interval_minutes || 60}
+                  onChange={(e) => setConfig({ ...config, price_sync_interval_minutes: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono"
+                />
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="checkbox"
+                    id="auto_price_sync"
+                    checked={Boolean(config.auto_price_sync)}
+                    onChange={(e) => setConfig({ ...config, auto_price_sync: e.target.checked })}
+                    className="rounded text-purple-600"
+                  />
+                  <label htmlFor="auto_price_sync" className="text-[11px] text-slate-600">
+                    Enable Auto Price Sync
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Reconciliation Interval (Minutes)
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  value={config.reconciliation_interval_minutes || 30}
+                  onChange={(e) => setConfig({ ...config, reconciliation_interval_minutes: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono"
+                />
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="checkbox"
+                    id="auto_reconciliation"
+                    checked={Boolean(config.auto_reconciliation)}
+                    onChange={(e) => setConfig({ ...config, auto_reconciliation: e.target.checked })}
+                    className="rounded text-purple-600"
+                  />
+                  <label htmlFor="auto_reconciliation" className="text-[11px] text-slate-600">
+                    Enable Auto Reconciliation
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Minimum Profit Guarantee (₹)
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={config.min_profit || 2}
+                  onChange={(e) => setConfig({ ...config, min_profit: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono"
+                />
+                <p className="text-[10px] text-slate-400 mt-0.5">Guaranteed minimum margin per purchase</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Currency Conversion Rate
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={config.currency_conversion_rate || 1}
+                  onChange={(e) => setConfig({ ...config, currency_conversion_rate: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono"
+                />
+                <p className="text-[10px] text-slate-400 mt-0.5">Multiplier from provider currency to INR</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Max Acceptable Provider Cost
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  value={config.max_acceptable_provider_cost || 100}
+                  onChange={(e) => setConfig({ ...config, max_acceptable_provider_cost: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono"
+                />
+                <p className="text-[10px] text-slate-400 mt-0.5">Provider quotes above this are rejected</p>
+              </div>
+            </div>
+          </div>
+
           <div className="flex justify-end">
             <button
               type="submit"
@@ -756,6 +912,512 @@ export const GrizzlyCustomerAdminView: React.FC = () => {
             </button>
           </div>
         </form>
+      )}
+
+      {/* VIEW 2: PRICING ENGINE & SYNCHRONIZATION */}
+      {activeSubView === 'pricing' && (
+        <div className="space-y-6">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center">
+                <Tag className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Real-Time Provider Pricing Cache</h3>
+                <p className="text-xs text-slate-500">
+                  Sync country and service rate quotes via getPrices, getPricesV2, or getPricesV3.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <select
+                value={syncEndpoint}
+                onChange={(e) => setSyncEndpoint(e.target.value as any)}
+                className="px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono bg-slate-50"
+              >
+                <option value="getPricesV3">getPricesV3 (Recommended)</option>
+                <option value="getPricesV2">getPricesV2</option>
+                <option value="getPrices">getPrices</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={handleSyncPrices}
+                disabled={syncingPrices}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncingPrices ? 'animate-spin' : ''}`} />
+                {syncingPrices ? 'Syncing...' : 'Sync Live Prices'}
+              </button>
+            </div>
+          </div>
+
+          {/* Pricing Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Cached Rate Quotes ({pricesTotal})
+              </span>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Filter country (e.g. 22)"
+                  value={priceFilterCountry}
+                  onChange={(e) => setPriceFilterCountry(e.target.value)}
+                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg font-mono w-32"
+                />
+                <input
+                  type="text"
+                  placeholder="Filter service (e.g. tg)"
+                  value={priceFilterService}
+                  onChange={(e) => setPriceFilterService(e.target.value)}
+                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg font-mono w-32"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                    <th className="py-3 px-4">Country</th>
+                    <th className="py-3 px-4">Service</th>
+                    <th className="py-3 px-4">Source</th>
+                    <th className="py-3 px-4 text-right">Overall Price</th>
+                    <th className="py-3 px-4 text-right">Available Stock</th>
+                    <th className="py-3 px-4 text-center">Routes</th>
+                    <th className="py-3 px-4">Last Synced</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {cachedPrices.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3 px-4 font-bold text-slate-800">
+                        {p.country_name || `Country #${p.country_id}`}
+                      </td>
+                      <td className="py-3 px-4 font-mono font-bold text-indigo-700 uppercase">
+                        {p.service_code}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
+                        {p.pricing_source}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
+                        ₹{Number(p.overall_price || 0).toFixed(2)}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-700">
+                        {p.overall_quantity || 0}
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono text-[11px]">
+                        {p.providers_count || 1}
+                      </td>
+                      <td className="py-3 px-4 text-slate-400 text-[11px] font-mono">
+                        {p.last_synced_at ? new Date(p.last_synced_at).toLocaleString() : 'Never'}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            p.is_stale === 1
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {p.is_stale === 1 ? 'Stale' : 'Live'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {cachedPrices.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-slate-400 font-semibold">
+                        No cached pricing data found. Click &quot;Sync Live Prices&quot; above to populate quotes.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 3: PROVIDER RULES & SELECTION */}
+      {activeSubView === 'providers' && (
+        <div className="space-y-6">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
+                <GitCompare className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Provider Selection & Routing Rules</h3>
+                <p className="text-xs text-slate-500">
+                  Define included/excluded provider IDs, preferred routes, and country/service specific margins.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowAddRuleModal(true)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Selection Rule
+            </button>
+          </div>
+
+          {/* Add Rule Form Modal */}
+          {showAddRuleModal && (
+            <div className="p-5 bg-blue-50/50 border border-blue-200 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                  New Provider Routing Rule
+                </h4>
+                <button
+                  onClick={() => setShowAddRuleModal(false)}
+                  className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveRule} className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Scope</label>
+                  <select
+                    value={newRule.scope}
+                    onChange={(e) => setNewRule({ ...newRule, scope: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono bg-white"
+                  >
+                    <option value="global">Global (All numbers)</option>
+                    <option value="country">Country Specific</option>
+                    <option value="service">Service Specific</option>
+                    <option value="country_service">Country + Service Pair</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Country ID (if scoped)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 22"
+                    value={newRule.countryId}
+                    onChange={(e) => setNewRule({ ...newRule, countryId: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Service Code (if scoped)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. tg, wa"
+                    value={newRule.serviceCode}
+                    onChange={(e) => setNewRule({ ...newRule, serviceCode: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Allowed Provider IDs</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1, 2"
+                    value={newRule.allowedProviderIds}
+                    onChange={(e) => setNewRule({ ...newRule, allowedProviderIds: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Excluded Provider IDs</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 4, 5"
+                    value={newRule.excludedProviderIds}
+                    onChange={(e) => setNewRule({ ...newRule, excludedProviderIds: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Max Price Cap (₹)</label>
+                  <input
+                    type="number"
+                    placeholder="e.g. 50"
+                    value={newRule.maxPrice}
+                    onChange={(e) => setNewRule({ ...newRule, maxPrice: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                  />
+                </div>
+
+                <div className="md:col-span-3 flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddRuleModal(false)}
+                    className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition"
+                  >
+                    Save Rule
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Rules List Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Configured Rules ({providerRules.length})
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                    <th className="py-3 px-4">Scope</th>
+                    <th className="py-3 px-4">Country</th>
+                    <th className="py-3 px-4">Service</th>
+                    <th className="py-3 px-4">Allowed IDs</th>
+                    <th className="py-3 px-4">Excluded IDs</th>
+                    <th className="py-3 px-4 text-right">Max Price</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {providerRules.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3 px-4 font-bold text-blue-700 uppercase font-mono">
+                        {r.scope}
+                      </td>
+                      <td className="py-3 px-4 font-mono">
+                        {r.countryId || 'ALL'}
+                      </td>
+                      <td className="py-3 px-4 font-mono uppercase">
+                        {r.serviceCode || 'ALL'}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-emerald-700">
+                        {r.allowedProviderIds || '—'}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-rose-700">
+                        {r.excludedProviderIds || '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold">
+                        {r.maxPrice ? `₹${r.maxPrice}` : '—'}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${r.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                          {r.isActive ? 'Active' : 'Disabled'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => handleDeleteRule(r.id)}
+                          className="text-rose-600 hover:text-rose-700 p-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {providerRules.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-slate-400 font-semibold">
+                        No custom provider rules defined. Default global parameters apply.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 4: RECONCILIATION ENGINE */}
+      {activeSubView === 'reconciliation' && (
+        <div className="space-y-6">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                <FileCheck2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Active Activations Reconciliation Engine</h3>
+                <p className="text-xs text-slate-500">
+                  Audit local pending activations against GrizzlySMS active numbers. Flags discrepancies without blind refunds.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRunReconciliation}
+              disabled={reconciling}
+              className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition disabled:opacity-50 shadow-md shadow-amber-600/20"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${reconciling ? 'animate-spin' : ''}`} />
+              {reconciling ? 'Running Reconciliation...' : 'Run Reconciliation Now'}
+            </button>
+          </div>
+
+          {/* Runs Summary Cards */}
+          {reconRuns.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-xl border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Remote Active</span>
+                <span className="text-xl font-black text-slate-800 font-mono mt-0.5 block">{reconRuns[0].totalRemote}</span>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-emerald-600 block">Matched Activations</span>
+                <span className="text-xl font-black text-emerald-700 font-mono mt-0.5 block">{reconRuns[0].matchedCount}</span>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-rose-600 block">Discrepancies</span>
+                <span className="text-xl font-black text-rose-700 font-mono mt-0.5 block">{reconRuns[0].discrepancyCount}</span>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Last Run Status</span>
+                <span className="text-sm font-bold text-slate-700 font-mono mt-1 block uppercase">{reconRuns[0].status} ({reconRuns[0].durationMs}ms)</span>
+              </div>
+            </div>
+          )}
+
+          {/* Discrepancies Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Reconciliation Discrepancy Records ({reconTotal})
+              </span>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={reconFilterType}
+                  onChange={(e) => setReconFilterType(e.target.value)}
+                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg font-mono bg-slate-50"
+                >
+                  <option value="all">All Discrepancy Types</option>
+                  <option value="matched">Matched</option>
+                  <option value="missing_locally">Missing Locally</option>
+                  <option value="missing_remotely">Missing Remotely</option>
+                  <option value="cost_mismatch">Cost Mismatch</option>
+                  <option value="status_mismatch">Status Mismatch</option>
+                </select>
+
+                <select
+                  value={reconFilterStatus}
+                  onChange={(e) => setReconFilterStatus(e.target.value)}
+                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg font-mono bg-slate-50"
+                >
+                  <option value="all">All Resolutions</option>
+                  <option value="pending">Pending</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="ignored">Ignored</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                    <th className="py-3 px-4">Provider Activation ID</th>
+                    <th className="py-3 px-4">Local ID</th>
+                    <th className="py-3 px-4">Phone Number</th>
+                    <th className="py-3 px-4">Service</th>
+                    <th className="py-3 px-4 text-right">Provider vs Local Cost</th>
+                    <th className="py-3 px-4">Discrepancy Type</th>
+                    <th className="py-3 px-4">Resolution</th>
+                    <th className="py-3 px-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {reconRecords.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3 px-4 font-mono font-bold text-amber-800">
+                        #{r.providerActivationId}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
+                        {r.localActivationId ? r.localActivationId.slice(0, 12) + '...' : '—'}
+                      </td>
+                      <td className="py-3 px-4 font-mono font-bold">
+                        {r.phoneNumber ? `+${r.phoneNumber}` : '—'}
+                      </td>
+                      <td className="py-3 px-4 font-mono uppercase">
+                        {r.serviceCode || '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono">
+                        ₹{Number(r.providerCost || 0).toFixed(2)} vs ₹{Number(r.localCost || 0).toFixed(2)}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            r.discrepancyType === 'matched'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : r.discrepancyType === 'missing_remotely'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {r.discrepancyType.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            r.resolutionStatus === 'resolved'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {r.resolutionStatus}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        {r.resolutionStatus === 'pending' ? (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleResolveRecord(r.id, 'resolve')}
+                              className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold hover:bg-emerald-700"
+                            >
+                              Resolve
+                            </button>
+                            <button
+                              onClick={() => handleResolveRecord(r.id, 'ignore')}
+                              className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px] font-bold hover:bg-slate-300"
+                            >
+                              Ignore
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-mono">Archived</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {reconRecords.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-slate-400 font-semibold">
+                        No reconciliation discrepancy records found. Run reconciliation above to check.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* VIEW 2: CUSTOMER ACTIVATIONS & PROFIT REPORT */}
