@@ -32,3 +32,4 @@ router.post('/hidden-items', controller.addHiddenItem);
 router.delete('/hidden-items/:id', controller.removeHiddenItem);
 
 export default router;
+

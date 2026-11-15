@@ -95,3 +95,4 @@ export function initMarginSchema(db: Database.Database): void {
     `).run();
   }
 }
+

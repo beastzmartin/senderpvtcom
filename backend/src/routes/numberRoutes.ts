@@ -19,3 +19,4 @@ router.post('/orders/:id/ban', requireAuth, controller.banOrder);
 router.get('/orders', requireAuth, controller.getUserOrders);
 
 export default router;
+
