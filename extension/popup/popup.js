@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const formToken = document.getElementById('form-token');
   const formLogin = document.getElementById('form-login');
   const inputToken = document.getElementById('input-token');
+  const inputServerUrl = document.getElementById('input-server-url');
+  const inputTokenServerUrl = document.getElementById('input-token-server-url');
   const inputUsername = document.getElementById('input-username');
   const inputPassword = document.getElementById('input-password');
   const btnSubmitToken = document.getElementById('btn-submit-token');
@@ -154,6 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Token Auth
   btnSubmitToken.addEventListener('click', () => {
     const token = inputToken.value.trim();
+    const apiUrl = inputTokenServerUrl?.value?.trim() || '';
     if (!token) {
       showError('Please paste your extension session token.');
       return;
@@ -161,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnSubmitToken.textContent = 'Verifying...';
     btnSubmitToken.disabled = true;
 
-    chrome.runtime.sendMessage({ type: 'AUTH_PAIR_TOKEN', payload: { token } }, (res) => {
+    chrome.runtime.sendMessage({ type: 'AUTH_PAIR_TOKEN', payload: { token, apiUrl } }, (res) => {
       btnSubmitToken.textContent = 'Connect to Dashboard';
       btnSubmitToken.disabled = false;
       if (res && res.success) {
@@ -176,6 +179,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnSubmitLogin.addEventListener('click', () => {
     const username = inputUsername.value.trim();
     const password = inputPassword.value;
+    const apiUrl = inputServerUrl?.value?.trim() || '';
     if (!username || !password) {
       showError('Please enter username and password.');
       return;
@@ -183,13 +187,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnSubmitLogin.textContent = 'Signing In...';
     btnSubmitLogin.disabled = true;
 
-    chrome.runtime.sendMessage({ type: 'AUTH_LOGIN', payload: { username, password } }, (res) => {
+    chrome.runtime.sendMessage({ type: 'AUTH_LOGIN', payload: { username, password, apiUrl } }, (res) => {
       btnSubmitLogin.textContent = 'Sign In & Connect';
       btnSubmitLogin.disabled = false;
       if (res && res.success) {
         init();
       } else {
-        showError(res?.error || 'Invalid credentials.');
+        showError(res?.error || 'Invalid credentials or server unreachable.');
       }
     });
   });
@@ -440,6 +444,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         connectionPill.className = 'pill pill-offline';
         viewAuth.classList.remove('hidden');
         viewMain.classList.add('hidden');
+
+        const defaultUrl = state.apiUrl ? state.apiUrl.replace(/\/api\/?$/, '') : '';
+        if (inputServerUrl && !inputServerUrl.value && defaultUrl) {
+          inputServerUrl.value = defaultUrl;
+        }
+        if (inputTokenServerUrl && !inputTokenServerUrl.value && defaultUrl) {
+          inputTokenServerUrl.value = defaultUrl;
+        }
         return;
       }
 

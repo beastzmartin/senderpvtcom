@@ -2,22 +2,22 @@
 # Full-Stack WhatsApp SaaS + Multi-Source Lead Intelligence Extractor
 
 # ==========================================
-# Stage 1: Build React Client (Vite)
+# Stage 1: Build React Frontend (Vite)
 # ==========================================
-FROM node:20-bookworm-slim AS client-builder
-WORKDIR /app/client
+FROM node:20-bookworm-slim AS frontend-builder
+WORKDIR /app/frontend
 
-COPY client/package*.json ./
+COPY frontend/package*.json ./
 RUN npm ci
 
-COPY client/ ./
+COPY frontend/ ./
 RUN npm run build
 
 # ==========================================
 # Stage 2: Build Backend Server (TypeScript)
 # ==========================================
-FROM node:20-bookworm-slim AS server-builder
-WORKDIR /app/server
+FROM node:20-bookworm-slim AS backend-builder
+WORKDIR /app/backend
 
 # Install C++ native build toolchain for better-sqlite3 compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -26,10 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-COPY server/package*.json ./
+COPY backend/package*.json ./
 RUN npm ci
 
-COPY server/ ./
+COPY backend/ ./
 RUN npm run build
 
 # ==========================================
@@ -50,21 +50,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Install production dependencies for server
-WORKDIR /app/server
-COPY server/package*.json ./
+# Install production dependencies for backend
+WORKDIR /app/backend
+COPY backend/package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy compiled server build
-COPY --from=server-builder /app/server/dist ./dist
+# Copy compiled backend build
+COPY --from=backend-builder /app/backend/dist ./dist
 
-# Copy compiled client build to expected path
-WORKDIR /app/client
-COPY --from=client-builder /app/client/dist ./dist
+# Copy compiled frontend build to expected path
+WORKDIR /app/frontend
+COPY --from=frontend-builder /app/frontend/dist ./dist
 
 # Create persistent data directories
-WORKDIR /app/server
-RUN mkdir -p /app/server/data/sessions
+WORKDIR /app/backend
+RUN mkdir -p /app/backend/data/sessions
 
 # Expose server port
 EXPOSE 3000

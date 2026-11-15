@@ -5,7 +5,7 @@
  * Fingerprint Deduplication, Buffer & Badge Auto-Drainage, Website Email Hunter, and Multi-Keyword Batch Engine
  */
 
-const BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
+const BACKEND_URL = 'http://localhost:3000';
 const API_BASE_URL = `${BACKEND_URL}/api`;
 
 // In-memory active job state
@@ -571,7 +571,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       if (type === 'AUTH_LOGIN') {
-        const { username, password } = payload;
+        const { username, password, apiUrl } = payload || {};
+        if (apiUrl) {
+          const cleanBackend = apiUrl.replace(/\/+$/, '');
+          await chrome.storage.local.set({
+            apiUrl: cleanBackend.endsWith('/api') ? cleanBackend : `${cleanBackend}/api`
+          });
+        }
         const res = await apiRequest('/auth/login', {
           method: 'POST',
           body: JSON.stringify({ username, password })
@@ -588,11 +594,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       if (type === 'AUTH_PAIR_TOKEN' || type === 'AUTH_PAIR_BACKEND_AND_TOKEN') {
-        const { token, backend } = payload || {};
+        const { token, backend, apiUrl } = payload || {};
         const updates = {};
         if (token) updates.token = token;
-        if (backend) {
-          const cleanBackend = backend.replace(/\/+$/, '');
+        const targetUrl = backend || apiUrl;
+        if (targetUrl) {
+          const cleanBackend = targetUrl.replace(/\/+$/, '');
           updates.apiUrl = cleanBackend.endsWith('/api') ? cleanBackend : `${cleanBackend}/api`;
         }
         if (Object.keys(updates).length > 0) {

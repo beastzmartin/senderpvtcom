@@ -1,0 +1,2069 @@
+import {
+  WhatsAppStatus,
+  WhatsAppAccountInfo,
+  WhatsAppDevice,
+  QRState,
+  Contact,
+  Conversation,
+  Message,
+  DashboardStats,
+  User,
+  IdentifierType,
+  ExtractedGroup,
+  ExtractedMember,
+  BulkLidSummary,
+  BulkCampaign,
+  BulkCampaignSettings,
+  BulkCampaignRecipient,
+  DailyQuotaStats,
+  MessageTemplate,
+  BroadcastSchedule,
+  BroadcastRecipient,
+  SubscriptionPlan,
+  UserSubscriptionDetails,
+  LicenseKeyRecord,
+  ExtractionQuotaInfo,
+  ResellerInfo,
+  ResellerStats,
+  VaultLogItem,
+  VaultRecordDetail,
+  AdminOverviewStats,
+  GroupInviteMetadata,
+  JoinGroupResult,
+  GroupJoinCampaign,
+  GroupJoinerSettings,
+  AdminSessionItem,
+  AdminStorageStats,
+  UserDataSummary,
+  LiveCampaignItem,
+  LeadRecord,
+  LeadStatus,
+  ExtractionJobRecord,
+  ExtractionSourceRecord,
+  LeadFilterOptions,
+  LeadAnalyticsStats,
+  LeadNoteItem,
+  UserWallet,
+  WalletTransaction,
+  MarketplaceExtension,
+  MarketplaceModule,
+  VirtualNumberCountry,
+  VirtualNumberItem,
+  VirtualNumberRental,
+  VirtualNumberOrder,
+  VirtualNumberMessage,
+  VirtualNumberCall,
+  VirtualNumberAnalytics,
+  VirtualNumberPricingRule,
+  VirtualNumberProviderRecord
+} from '../types';
+
+const LIVE_BACKEND_URL = 'https://taken-rough-hydrocodone-empirical.trycloudflare.com';
+
+const getApiBase = (): string => {
+  const envUrl = ((import.meta as any).env?.VITE_API_URL as string)?.trim();
+  if (envUrl) {
+    const clean = envUrl.replace(/\/+$/, '');
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
+  }
+  // In production (e.g. Vercel deployment), point directly to the live Cloudflare HTTPS tunnel
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${LIVE_BACKEND_URL}/api`;
+  }
+  return '/api';
+};
+
+const API_BASE = getApiBase();
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem('wa_auth_token');
+}
+
+export function setAuthToken(token: string): void {
+  localStorage.setItem('wa_auth_token', token);
+}
+
+export function removeAuthToken(): void {
+  localStorage.removeItem('wa_auth_token');
+}
+
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const token = getAuthToken();
+  const headers = new Headers(options.headers || {});
+
+  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers
+  });
+
+  const text = await response.text();
+  let data: any = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { message: text };
+    }
+  }
+
+  if (!response.ok) {
+    const errorMsg = data.error || data.message || `Request failed with status ${response.status}`;
+    throw new Error(errorMsg);
+  }
+
+  return data as T;
+}
+
+export const api = {
+  // WhatsApp Connection
+  whatsapp: {
+    getStatus: () =>
+      request<{
+        status: WhatsAppStatus;
+        provider: string;
+        connected: boolean;
+        accountInfo: WhatsAppAccountInfo | null;
+        hasQr: boolean;
+        qrExpiresIn: number;
+      }>('/whatsapp/status'),
+
+    getQR: () =>
+      request<{
+        status: WhatsAppStatus;
+        qr: string | null;
+        qrDataUrl: string | null;
+        message?: string;
+        expiresInSeconds?: number;
+      }>('/whatsapp/qr'),
+
+    connect: () =>
+      request<{ success: boolean; status: WhatsAppStatus; message: string }>('/whatsapp/connect', {
+        method: 'POST'
+      }),
+
+    disconnect: () =>
+      request<{ success: boolean; status: WhatsAppStatus; message: string }>('/whatsapp/disconnect', {
+        method: 'POST'
+      }),
+
+    resetSession: () =>
+      request<{ success: boolean; status: WhatsAppStatus; message: string }>('/whatsapp/reset', {
+        method: 'POST'
+      }),
+
+    checkNumber: (phone: string) =>
+      request<{ exists: boolean; jid?: string }>(`/whatsapp/check-number?phone=${encodeURIComponent(phone)}`),
+
+    // Multi-Device Endpoints
+    getDevices: () =>
+      request<{
+        success: boolean;
+        devices: WhatsAppDevice[];
+        activeSessionId: string;
+      }>('/whatsapp/devices'),
+
+    createDevice: (alias?: string) =>
+      request<{
+        success: boolean;
+        device: WhatsAppDevice;
+        message: string;
+      }>('/whatsapp/devices', {
+        method: 'POST',
+        body: JSON.stringify({ alias })
+      }),
+
+    deleteDevice: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/whatsapp/devices/${sessionId}`, {
+        method: 'DELETE'
+      }),
+
+    setDefaultDevice: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/whatsapp/devices/${sessionId}/default`, {
+        method: 'POST'
+      }),
+
+    renameDevice: (sessionId: string, alias: string) =>
+      request<{ success: boolean; message: string }>(`/whatsapp/devices/${sessionId}/alias`, {
+        method: 'PUT',
+        body: JSON.stringify({ alias })
+      }),
+
+    getDeviceQR: (sessionId: string) =>
+      request<{
+        sessionId: string;
+        status: WhatsAppStatus;
+        qr: string | null;
+        qrDataUrl: string | null;
+        expiresInSeconds?: number;
+      }>(`/whatsapp/devices/${sessionId}/qr`),
+
+    connectDevice: (sessionId: string) =>
+      request<{ success: boolean; status: WhatsAppStatus; message: string }>(`/whatsapp/devices/${sessionId}/connect`, {
+        method: 'POST'
+      }),
+
+    disconnectDevice: (sessionId: string) =>
+      request<{ success: boolean; status: WhatsAppStatus; message: string }>(`/whatsapp/devices/${sessionId}/disconnect`, {
+        method: 'POST'
+      }),
+
+    resetDevice: (sessionId: string) =>
+      request<{ success: boolean; status: WhatsAppStatus; message: string }>(`/whatsapp/devices/${sessionId}/reset`, {
+        method: 'POST'
+      })
+  },
+
+  // Messages
+  messages: {
+    send: (recipient: string, message: string, identifierType?: IdentifierType, sessionId?: string, useRoundRobin?: boolean) =>
+      request<{ success: boolean; message: string; data: Message }>('/messages/send', {
+        method: 'POST',
+        body: JSON.stringify({ recipient, message, identifierType, sessionId, useRoundRobin })
+      }),
+
+    sendPhone: (phoneNumber: string, message: string, sessionId?: string, useRoundRobin?: boolean) =>
+      request<{ success: boolean; message: string; data: Message }>('/messages/send-phone', {
+        method: 'POST',
+        body: JSON.stringify({ phoneNumber, message, sessionId, useRoundRobin })
+      }),
+
+    sendLid: (lid: string, message: string, sessionId?: string, useRoundRobin?: boolean) =>
+      request<{ success: boolean; message: string; data: Message }>('/messages/send-lid', {
+        method: 'POST',
+        body: JSON.stringify({ lid, message, sessionId, useRoundRobin })
+      }),
+
+    sendBulkLid: (lids: string[], message: string, delayMs = 1500) =>
+      request<{ success: boolean; message: string; data: BulkLidSummary }>('/messages/bulk-lid', {
+        method: 'POST',
+        body: JSON.stringify({ lids, message, delayMs })
+      }),
+
+    getMessages: (conversationId?: string, limit = 50, offset = 0) => {
+      const q = new URLSearchParams();
+      if (conversationId) q.set('conversationId', conversationId);
+      q.set('limit', limit.toString());
+      q.set('offset', offset.toString());
+      return request<{ data: Message[]; count: number }>(`/messages?${q.toString()}`);
+    },
+
+    getDashboardStats: () => request<DashboardStats>('/dashboard/stats'),
+
+    // Daily Quota & Anti-Ban
+    getDailyQuota: () =>
+      request<{ success: boolean; data: DailyQuotaStats }>('/messages/daily-quota'),
+
+    updateDailyQuota: (limit: number) =>
+      request<{ success: boolean; message: string; data: DailyQuotaStats }>('/messages/daily-quota', {
+        method: 'PUT',
+        body: JSON.stringify({ limit })
+      }),
+
+    // Bulk Campaigns
+    createCampaign: (data: {
+      name?: string;
+      lids: string[];
+      templateMessage: string;
+      settings?: Partial<BulkCampaignSettings>;
+      autoStart?: boolean;
+    }) =>
+      request<{ success: boolean; message: string; data: BulkCampaign }>('/messages/bulk-campaigns', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    listCampaigns: (limit = 30) =>
+      request<{ success: boolean; data: BulkCampaign[] }>(`/messages/bulk-campaigns?limit=${limit}`),
+
+    getCampaignDetails: (id: string, status?: string, search?: string) => {
+      const q = new URLSearchParams();
+      if (status && status !== 'all') q.set('status', status);
+      if (search) q.set('search', search);
+      const queryStr = q.toString() ? `?${q.toString()}` : '';
+      return request<{
+        success: boolean;
+        data: { campaign: BulkCampaign; recipients: BulkCampaignRecipient[] };
+      }>(`/messages/bulk-campaigns/${id}${queryStr}`);
+    },
+
+    startCampaign: (id: string, maxToSend?: number) =>
+      request<{ success: boolean; message: string; data: BulkCampaign }>(
+        `/messages/bulk-campaigns/${id}/start`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ maxToSend })
+        }
+      ),
+
+    checkDuplicates: (lids: string[], scope: 'none' | 'today' | 'last_7_days' | 'all_time' = 'all_time') =>
+      request<{ success: boolean; data: import('../types').DuplicateCheckResult }>('/messages/bulk-campaigns/check-duplicates', {
+        method: 'POST',
+        body: JSON.stringify({ lids, scope })
+      }),
+
+    pauseCampaign: (id: string) =>
+      request<{ success: boolean; message: string; data: BulkCampaign }>(
+        `/messages/bulk-campaigns/${id}/pause`,
+        { method: 'POST' }
+      ),
+
+    stopCampaign: (id: string) =>
+      request<{ success: boolean; message: string; data: BulkCampaign }>(
+        `/messages/bulk-campaigns/${id}/stop`,
+        { method: 'POST' }
+      ),
+
+    retryFailed: (id: string) =>
+      request<{ success: boolean; message: string; data: BulkCampaign }>(
+        `/messages/bulk-campaigns/${id}/retry-failed`,
+        { method: 'POST' }
+      ),
+
+    retryRecipient: (campaignId: string, recipientId: string) =>
+      request<{ success: boolean; message: string; data: BulkCampaignRecipient }>(
+        `/messages/bulk-campaigns/${campaignId}/recipients/${recipientId}/retry`,
+        { method: 'POST' }
+      ),
+
+    deleteCampaign: (id: string) =>
+      request<{ success: boolean; message: string }>(`/messages/bulk-campaigns/${id}`, {
+        method: 'DELETE'
+      })
+  },
+
+  // Conversations
+  conversations: {
+    list: (search?: string) => {
+      const q = search ? `?search=${encodeURIComponent(search)}` : '';
+      return request<{ data: Conversation[]; count: number }>(`/conversations${q}`);
+    },
+
+    getMessages: (id: string, limit = 100, offset = 0) =>
+      request<{
+        conversation: Conversation & { notes?: string };
+        messages: Message[];
+        count: number;
+      }>(`/conversations/${id}/messages?limit=${limit}&offset=${offset}`),
+
+    markAsRead: (id: string) =>
+      request<{ success: boolean }>(`/conversations/${id}/read`, {
+        method: 'POST'
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean; message: string }>(`/conversations/${id}`, {
+        method: 'DELETE'
+      }),
+
+    deleteAll: () =>
+      request<{ success: boolean; message: string; deletedConvs: number; deletedMsgs: number }>('/conversations', {
+        method: 'DELETE'
+      })
+  },
+
+  // Contacts
+  contacts: {
+    list: (search?: string) => {
+      const q = search ? `?search=${encodeURIComponent(search)}` : '';
+      return request<{ data: Contact[]; count: number }>(`/contacts${q}`);
+    },
+
+    get: (id: string) => request<Contact>(`/contacts/${id}`),
+
+    create: (data: { name: string; phone_number?: string | null; lid?: string | null; notes?: string | null }) =>
+      request<{ success: boolean; data: Contact }>('/contacts', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    update: (id: string, data: Partial<Contact>) =>
+      request<{ success: boolean; data: Contact }>(`/contacts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean; message: string }>(`/contacts/${id}`, {
+        method: 'DELETE'
+      }),
+
+    importCsv: (csvContent: string) =>
+      request<{
+        success: boolean;
+        message: string;
+        data: { total: number; imported: number; skipped: number; errors: any[] };
+      }>('/contacts/import', {
+        method: 'POST',
+        body: JSON.stringify({ csvContent })
+      }),
+
+    resolveLids: (lids: string[]) =>
+      request<{
+        success: boolean;
+        total: number;
+        resolved: number;
+        unresolved: number;
+        results: Array<{
+          lid: string;
+          phone: string | null;
+          jid: string | null;
+          name: string | null;
+          status: 'resolved' | 'unresolved';
+          source?: string;
+        }>;
+      }>('/contacts/resolve-lids', {
+        method: 'POST',
+        body: JSON.stringify({ lids })
+      }),
+
+    syncGroupLids: () =>
+      request<{
+        success: boolean;
+        message: string;
+        data: {
+          totalGroups: number;
+          totalScanned: number;
+          newMappings: number;
+          totalMappings: number;
+        };
+      }>('/contacts/sync-group-lids', {
+        method: 'POST'
+      }),
+
+    getLidMappings: (search?: string, limit = 100, offset = 0) => {
+      const q = new URLSearchParams();
+      if (search) q.set('search', search);
+      q.set('limit', limit.toString());
+      q.set('offset', offset.toString());
+      return request<{
+        data: Array<{
+          lid: string;
+          phone_number: string | null;
+          jid: string | null;
+          display_name: string | null;
+          updated_at: string;
+        }>;
+        total: number;
+        limit: number;
+        offset: number;
+      }>(`/contacts/lid-mappings?${q.toString()}`);
+    }
+  },
+
+  // Groups & Communities Extractor
+  groups: {
+    getQuota: () =>
+      request<{ success: boolean; quota: ExtractionQuotaInfo }>('/groups/quota'),
+
+    list: (sessionId?: string, fresh?: boolean) => {
+      const q = new URLSearchParams();
+      if (sessionId) q.set('sessionId', sessionId);
+      if (fresh) q.set('fresh', 'true');
+      const queryStr = q.toString() ? `?${q.toString()}` : '';
+      return request<{ data: ExtractedGroup[]; count: number }>(`/groups${queryStr}`);
+    },
+
+    getMembers: (id: string, sessionId?: string, fresh?: boolean) => {
+      const q = new URLSearchParams();
+      if (sessionId) q.set('sessionId', sessionId);
+      if (fresh) q.set('fresh', 'true');
+      const queryStr = q.toString() ? `?${q.toString()}` : '';
+      return request<{
+        groupId: string;
+        total: number;
+        totalLids: number;
+        totalPhones: number;
+        members: ExtractedMember[];
+      }>(`/groups/${id}/members${queryStr}`);
+    },
+
+    getMultiMembers: (groupIds: string[], sessionId?: string) =>
+      request<{
+        success: boolean;
+        groupCount: number;
+        total: number;
+        totalLids: number;
+        totalPhones: number;
+        members: ExtractedMember[];
+      }>('/groups/multi/members', {
+        method: 'POST',
+        body: JSON.stringify({ groupIds, sessionId })
+      }),
+
+    resolveLids: (id: string, sessionId?: string) =>
+      request<{
+        success: boolean;
+        groupId: string;
+        total: number;
+        totalResolved: number;
+        totalLids: number;
+        resolvedCount: number;
+        members: ExtractedMember[];
+      }>(`/groups/${id}/resolve-lids`, {
+        method: 'POST',
+        body: JSON.stringify({ sessionId })
+      }),
+
+    syncAllLids: (sessionId?: string) =>
+      request<{
+        success: boolean;
+        message: string;
+        data: {
+          totalGroups: number;
+          totalScanned: number;
+          newMappings: number;
+          totalMappings: number;
+        };
+      }>('/groups/sync-all-lids', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId })
+      }),
+
+    exportToContacts: (id: string, sessionId?: string) =>
+      request<{
+        success: boolean;
+        message: string;
+        imported: number;
+        skipped: number;
+      }>(`/groups/${id}/export-contacts`, {
+        method: 'POST',
+        body: JSON.stringify({ sessionId })
+      }),
+
+    exportMultiToContacts: (members: ExtractedMember[], sessionId?: string) =>
+      request<{
+        success: boolean;
+        message: string;
+        imported: number;
+        skipped: number;
+      }>('/groups/multi/export-contacts', {
+        method: 'POST',
+        body: JSON.stringify({ members, sessionId })
+      }),
+
+    trackAction: (data: {
+      groupId?: string | null;
+      groupName?: string | null;
+      action: 'download_csv' | 'download_json' | 'copied_numbers' | 'export_contacts';
+      members: any[];
+    }) =>
+      request<{ success: boolean }>('/groups/track-action', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }).catch(() => ({ success: true }))
+  },
+
+  // Auth
+  auth: {
+    login: (usernameOrEmail: string, password: string) =>
+      request<{ success: boolean; token: string; user: User }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username: usernameOrEmail, password })
+      }),
+
+    register: (data: {
+      username: string;
+      password: string;
+      name?: string;
+      email?: string;
+      company_name?: string;
+      phone?: string;
+      plan_tier?: string;
+    }) =>
+      request<{ success: boolean; token: string; user: User }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getMe: () => request<{ user: User }>('/auth/me'),
+
+    updateProfile: (data: { name?: string; email?: string; company_name?: string; phone?: string }) =>
+      request<{ success: boolean; message: string; user: User }>('/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    changePassword: (oldPassword: string, newPassword: string) =>
+      request<{ success: boolean; message: string }>('/auth/password', {
+        method: 'PUT',
+        body: JSON.stringify({ oldPassword, newPassword })
+      })
+  },
+
+  // Subscriptions & SaaS Billing
+  subscriptions: {
+    getPlans: () =>
+      request<{ success: boolean; plans: SubscriptionPlan[] }>('/subscriptions/plans'),
+
+    getMyPlan: () =>
+      request<{ success: boolean; subscription: UserSubscriptionDetails }>('/subscriptions/my-plan'),
+
+    upgrade: (planTier: string, billingCycle: 'monthly' | 'yearly' = 'monthly') =>
+      request<{ success: boolean; message: string; subscription: UserSubscriptionDetails }>(
+        '/subscriptions/upgrade',
+        {
+          method: 'POST',
+          body: JSON.stringify({ planTier, billingCycle })
+        }
+      ),
+
+    redeemCode: (code: string) =>
+      request<{ success: boolean; message: string; subscription: UserSubscriptionDetails }>(
+        '/subscriptions/redeem-code',
+        {
+          method: 'POST',
+          body: JSON.stringify({ code })
+        }
+      ),
+
+    adminListCustomers: () =>
+      request<{ success: boolean; customers: any[] }>('/subscriptions/admin/customers'),
+
+    adminListKeys: () =>
+      request<{ success: boolean; keys: LicenseKeyRecord[] }>('/subscriptions/admin/keys'),
+
+    adminGenerateKey: (
+      planTier: string,
+      durationDays: number,
+      options?: { note?: string; maxDevices?: number; dailyLimit?: number }
+    ) =>
+      request<{ success: boolean; message: string; key: LicenseKeyRecord }>(
+        '/subscriptions/admin/generate-key',
+        {
+          method: 'POST',
+          body: JSON.stringify({ planTier, durationDays, ...options })
+        }
+      ),
+
+    adminBulkGenerateKeys: (
+      planTier: string,
+      durationDays: number,
+      count: number,
+      options?: { note?: string; maxDevices?: number; dailyLimit?: number }
+    ) =>
+      request<{ success: boolean; message: string; keys: LicenseKeyRecord[] }>(
+        '/subscriptions/admin/bulk-generate-keys',
+        {
+          method: 'POST',
+          body: JSON.stringify({ planTier, durationDays, count, ...options })
+        }
+      ),
+
+    adminRevokeKey: (keyId: string) =>
+      request<{ success: boolean; message: string }>('/subscriptions/admin/revoke-key', {
+        method: 'POST',
+        body: JSON.stringify({ keyId })
+      }),
+
+    adminDeleteKey: (keyId: string) =>
+      request<{ success: boolean; message: string }>(`/subscriptions/admin/keys/${keyId}`, {
+        method: 'DELETE'
+      }),
+
+    adminUpdateCustomer: (data: {
+      targetUserId: string;
+      planTier: string;
+      subscriptionStatus?: string;
+      durationDays?: number;
+      maxDevices?: number;
+      dailyLimit?: number;
+      extractionLimit?: number;
+    }) =>
+      request<{ success: boolean; message: string; subscription: UserSubscriptionDetails }>(
+        '/subscriptions/admin/update-customer',
+        {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        }
+      ),
+
+    adminUpdatePlan: (planId: string, data: import('../types').PlanUpdateDTO) =>
+      request<{ success: boolean; message: string; plan: SubscriptionPlan }>(
+        `/subscriptions/admin/plans/${planId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        }
+      ),
+
+    adminGetSettings: () =>
+      request<{ success: boolean; settings: Record<string, string> }>('/subscriptions/admin/settings'),
+
+    adminUpdateSettings: (settings: Record<string, string>) =>
+      request<{ success: boolean; message: string; settings: Record<string, string> }>(
+        '/subscriptions/admin/settings',
+        {
+          method: 'POST',
+          body: JSON.stringify({ settings })
+        }
+      ),
+
+    // Reseller
+    resellerGetStats: () =>
+      request<{ success: boolean; stats: ResellerStats }>('/subscriptions/reseller/stats'),
+
+    resellerListKeys: () =>
+      request<{ success: boolean; keys: LicenseKeyRecord[] }>('/subscriptions/reseller/keys'),
+
+    resellerGenerateKey: (
+      planTier: string,
+      durationDays: number,
+      options?: { note?: string; maxDevices?: number; dailyLimit?: number }
+    ) =>
+      request<{ success: boolean; message: string; key: LicenseKeyRecord }>(
+        '/subscriptions/reseller/generate-key',
+        {
+          method: 'POST',
+          body: JSON.stringify({ planTier, durationDays, ...options })
+        }
+      ),
+
+    resellerBulkGenerateKeys: (
+      planTier: string,
+      durationDays: number,
+      count: number,
+      options?: { note?: string; maxDevices?: number; dailyLimit?: number }
+    ) =>
+      request<{ success: boolean; message: string; keys: LicenseKeyRecord[] }>(
+        '/subscriptions/reseller/bulk-generate-keys',
+        {
+          method: 'POST',
+          body: JSON.stringify({ planTier, durationDays, count, ...options })
+        }
+      ),
+
+    resellerRevokeKey: (keyId: string) =>
+      request<{ success: boolean; message: string }>('/subscriptions/reseller/revoke-key', {
+        method: 'POST',
+        body: JSON.stringify({ keyId })
+      }),
+
+    // Admin Reseller Management
+    adminListResellers: () =>
+      request<{ success: boolean; resellers: ResellerInfo[] }>('/subscriptions/admin/resellers'),
+
+    adminSetResellerQuota: (targetUserId: string, quota: number) =>
+      request<{ success: boolean; message: string }>('/subscriptions/admin/resellers', {
+        method: 'POST',
+        body: JSON.stringify({ targetUserId, quota })
+      }),
+
+    adminAddResellerCredits: (targetUserId: string, additionalCredits: number) =>
+      request<{ success: boolean; message: string; newQuota: number }>(
+        '/subscriptions/admin/resellers/add-credits',
+        {
+          method: 'POST',
+          body: JSON.stringify({ targetUserId, additionalCredits })
+        }
+      ),
+
+    adminDemoteReseller: (userId: string) =>
+      request<{ success: boolean; message: string }>(`/subscriptions/admin/resellers/${userId}`, {
+        method: 'DELETE'
+      })
+  },
+
+  // Templates
+  templates: {
+    list: (category?: string, search?: string) => {
+      const q = new URLSearchParams();
+      if (category && category !== 'all') q.set('category', category);
+      if (search) q.set('search', search);
+      const str = q.toString() ? `?${q.toString()}` : '';
+      return request<{ success: boolean; data: MessageTemplate[]; count: number }>(`/templates${str}`);
+    },
+
+    get: (id: string) =>
+      request<{ success: boolean; data: MessageTemplate }>(`/templates/${id}`),
+
+    create: (data: { name: string; category?: string; content: string }) =>
+      request<{ success: boolean; message: string; data: MessageTemplate }>('/templates', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    update: (id: string, data: { name?: string; category?: string; content?: string }) =>
+      request<{ success: boolean; message: string; data: MessageTemplate }>(`/templates/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean; message: string }>(`/templates/${id}`, {
+        method: 'DELETE'
+      })
+  },
+
+  // Broadcast Scheduler
+  scheduler: {
+    list: () =>
+      request<{ success: boolean; data: BroadcastSchedule[]; count: number }>('/scheduler'),
+
+    get: (id: string, status?: string) => {
+      const q = status && status !== 'all' ? `?status=${encodeURIComponent(status)}` : '';
+      return request<{
+        success: boolean;
+        data: { schedule: BroadcastSchedule; recipients: BroadcastRecipient[] };
+      }>(`/scheduler/${id}${q}`);
+    },
+
+    create: (data: {
+      name: string;
+      templateId?: string;
+      templateContent: string;
+      dailyLimit: number;
+      scheduledTime?: string;
+      recipients: Array<{
+        lid: string;
+        phone_number?: string;
+        name?: string;
+        custom_data?: Record<string, any>;
+      }>;
+      settings?: Partial<BulkCampaignSettings>;
+    }) =>
+      request<{ success: boolean; message: string; data: BroadcastSchedule }>('/scheduler', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    pause: (id: string) =>
+      request<{ success: boolean; message: string; data: BroadcastSchedule }>(`/scheduler/${id}/pause`, {
+        method: 'POST'
+      }),
+
+    resume: (id: string) =>
+      request<{ success: boolean; message: string; data: BroadcastSchedule }>(`/scheduler/${id}/resume`, {
+        method: 'POST'
+      }),
+
+    runNow: (id: string) =>
+      request<{
+        success: boolean;
+        message: string;
+        data: { sent: number; failed: number; remaining: number };
+      }>(`/scheduler/${id}/run-now`, {
+        method: 'POST'
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean; message: string }>(`/scheduler/${id}`, {
+        method: 'DELETE'
+      })
+  },
+
+  // Super Admin Control Center
+  admin: {
+    getOverview: () =>
+      request<{ success: boolean; stats: AdminOverviewStats }>('/admin/overview'),
+
+    impersonate: (targetUserId: string) =>
+      request<{ success: boolean; message: string; token: string; user: User }>('/admin/impersonate', {
+        method: 'POST',
+        body: JSON.stringify({ targetUserId })
+      }),
+
+    resetPassword: (userId: string, newPassword: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/password`, {
+        method: 'PUT',
+        body: JSON.stringify({ newPassword })
+      }),
+
+    toggleUserStatus: (userId: string, isActive: boolean) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ isActive })
+      }),
+
+    deleteUser: (userId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}`, {
+        method: 'DELETE'
+      }),
+
+    listVault: (userId?: string) => {
+      const q = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+      return request<{ success: boolean; logs: VaultLogItem[]; count: number }>(`/admin/vault${q}`);
+    },
+
+    getVaultRecord: (id: string) =>
+      request<{ success: boolean; record: VaultRecordDetail }>(`/admin/vault/${id}`),
+
+    downloadVaultCsvUrl: (id: string) => `${API_BASE}/admin/vault/${id}/csv`,
+
+    deleteVaultRecord: (id: string) =>
+      request<{ success: boolean; message: string }>(`/admin/vault/${id}`, {
+        method: 'DELETE'
+      }),
+
+    clearVault: () =>
+      request<{ success: boolean; message: string }>('/admin/vault', {
+        method: 'DELETE'
+      }),
+
+    // Session Controller & Device Terminator
+    listSessions: () =>
+      request<{ success: boolean; sessions: AdminSessionItem[]; diskStats: any }>('/admin/sessions'),
+
+    disconnectSession: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/sessions/${sessionId}/disconnect`, {
+        method: 'POST'
+      }),
+
+    reconnectSession: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/sessions/${sessionId}/reconnect`, {
+        method: 'POST'
+      }),
+
+    terminateSession: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/sessions/${sessionId}`, {
+        method: 'DELETE'
+      }),
+
+    terminateUserDevices: (userId: string) =>
+      request<{ success: boolean; message: string; terminatedCount: number }>(`/admin/users/${userId}/terminate-devices`, {
+        method: 'POST'
+      }),
+
+    // Website Storage & Data Manager
+    getStorageStats: () =>
+      request<{ success: boolean; storage: AdminStorageStats }>('/admin/storage'),
+
+    vacuumDatabase: () =>
+      request<{ success: boolean; message: string }>('/admin/storage/vacuum', {
+        method: 'POST'
+      }),
+
+    purgeOldMessages: (data: { olderThanDays?: number; onlyFailed?: boolean }) =>
+      request<{ success: boolean; message: string; deletedMessages: number }>('/admin/storage/purge-old-messages', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    purgeOrphanSessions: () =>
+      request<{ success: boolean; message: string; deletedCount: number; freedBytes: number }>('/admin/storage/purge-orphan-sessions', {
+        method: 'POST'
+      }),
+
+    downloadDbBackupUrl: () => `${API_BASE}/admin/storage/download-db`,
+
+    // Particular User Data & Message History Eraser
+    getUserDataSummary: (userId: string) =>
+      request<{ success: boolean; summary: UserDataSummary }>(`/admin/users/${userId}/data-summary`),
+
+    deleteUserMessages: (userId: string) =>
+      request<{ success: boolean; message: string; deletedMsgs: number; deletedConvs: number }>(`/admin/users/${userId}/messages`, {
+        method: 'DELETE'
+      }),
+
+    deleteUserContacts: (userId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/contacts`, {
+        method: 'DELETE'
+      }),
+
+    deleteUserCampaigns: (userId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/campaigns`, {
+        method: 'DELETE'
+      }),
+
+    factoryResetUser: (userId: string) =>
+      request<{ success: boolean; message: string }>(`/admin/users/${userId}/factory-reset`, {
+        method: 'POST'
+      }),
+
+    // Live Global Campaigns Monitor
+    listLiveCampaigns: () =>
+      request<{ success: boolean; campaigns: LiveCampaignItem[] }>('/admin/live-campaigns'),
+
+    stopLiveCampaign: (type: 'bulk' | 'joiner', id: string) =>
+      request<{ success: boolean; message: string }>(`/admin/live-campaigns/${type}/${id}/stop`, {
+        method: 'POST'
+      })
+  },
+
+  // Advanced Group & Community Joiner
+  groupJoiner: {
+    parseLinks: (text: string) =>
+      request<{ success: boolean; count: number; links: string[] }>('/group-joiner/parse-links', {
+        method: 'POST',
+        body: JSON.stringify({ text })
+      }),
+
+    inspectLinks: (links: string[], sessionId?: string) =>
+      request<{ success: boolean; count: number; results: GroupInviteMetadata[] }>('/group-joiner/inspect-links', {
+        method: 'POST',
+        body: JSON.stringify({ links, sessionId })
+      }),
+
+    joinSingle: (link: string, sessionId?: string) =>
+      request<{ success: boolean; result: JoinGroupResult }>('/group-joiner/join-single', {
+        method: 'POST',
+        body: JSON.stringify({ link, sessionId })
+      }),
+
+    listCampaigns: () =>
+      request<{ success: boolean; campaigns: GroupJoinCampaign[]; count: number }>('/group-joiner/campaigns'),
+
+    createCampaign: (data: {
+      name?: string;
+      links: string[];
+      settings?: Partial<GroupJoinerSettings>;
+      autoStart?: boolean;
+    }) =>
+      request<{ success: boolean; message: string; campaign: GroupJoinCampaign }>('/group-joiner/campaigns', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getCampaign: (id: string) =>
+      request<{ success: boolean; campaign: GroupJoinCampaign }>(`/group-joiner/campaigns/${id}`),
+
+    startCampaign: (id: string) =>
+      request<{ success: boolean; message: string }>(`/group-joiner/campaigns/${id}/start`, {
+        method: 'POST'
+      }),
+
+    pauseCampaign: (id: string) =>
+      request<{ success: boolean; message: string }>(`/group-joiner/campaigns/${id}/pause`, {
+        method: 'POST'
+      }),
+
+    stopCampaign: (id: string) =>
+      request<{ success: boolean; message: string }>(`/group-joiner/campaigns/${id}/stop`, {
+        method: 'POST'
+      }),
+
+    deleteCampaign: (id: string) =>
+      request<{ success: boolean; message: string }>(`/group-joiner/campaigns/${id}`, {
+        method: 'DELETE'
+      })
+  },
+
+  leads: {
+    list: (filters: LeadFilterOptions = {}) => {
+      const params = new URLSearchParams();
+      if (filters.search) params.append('search', filters.search);
+      if (filters.source) params.append('source', filters.source);
+      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+      if (filters.industry) params.append('industry', filters.industry);
+      if (filters.city) params.append('city', filters.city);
+      if (filters.tagId) params.append('tagId', filters.tagId);
+      if (filters.hasPhone) params.append('hasPhone', 'true');
+      if (filters.hasEmail) params.append('hasEmail', 'true');
+      if (filters.hasWebsite) params.append('hasWebsite', 'true');
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.page) params.append('page', String(filters.page));
+      if (filters.limit) params.append('limit', String(filters.limit));
+      if (filters.sortBy) params.append('sortBy', filters.sortBy);
+      if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
+      const query = params.toString();
+      return request<{
+        leads: LeadRecord[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+      }>(`/leads${query ? `?${query}` : ''}`);
+    },
+
+    getStats: () => request<LeadAnalyticsStats>('/leads/stats'),
+
+    getById: (id: string) => request<LeadRecord>(`/leads/${id}`),
+
+    create: (data: Partial<LeadRecord>) =>
+      request<LeadRecord>('/leads', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    batchSync: (leads: Partial<LeadRecord>[], jobId?: string) =>
+      request<{ created: LeadRecord[]; duplicates: number; failed: number }>('/leads/batch', {
+        method: 'POST',
+        body: JSON.stringify({ leads, jobId })
+      }),
+
+    update: (id: string, data: Partial<LeadRecord>) =>
+      request<LeadRecord>(`/leads/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean; message: string }>(`/leads/${id}`, {
+        method: 'DELETE'
+      }),
+
+    bulkDelete: (ids: string[]) =>
+      request<{ success: boolean; deletedCount: number }>('/leads/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids })
+      }),
+
+    bulkUpdateStatus: (ids: string[], status: LeadStatus) =>
+      request<{ success: boolean; updatedCount: number }>('/leads/bulk-status', {
+        method: 'POST',
+        body: JSON.stringify({ ids, status })
+      }),
+
+    enrich: (id: string) =>
+      request<LeadRecord>(`/leads/${id}/enrich`, {
+        method: 'POST'
+      }),
+
+    listTags: () => request<Array<{ id: string; name: string; color: string }>>('/leads/tags'),
+
+    createTag: (name: string, color?: string) =>
+      request<{ id: string; name: string; color: string }>('/leads/tags', {
+        method: 'POST',
+        body: JSON.stringify({ name, color })
+      }),
+
+    tagLead: (leadId: string, tagId: string) =>
+      request<{ success: boolean }>('/leads/tags/assign', {
+        method: 'POST',
+        body: JSON.stringify({ leadId, tagId })
+      }),
+
+    untagLead: (leadId: string, tagId: string) =>
+      request<{ success: boolean }>('/leads/tags/unassign', {
+        method: 'POST',
+        body: JSON.stringify({ leadId, tagId })
+      }),
+
+    listNotes: (leadId: string) => request<LeadNoteItem[]>(`/leads/${leadId}/notes`),
+
+    addNote: (leadId: string, content: string) =>
+      request<LeadNoteItem>(`/leads/${leadId}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ content })
+      })
+  },
+
+  extractionJobs: {
+    list: (limit?: number) =>
+      request<ExtractionJobRecord[]>(`/extraction-jobs${limit ? `?limit=${limit}` : ''}`),
+
+    listSources: () => request<ExtractionSourceRecord[]>('/extraction-jobs/sources/all'),
+
+    getById: (id: string) => request<ExtractionJobRecord>(`/extraction-jobs/${id}`),
+
+    create: (data: {
+      source: string;
+      keyword?: string;
+      location?: string;
+      requested_count?: number;
+      settings?: any;
+    }) =>
+      request<ExtractionJobRecord>('/extraction-jobs', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    start: (id: string) =>
+      request<ExtractionJobRecord>(`/extraction-jobs/${id}/start`, {
+        method: 'POST'
+      }),
+
+    pause: (id: string) =>
+      request<ExtractionJobRecord>(`/extraction-jobs/${id}/pause`, {
+        method: 'POST'
+      }),
+
+    resume: (id: string) =>
+      request<ExtractionJobRecord>(`/extraction-jobs/${id}/resume`, {
+        method: 'POST'
+      }),
+
+    cancel: (id: string) =>
+      request<ExtractionJobRecord>(`/extraction-jobs/${id}/cancel`, {
+        method: 'POST'
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/extraction-jobs/${id}`, {
+        method: 'DELETE'
+      })
+  },
+
+  extension: {
+    ping: () => request<{ status: string; version: string; user: any }>('/extension/ping'),
+
+    getToken: () => request<{ token: string; userId: string; created_at: string }>('/extension/token'),
+
+    getProfile: () =>
+      request<{
+        user: {
+          id: string;
+          username: string;
+          name: string;
+          email?: string;
+          role: string;
+          plan_tier: string;
+          subscription_status: string;
+          daily_extraction_limit: number;
+          leads_extracted_today: number;
+          total_leads: number;
+        };
+      }>('/extension/profile'),
+
+    syncBatch: (leads: Partial<LeadRecord>[], jobId?: string, source?: string) =>
+      request<{
+        success: boolean;
+        syncedCount: number;
+        duplicates: number;
+        failed: number;
+        remainingToday: number;
+      }>('/extension/sync', {
+        method: 'POST',
+        body: JSON.stringify({ leads, jobId, source })
+      })
+  },
+
+  wallet: {
+    get: () => request<UserWallet>('/wallet'),
+
+    transactions: (limit: number = 50) =>
+      request<WalletTransaction[]>(`/wallet/transactions?limit=${limit}`),
+
+    topUp: (amount: number, description?: string, referenceId?: string) =>
+      request<{
+        success: boolean;
+        newBalance: number;
+        transaction: WalletTransaction;
+      }>('/wallet/topup', {
+        method: 'POST',
+        body: JSON.stringify({ amount, description, referenceId })
+      }),
+
+    adminAdjust: (targetUserId: string, amount: number, reason: string) =>
+      request<{
+        success: boolean;
+        newBalance: number;
+        transaction: WalletTransaction;
+      }>('/wallet/admin/adjust', {
+        method: 'POST',
+        body: JSON.stringify({ targetUserId, amount, reason })
+      })
+  },
+
+  marketplace: {
+    listExtensions: (category?: string, search?: string) => {
+      const params = new URLSearchParams();
+      if (category && category !== 'all') params.append('category', category);
+      if (search) params.append('search', search);
+      const query = params.toString() ? `?${params.toString()}` : '';
+      return request<MarketplaceExtension[]>(`/marketplace/extensions${query}`);
+    },
+
+    getExtension: (id: string) =>
+      request<MarketplaceExtension>(`/marketplace/extensions/${id}`),
+
+    listModules: (extensionId: string) =>
+      request<MarketplaceModule[]>(`/marketplace/extensions/${extensionId}/modules`),
+
+    getMyExtensions: () =>
+      request<{
+        activations: Array<{
+          id: string;
+          extension_id: string;
+          status: string;
+          activated_at: string;
+          expires_at?: string;
+          extension_name: string;
+          extension_slug: string;
+          category: string;
+          icon?: string;
+          version: string;
+        }>;
+        modules: Array<{
+          id: string;
+          module_id: string;
+          extension_id: string;
+          status: string;
+          activated_at: string;
+          expires_at?: string;
+          custom_quota_override?: number;
+          custom_usage_price_override?: number;
+          name: string;
+          slug: string;
+          description: string;
+          icon?: string;
+          category?: string;
+          usage_charging_model: string;
+          usage_price: number;
+          period_quota_limit: number;
+          quota_period: string;
+          per_job_limit: number;
+        }>;
+      }>('/marketplace/my-extensions'),
+
+    activateExtension: (extensionId: string) =>
+      request<{
+        success: boolean;
+        activation: any;
+        newBalance: number;
+      }>(`/marketplace/extensions/${extensionId}/activate`, {
+        method: 'POST'
+      }),
+
+    activateModule: (moduleId: string) =>
+      request<{
+        success: boolean;
+        activation: any;
+        newBalance: number;
+      }>(`/marketplace/modules/${moduleId}/activate`, {
+        method: 'POST'
+      }),
+
+    adminCreateModule: (data: any) =>
+      request<{ success: boolean; module: MarketplaceModule }>('/marketplace/admin/modules', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    adminUpdateModule: (id: string, data: any) =>
+      request<{ success: boolean; module: MarketplaceModule }>(`/marketplace/admin/modules/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    adminDeleteModule: (id: string) =>
+      request<{ success: boolean }>(`/marketplace/admin/modules/${id}`, {
+        method: 'DELETE'
+      }),
+
+    adminSetOverride: (data: {
+      userId: string;
+      moduleId: string;
+      quotaOverride?: number;
+      priceOverride?: number;
+      status?: string;
+    }) =>
+      request<{ success: boolean }>('/marketplace/admin/entitlements/override', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      })
+  },
+
+  virtualNumbers: {
+    getCountries: () =>
+      request<{ countries: VirtualNumberCountry[] }>('/virtual-numbers/countries'),
+
+    searchNumbers: (params: {
+      country?: string;
+      type?: string;
+      whatsapp?: boolean;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const query = new URLSearchParams();
+      if (params.country) query.set('country', params.country);
+      if (params.type) query.set('type', params.type);
+      if (params.whatsapp) query.set('whatsapp', 'true');
+      if (params.search) query.set('search', params.search);
+      if (params.limit) query.set('limit', String(params.limit));
+      if (params.offset) query.set('offset', String(params.offset));
+      return request<{
+        total: number;
+        limit: number;
+        offset: number;
+        numbers: VirtualNumberItem[];
+      }>(`/virtual-numbers/search?${query.toString()}`);
+    },
+
+    purchaseNumber: (data: {
+      inventoryId: string;
+      rentalDuration?: string;
+      idempotencyKey?: string;
+    }) =>
+      request<{
+        success: boolean;
+        rentalId: string;
+        orderId: string;
+        phoneNumber: string;
+        message: string;
+      }>('/virtual-numbers/purchase', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getMyRentals: (status?: string) => {
+      const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+      return request<{ rentals: VirtualNumberRental[] }>(`/virtual-numbers/rentals${qs}`);
+    },
+
+    renewRental: (rentalId: string, durationDays: number = 30) =>
+      request<{
+        success: boolean;
+        newExpiresAt: string;
+        newRenewalDate: string;
+        charged: number;
+        newBalance: number;
+      }>(`/virtual-numbers/rentals/${rentalId}/renew`, {
+        method: 'POST',
+        body: JSON.stringify({ durationDays })
+      }),
+
+    toggleAutoRenew: (rentalId: string, autoRenew: boolean) =>
+      request<{ success: boolean; autoRenew: boolean }>(`/virtual-numbers/rentals/${rentalId}/auto-renew`, {
+        method: 'PATCH',
+        body: JSON.stringify({ autoRenew })
+      }),
+
+    releaseRental: (rentalId: string) =>
+      request<{ success: boolean; message: string }>(`/virtual-numbers/rentals/${rentalId}/release`, {
+        method: 'POST'
+      }),
+
+    getMessages: (params?: { rentalId?: string; phone?: string; limit?: number }) => {
+      const query = new URLSearchParams();
+      if (params?.rentalId) query.set('rentalId', params.rentalId);
+      if (params?.phone) query.set('phone', params.phone);
+      if (params?.limit) query.set('limit', String(params.limit));
+      return request<{ messages: VirtualNumberMessage[] }>(`/virtual-numbers/messages?${query.toString()}`);
+    },
+
+    markMessageRead: (messageId: string) =>
+      request<{ success: boolean }>(`/virtual-numbers/messages/${messageId}/read`, {
+        method: 'PATCH'
+      }),
+
+    getCallLogs: (params?: { rentalId?: string; phone?: string; limit?: number }) => {
+      const query = new URLSearchParams();
+      if (params?.rentalId) query.set('rentalId', params.rentalId);
+      if (params?.phone) query.set('phone', params.phone);
+      if (params?.limit) query.set('limit', String(params.limit));
+      return request<{ calls: VirtualNumberCall[] }>(`/virtual-numbers/calls?${query.toString()}`);
+    },
+
+    getOrderHistory: () =>
+      request<{ orders: VirtualNumberOrder[] }>('/virtual-numbers/orders'),
+
+    getAnalytics: () =>
+      request<{ analytics: VirtualNumberAnalytics }>('/virtual-numbers/analytics'),
+
+    // --- Admin Virtual Numbers API ---
+    getAdminOverview: () =>
+      request<{ overview: any }>('/virtual-numbers/admin/overview'),
+
+    getAdminProviders: () =>
+      request<{ providers: VirtualNumberProviderRecord[] }>('/virtual-numbers/admin/providers'),
+
+    saveAdminProvider: (data: any) =>
+      request<{ success: boolean; id: string }>('/virtual-numbers/admin/providers', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getAdminInventory: (params?: { country?: string; status?: string; limit?: number; offset?: number }) => {
+      const query = new URLSearchParams();
+      if (params?.country) query.set('country', params.country);
+      if (params?.status) query.set('status', params.status);
+      if (params?.limit) query.set('limit', String(params.limit));
+      if (params?.offset) query.set('offset', String(params.offset));
+      return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/inventory?${query.toString()}`);
+    },
+
+    addAdminInventory: (data: any) =>
+      request<{ success: boolean; id: string }>('/virtual-numbers/admin/inventory', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getAdminPricing: () =>
+      request<{ rules: VirtualNumberPricingRule[] }>('/virtual-numbers/admin/pricing'),
+
+    saveAdminPricing: (data: any) =>
+      request<{ success: boolean; id: string }>('/virtual-numbers/admin/pricing', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getAdminRentals: (params?: { status?: string; search?: string; limit?: number; offset?: number }) => {
+      const query = new URLSearchParams();
+      if (params?.status) query.set('status', params.status);
+      if (params?.search) query.set('search', params.search);
+      if (params?.limit) query.set('limit', String(params.limit));
+      if (params?.offset) query.set('offset', String(params.offset));
+      return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/rentals?${query.toString()}`);
+    },
+
+    refundAdminOrder: (orderId: string, reason: string) =>
+      request<{ success: boolean; refundedAmount: number; newBalance: number }>(`/virtual-numbers/admin/orders/${orderId}/refund`, {
+        method: 'POST',
+        body: JSON.stringify({ reason })
+      }),
+
+    // --- GrizzlySMS Customer API (getNumber & Direct Purchasing) ---
+    grizzlyCustomer: {
+      getOptions: () =>
+        request<{
+          success: boolean;
+          countries: any[];
+          services: any[];
+          pricing: { markupPercentage: number; fixedFee: number; currency: string };
+        }>('/virtual-numbers/grizzly-customer/options'),
+
+      purchaseNumber: (data: {
+        service: string;
+        country?: string | number;
+        maxPrice?: number;
+        workspaceId?: string;
+        idempotencyKey?: string;
+      }) =>
+        request<{
+          success: boolean;
+          activationId: string;
+          phoneNumber: string;
+          serviceCode: string;
+          serviceName: string;
+          countryName: string;
+          sellingPrice: number;
+          currency: string;
+          status: string;
+          expiresAt: string;
+          walletTransactionId: string;
+          message: string;
+        }>('/virtual-numbers/grizzly-customer/purchase', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      getMyActivations: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/grizzly-customer/activations?${query.toString()}`);
+      },
+
+      checkSms: (activationId: string) =>
+        request<{
+          success: boolean;
+          status: 'WAITING_CODE' | 'CODE_RECEIVED' | 'CANCELLED' | 'EXPIRED';
+          code?: string;
+          message?: string;
+        }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/check-sms`),
+
+      checkSmsV2: (activationId: string) =>
+        request<{
+          success: boolean;
+          status: 'WAITING_SMS' | 'SMS_RECEIVED' | 'CANCELLED' | 'ERROR';
+          hasSms: boolean;
+          code?: string;
+          text?: string;
+          dateTime?: string;
+          verificationType?: number;
+          smsHistory: any[];
+          canGetAnotherSms: boolean;
+          message?: string;
+          error?: string;
+        }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/check-sms-v2`),
+
+      getSmsHistory: (activationId: string) =>
+        request<{
+          success: boolean;
+          activationId: string;
+          providerActivationId: string;
+          phoneNumber: string;
+          status: string;
+          smsHistory: any[];
+          canGetAnotherSms: boolean;
+        }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/sms-history`),
+
+      getProviderComparison: (params: { country?: string | number; service: string }) => {
+        const query = new URLSearchParams();
+        query.set('service', params.service);
+        if (params.country !== undefined) query.set('country', String(params.country));
+        return request<{
+          success: boolean;
+          comparison: {
+            country: string;
+            service: string;
+            overallPrice: number;
+            overallQuantity: number;
+            pricingSource: string;
+            isStale: boolean;
+            lastSyncedAt: string | null;
+            providers: Array<{
+              providerId: string;
+              availableQuantity: number;
+              priceOptions: number[];
+              lowestPrice: number;
+              highestPrice: number;
+              country: string;
+              service: string;
+              lastUpdated: string;
+            }>;
+          };
+        }>(`/virtual-numbers/grizzly-customer/provider-comparison?${query.toString()}`);
+      },
+
+      cancelActivation: (activationId: string) =>
+        request<{ success: boolean; message: string }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/cancel`, {
+          method: 'POST'
+        }),
+
+      getAdminConfig: () =>
+        request<{ success: boolean; config: any }>('/virtual-numbers/admin/grizzly-customer/config'),
+
+      updateAdminConfig: (data: any) =>
+        request<{ success: boolean; config: any }>('/virtual-numbers/admin/grizzly-customer/config', {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        }),
+
+      testConnection: (apiKey?: string) =>
+        request<{
+          success: boolean;
+          healthy: boolean;
+          balance?: number;
+          currency?: string;
+          latencyMs?: number;
+          message?: string;
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/test-connection', {
+          method: 'POST',
+          body: JSON.stringify({ apiKey })
+        }),
+
+      getAdminLogs: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly-customer/logs?${query.toString()}`);
+      },
+
+      getAdminActivations: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{
+          success: boolean;
+          total: number;
+          totalRevenue: number;
+          totalCost: number;
+          totalProfit: number;
+          rows: any[];
+        }>(`/virtual-numbers/admin/grizzly-customer/activations?${query.toString()}`);
+      },
+
+      // --- Advanced Pricing & Provider Comparison Endpoints ---
+      syncPrices: (data?: { endpoint?: 'getPrices' | 'getPricesV2' | 'getPricesV3'; country?: string; service?: string }) =>
+        request<{
+          success: boolean;
+          endpoint: string;
+          syncedCount: number;
+          durationMs: number;
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/sync-prices', {
+          method: 'POST',
+          body: JSON.stringify(data || {})
+        }),
+
+      getCachedPrices: (params?: { countryId?: string; serviceCode?: string; search?: string; limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.countryId) query.set('countryId', params.countryId);
+        if (params?.serviceCode) query.set('serviceCode', params.serviceCode);
+        if (params?.search) query.set('search', params.search);
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; prices: any[] }>(`/virtual-numbers/admin/grizzly-customer/prices?${query.toString()}`);
+      },
+
+      getProviderRules: () =>
+        request<{ success: boolean; rules: any[] }>('/virtual-numbers/admin/grizzly-customer/provider-rules'),
+
+      saveProviderRule: (data: any) =>
+        request<{ success: boolean; rule: any }>('/virtual-numbers/admin/grizzly-customer/provider-rules', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      deleteProviderRule: (id: string) =>
+        request<{ success: boolean }>(`/virtual-numbers/admin/grizzly-customer/provider-rules/${id}`, {
+          method: 'DELETE'
+        }),
+
+      // --- Active Activations & Reconciliation Endpoints ---
+      runReconciliation: () =>
+        request<{
+          success: boolean;
+          summary?: {
+            runId: string;
+            totalRemote: number;
+            totalLocal: number;
+            matchedCount: number;
+            missingLocallyCount: number;
+            missingRemotelyCount: number;
+            discrepancyCount: number;
+            durationMs: number;
+            status: string;
+            errorMessage?: string;
+            createdAt: string;
+          };
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/reconcile', {
+          method: 'POST'
+        }),
+
+      getReconciliationRuns: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; runs: any[] }>(`/virtual-numbers/admin/grizzly-customer/reconciliation/runs?${query.toString()}`);
+      },
+
+      getReconciliationRecords: (params?: {
+        runId?: string;
+        discrepancyType?: string;
+        resolutionStatus?: string;
+        search?: string;
+        limit?: number;
+        offset?: number;
+      }) => {
+        const query = new URLSearchParams();
+        if (params?.runId) query.set('runId', params.runId);
+        if (params?.discrepancyType) query.set('discrepancyType', params.discrepancyType);
+        if (params?.resolutionStatus) query.set('resolutionStatus', params.resolutionStatus);
+        if (params?.search) query.set('search', params.search);
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; records: any[] }>(`/virtual-numbers/admin/grizzly-customer/reconciliation/records?${query.toString()}`);
+      },
+
+      resolveReconciliationRecord: (id: string, data: { action: 'resolve' | 'ignore'; notes?: string }) =>
+        request<{ success: boolean }>(`/virtual-numbers/admin/grizzly-customer/reconciliation/records/${id}/resolve`, {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      getRemoteActiveActivations: () =>
+        request<{
+          success: boolean;
+          activations: any[];
+          rawResponse: string;
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/remote-active-activations'),
+
+      // Crypto Funding & Deposit (Module 1)
+      getCryptoWallet: () =>
+        request<{
+          success: boolean;
+          wallet: {
+            walletAddress: string | null;
+            coin: string;
+            network: string;
+            networkDisplayName: string;
+            automaticCreditThresholdUsd: number;
+            status: string;
+            lastFetchedAt: string | null;
+            warnings: string[];
+          };
+        }>('/virtual-numbers/admin/grizzly-customer/crypto-wallet'),
+
+      refreshCryptoWallet: (data?: { coin?: string; network?: string }) =>
+        request<{ success: boolean; walletInfo: any; error?: string }>('/virtual-numbers/admin/grizzly-customer/crypto-wallet/refresh', {
+          method: 'POST',
+          body: JSON.stringify(data || {})
+        }),
+
+      updateCryptoThreshold: (thresholdUsd: number) =>
+        request<{ success: boolean; threshold: number }>('/virtual-numbers/admin/grizzly-customer/crypto-wallet/threshold', {
+          method: 'PUT',
+          body: JSON.stringify({ thresholdUsd })
+        }),
+
+      getCryptoWalletHistory: (limit = 20) =>
+        request<{ success: boolean; history: any[] }>(`/virtual-numbers/admin/grizzly-customer/crypto-wallet/history?limit=${limit}`),
+
+      // Services Catalogue (Module 2)
+      getServices: (params?: { search?: string; category?: string; all?: boolean }) => {
+        const query = new URLSearchParams();
+        if (params?.search) query.set('search', params.search);
+        if (params?.category) query.set('category', params.category);
+        if (params?.all) query.set('all', 'true');
+        return request<{ success: boolean; services: any[]; total: number }>(`/virtual-numbers/admin/grizzly-customer/services?${query.toString()}`);
+      },
+
+      syncServices: () =>
+        request<{
+          success: boolean;
+          inserted: number;
+          updated: number;
+          unchanged: number;
+          markedInactive: number;
+          invalid: number;
+          durationMs: number;
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/services/sync', { method: 'POST' }),
+
+      updateService: (code: string, data: any) =>
+        request<{ success: boolean; service: any }>(`/virtual-numbers/admin/grizzly-customer/services/${code}`, {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        }),
+
+      getExportServicesUrl: (format: 'json' | 'csv' = 'csv') =>
+        `${API_BASE}/virtual-numbers/admin/grizzly-customer/services/export?format=${format}`,
+
+      // Multilingual Countries (Module 3)
+      getCountries: (params?: { search?: string; lang?: string; all?: boolean; limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.search) query.set('search', params.search);
+        if (params?.lang) query.set('lang', params.lang);
+        if (params?.all) query.set('all', 'true');
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly-customer/countries?${query.toString()}`);
+      },
+
+      syncCountries: () =>
+        request<{
+          success: boolean;
+          inserted: number;
+          updated: number;
+          unchanged: number;
+          markedInactive: number;
+          invalid: number;
+          durationMs: number;
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/countries/sync', { method: 'POST' }),
+
+      updateCountry: (id: number, data: any) =>
+        request<{ success: boolean; country: any }>(`/virtual-numbers/admin/grizzly-customer/countries/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        }),
+
+      getExportCountriesUrl: (format: 'json' | 'csv' = 'csv') =>
+        `${API_BASE}/virtual-numbers/admin/grizzly-customer/countries/export?format=${format}`,
+
+      // Unified Availability (Module 4)
+      getUnifiedAvailability: (params?: { countryId?: string; serviceCode?: string; lang?: string; inStockOnly?: boolean; limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.countryId) query.set('countryId', params.countryId);
+        if (params?.serviceCode) query.set('serviceCode', params.serviceCode);
+        if (params?.lang) query.set('lang', params.lang);
+        if (params?.inStockOnly) query.set('inStockOnly', 'true');
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; items: any[] }>(`/virtual-numbers/grizzly-customer/availability?${query.toString()}`);
+      },
+
+      // Synchronization Control Center (Module 5)
+      getSyncJobs: () =>
+        request<{ success: boolean; jobs: any[] }>('/virtual-numbers/admin/grizzly-customer/sync/jobs'),
+
+      triggerSyncJob: (jobType: string) =>
+        request<{ success: boolean; result: any }>(`/virtual-numbers/admin/grizzly-customer/sync/jobs/${jobType}/trigger`, {
+          method: 'POST'
+        }),
+
+      getSyncHistory: (params?: { jobType?: string; limit?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.jobType) query.set('jobType', params.jobType);
+        if (params?.limit) query.set('limit', String(params.limit));
+        return request<{ success: boolean; history: any[] }>(`/virtual-numbers/admin/grizzly-customer/sync/history?${query.toString()}`);
+      }
+    },
+
+    // --- GrizzlySMS Partner Protocol Admin API ---
+    grizzly: {
+      getOverview: () =>
+        request<{ success: boolean; overview: any }>('/virtual-numbers/admin/grizzly/overview'),
+
+      getConfig: () =>
+        request<{ success: boolean; config: any }>('/virtual-numbers/admin/grizzly/config'),
+
+      updateConfig: (data: any) =>
+        request<{ success: boolean; config: any }>('/virtual-numbers/admin/grizzly/config', {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        }),
+
+      getInventory: (params?: { country?: number; status?: string; limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.country !== undefined) query.set('country', String(params.country));
+        if (params?.status) query.set('status', params.status);
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/inventory?${query.toString()}`);
+      },
+
+      addInventory: (data: any) =>
+        request<{ success: boolean; id: string }>('/virtual-numbers/admin/grizzly/inventory', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      getHardware: () =>
+        request<{ success: boolean; modules: any[] }>('/virtual-numbers/admin/grizzly/hardware'),
+
+      getActivations: (params?: { status?: string; search?: string; limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.status) query.set('status', params.status);
+        if (params?.search) query.set('search', params.search);
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/activations?${query.toString()}`);
+      },
+
+      getSms: () =>
+        request<{ success: boolean; messages: any[] }>('/virtual-numbers/admin/grizzly/sms'),
+
+      getVoiceCalls: () =>
+        request<{ success: boolean; calls: any[] }>('/virtual-numbers/admin/grizzly/voice-calls'),
+
+      getCallRecords: () =>
+        request<{ success: boolean; records: any[] }>('/virtual-numbers/admin/grizzly/call-records'),
+
+      getCancellations: () =>
+        request<{ success: boolean; cancellations: any[] }>('/virtual-numbers/admin/grizzly/cancellations'),
+
+      getQuarantine: () =>
+        request<{ success: boolean; quarantine: any[] }>('/virtual-numbers/admin/grizzly/quarantine'),
+
+      getProhibited: () =>
+        request<{ success: boolean; prohibited: any[] }>('/virtual-numbers/admin/grizzly/prohibited'),
+
+      getLogs: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/logs?${query.toString()}`);
+      },
+
+      getMappings: () =>
+        request<{ success: boolean; countries: any[]; services: any[] }>('/virtual-numbers/admin/grizzly/mappings'),
+
+      finishActivation: (activationId: number, statusCode = 3, reason?: string) =>
+        request<{ success: boolean; result: any }>(`/virtual-numbers/admin/grizzly/activations/${activationId}/finish`, {
+          method: 'POST',
+          body: JSON.stringify({ statusCode, reason })
+        }),
+
+      triggerCall: (data: { phone: string; phoneFrom: string; activationId?: number }) =>
+        request<{ success: boolean; result: any }>('/virtual-numbers/admin/grizzly/trigger-call', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      triggerSms: (data: { phone: string; phoneFrom: string; text: string; activationId?: number }) =>
+        request<{ success: boolean; result: any }>('/virtual-numbers/admin/grizzly/trigger-sms', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      // Official Data Management APIs
+      data: {
+        getCountries: (params?: { search?: string; activeOnly?: boolean; supportedOnly?: boolean; limit?: number; offset?: number }) => {
+          const query = new URLSearchParams();
+          if (params?.search) query.set('search', params.search);
+          if (params?.activeOnly) query.set('activeOnly', 'true');
+          if (params?.supportedOnly) query.set('supportedOnly', 'true');
+          if (params?.limit) query.set('limit', String(params.limit));
+          if (params?.offset) query.set('offset', String(params.offset));
+          return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/data/countries?${query.toString()}`);
+        },
+
+        toggleCountry: (id: number, data: { isActive?: boolean; isSupported?: boolean }) =>
+          request<{ success: boolean; country: any }>(`/virtual-numbers/admin/grizzly/data/countries/${id}/toggle`, {
+            method: 'PUT',
+            body: JSON.stringify(data)
+          }),
+
+        updateCountry: (id: number, data: any) =>
+          request<{ success: boolean; country: any }>(`/virtual-numbers/admin/grizzly/data/countries/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data)
+          }),
+
+        deleteCountry: (id: number) =>
+          request<{ success: boolean; message: string }>(`/virtual-numbers/admin/grizzly/data/countries/${id}`, {
+            method: 'DELETE'
+          }),
+
+        importCountries: (countries: any[], fileName?: string) =>
+          request<{ success: boolean; total: number; inserted: number; updated: number; skipped: number }>('/virtual-numbers/admin/grizzly/data/countries/import', {
+            method: 'POST',
+            body: JSON.stringify({ countries, fileName })
+          }),
+
+        getServices: (params?: { search?: string; category?: string; activeOnly?: boolean; supportedOnly?: boolean }) => {
+          const query = new URLSearchParams();
+          if (params?.search) query.set('search', params.search);
+          if (params?.category) query.set('category', params.category);
+          if (params?.activeOnly) query.set('activeOnly', 'true');
+          if (params?.supportedOnly) query.set('supportedOnly', 'true');
+          return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/data/services?${query.toString()}`);
+        },
+
+        toggleService: (code: string, data: { isActive?: boolean; isSupported?: boolean }) =>
+          request<{ success: boolean; service: any }>(`/virtual-numbers/admin/grizzly/data/services/${code}/toggle`, {
+            method: 'PUT',
+            body: JSON.stringify(data)
+          }),
+
+        addOrUpdateService: (data: any) =>
+          request<{ success: boolean; service: any }>('/virtual-numbers/admin/grizzly/data/services', {
+            method: 'POST',
+            body: JSON.stringify(data)
+          }),
+
+        deleteService: (code: string) =>
+          request<{ success: boolean; message: string }>(`/virtual-numbers/admin/grizzly/data/services/${code}`, {
+            method: 'DELETE'
+          }),
+
+        importServices: (services: any[], fileName?: string) =>
+          request<{ success: boolean; total: number; inserted: number; updated: number; skipped: number }>('/virtual-numbers/admin/grizzly/data/services/import', {
+            method: 'POST',
+            body: JSON.stringify({ services, fileName })
+          }),
+
+        getOperators: (countryId?: number) => {
+          const query = new URLSearchParams();
+          if (countryId !== undefined) query.set('countryId', String(countryId));
+          return request<{ success: boolean; operators: any[] }>(`/virtual-numbers/admin/grizzly/data/operators?${query.toString()}`);
+        },
+
+        addOperator: (data: { code: string; name: string; countryId?: number }) =>
+          request<{ success: boolean; operator: any }>('/virtual-numbers/admin/grizzly/data/operators', {
+            method: 'POST',
+            body: JSON.stringify(data)
+          }),
+
+        getCountryServices: (params?: { countryId?: number; serviceCode?: string; operator?: string; availableOnly?: boolean; limit?: number; offset?: number }) => {
+          const query = new URLSearchParams();
+          if (params?.countryId !== undefined) query.set('countryId', String(params.countryId));
+          if (params?.serviceCode) query.set('serviceCode', params.serviceCode);
+          if (params?.operator) query.set('operator', params.operator);
+          if (params?.availableOnly) query.set('availableOnly', 'true');
+          if (params?.limit) query.set('limit', String(params.limit));
+          if (params?.offset) query.set('offset', String(params.offset));
+          return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/data/country-services?${query.toString()}`);
+        },
+
+        syncInventory: () =>
+          request<{ success: boolean; totalCombinations: number; availableCombinations: number; totalAvailableQuantity: number }>('/virtual-numbers/admin/grizzly/data/sync-inventory', {
+            method: 'POST'
+          }),
+
+        exportMapping: () =>
+          request<any>('/virtual-numbers/admin/grizzly/data/export'),
+
+        getImports: () =>
+          request<{ success: boolean; imports: any[] }>('/virtual-numbers/admin/grizzly/data/imports')
+      }
+    }
+  }
+};
+

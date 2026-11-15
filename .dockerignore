@@ -1,6 +1,10 @@
 node_modules
+frontend/node_modules
+backend/node_modules
 client/node_modules
 server/node_modules
+frontend/dist
+backend/dist
 client/dist
 server/dist
 .git
@@ -8,5 +12,6 @@ server/dist
 .env
 *.log
 .DS_Store
+backend/data
 server/data
 

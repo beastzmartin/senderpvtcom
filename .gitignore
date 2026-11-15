@@ -6,6 +6,8 @@ dist/
 build/
 
 # Sessions and SQLite data (contains WhatsApp keys & database)
+backend/data/*
+!backend/data/.gitkeep
 server/data/*
 !server/data/.gitkeep
 *.db

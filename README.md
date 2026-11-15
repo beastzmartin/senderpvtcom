@@ -79,7 +79,7 @@ A complete, production-quality, full-stack WhatsApp messaging application that r
 
 ## 🗄️ Database Architecture
 
-The SQLite database is stored locally at `server/data/whatsapp_messenger.db` and is auto-initialized on first run:
+The SQLite database is stored locally at `backend/data/whatsapp_messenger.db` and is auto-initialized on first run:
 
 | Table | Purpose |
 |---|---|
@@ -283,7 +283,7 @@ This verifies:
 
 ## 🔒 Security Best Practices Implemented
 
-- **Session Security**: WhatsApp authentication state is stored in `server/data/sessions/baileys_default` with private filesystem permissions and never sent across the network.
+- **Session Security**: WhatsApp authentication state is stored in `backend/data/sessions/baileys_default` with private filesystem permissions and never sent across the network.
 - **No Token Leaks**: Frontend never receives private encryption keys or Signal session pre-keys.
 - **Rate Limiting**: `express-rate-limit` guards against brute-force attempts on `/api/auth/login` and API floods.
 - **CORS Protection**: CORS strictly allows `http://localhost:5173` and `http://127.0.0.1:5173`.
@@ -300,5 +300,5 @@ This verifies:
 3. **Sending to an invalid LID address?**
    - WhatsApp LIDs require real accounts that have established Multi-Device keys. If an unknown or unroutable LID is contacted, the server returns an explicit error: `"WhatsApp provider failed to dispatch to LID address"`, preserving the failure in `message_status_logs`.
 4. **Port 3000 or 5173 already in use?**
-   - You can change `PORT=3001` in `.env` and `server.port: 5174` in `client/vite.config.ts`.
+   - You can change `PORT=3001` in `.env` and `server.port: 5174` in `frontend/vite.config.ts`.
 
