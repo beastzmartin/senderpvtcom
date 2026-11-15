@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { AdvancedExtractionStudio } from './AdvancedExtractionStudio';
 import {
   Search,
   Filter,
@@ -65,6 +66,7 @@ export const DataMarketplaceView: React.FC = () => {
 
   // Modal states
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
+  const [studioProduct, setStudioProduct] = useState<ProductItem | null>(null);
   const [configuredInput, setConfiguredInput] = useState<Record<string, any>>({});
   const [requestedCount, setRequestedCount] = useState<number>(100);
   const [priceEstimate, setPriceEstimate] = useState<number | null>(null);
@@ -199,6 +201,22 @@ export const DataMarketplaceView: React.FC = () => {
       p.tagline?.toLowerCase().includes(search.toLowerCase());
     return matchSearch;
   });
+
+  if (studioProduct) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <AdvancedExtractionStudio
+          product={studioProduct as any}
+          onBack={() => setStudioProduct(null)}
+          onJobStarted={() => {
+            setStudioProduct(null);
+            setActiveTab('jobs');
+            loadJobs();
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -345,13 +363,16 @@ export const DataMarketplaceView: React.FC = () => {
 
                     <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
                       <span className="text-[11px] text-slate-500 font-medium">Verified Outputs</span>
-                      <button
-                        onClick={() => handleOpenRunModal(prod)}
-                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5"
-                      >
-                        <Play className="w-3.5 h-3.5" />
-                        <span>Configure & Extract</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setStudioProduct(prod)}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5"
+                          title="Open dynamic parameters in Advanced Studio"
+                        >
+                          <Sliders className="w-3.5 h-3.5" />
+                          <span>Extraction Studio</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

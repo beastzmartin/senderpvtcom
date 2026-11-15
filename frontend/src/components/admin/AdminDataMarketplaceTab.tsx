@@ -41,6 +41,20 @@ export const AdminDataMarketplaceTab: React.FC = () => {
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [jsonText, setJsonText] = useState('');
 
+  // Bulk Importer State
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkInputText, setBulkInputText] = useState('');
+  const [bulkImporting, setBulkImporting] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ drafts: any[]; existing: string[]; errors: any[] } | null>(null);
+
+  // Review & Activate Wizard State
+  const [wizardProduct, setWizardProduct] = useState<any | null>(null);
+  const [updatingGate, setUpdatingGate] = useState<string | null>(null);
+
+  // Drift Check State
+  const [driftResult, setDriftResult] = useState<{ slug: string; data: any } | null>(null);
+  const [driftCheckingSlug, setDriftCheckingSlug] = useState<string | null>(null);
+
   // Apify Provider Settings & Live Test State
   const [showToken, setShowToken] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
@@ -57,6 +71,91 @@ export const AdminDataMarketplaceTab: React.FC = () => {
       setTestAuthResult({ success: false, error: err.message || 'Connection failed' });
     } finally {
       setTestAuthLoading(false);
+    }
+  };
+
+  const handleBulkImport = async () => {
+    const lines = bulkInputText.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      alert('Please enter at least one Actor ID or URL.');
+      return;
+    }
+    setBulkImporting(true);
+    try {
+      const res = await api.dataMarketplace.adminBulkImport(lines);
+      if (res.success) {
+        setBulkResult(res);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Bulk import failed');
+    } finally {
+      setBulkImporting(false);
+    }
+  };
+
+  const handleSaveBulkDrafts = async () => {
+    if (!bulkResult || !bulkResult.drafts || bulkResult.drafts.length === 0) return;
+    setBulkImporting(true);
+    try {
+      for (const draft of bulkResult.drafts) {
+        await api.dataMarketplace.adminSaveProduct(draft, 'Bulk imported draft');
+      }
+      alert(`Successfully saved ${bulkResult.drafts.length} draft products to catalog!`);
+      setShowBulkModal(false);
+      setBulkResult(null);
+      setBulkInputText('');
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save drafts');
+    } finally {
+      setBulkImporting(false);
+    }
+  };
+
+  const handleToggleGate = async (slug: string, gateKey: string, currentValue: boolean) => {
+    setUpdatingGate(gateKey);
+    try {
+      const res = await api.dataMarketplace.adminUpdateWizardGate(slug, gateKey, !currentValue);
+      if (res.success) {
+        setWizardProduct(res.product.definition);
+        loadData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to update gate');
+    } finally {
+      setUpdatingGate(null);
+    }
+  };
+
+  const handleCheckDrift = async (slug: string) => {
+    setDriftCheckingSlug(slug);
+    try {
+      const res = await api.dataMarketplace.adminCheckDrift(slug);
+      if (res.success) {
+        setDriftResult({ slug, data: res.drift });
+        loadData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Drift check failed');
+    } finally {
+      setDriftCheckingSlug(null);
+    }
+  };
+
+  const handleActivateFromWizard = async (productDef: any) => {
+    try {
+      const updated = {
+        ...productDef,
+        status: 'active'
+      };
+      const res = await api.dataMarketplace.adminSaveProduct(updated, 'Activated via 8-gate wizard');
+      if (res.success) {
+        alert(`Product "${updated.display_name}" is now ACTIVE on customer catalog!`);
+        setWizardProduct(null);
+        loadData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Activation failed');
     }
   };
 
@@ -232,7 +331,7 @@ export const AdminDataMarketplaceTab: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 placeholder="e.g. username~actor-name or https://apify.com/username/actor-name"
@@ -240,14 +339,23 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                 onChange={(e) => setImportActorId(e.target.value)}
                 className="flex-1 px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
-              <button
-                onClick={handleImportActor}
-                disabled={importing}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5"
-              >
-                {importing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                <span>Import & Pre-Fill</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleImportActor}
+                  disabled={importing}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5"
+                >
+                  {importing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  <span>Import Link</span>
+                </button>
+                <button
+                  onClick={() => setShowBulkModal(true)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Bulk Add-by-Link</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -323,7 +431,24 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                             {prod.status}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-right space-x-2">
+                        <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
+                          <button
+                            onClick={() => setWizardProduct(prod.definition)}
+                            title="8-Gate Review & Activate Wizard"
+                            className="px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 rounded font-semibold text-[11px] border border-amber-500/30"
+                          >
+                            <CheckCircle className="w-3 h-3 inline mr-1 text-amber-500" />
+                            Wizard
+                          </button>
+                          <button
+                            onClick={() => handleCheckDrift(prod.slug)}
+                            disabled={driftCheckingSlug === prod.slug}
+                            title="Check Upstream Schema & Price Drift"
+                            className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded font-semibold text-[11px] border border-blue-200"
+                          >
+                            <RefreshCw className={`w-3 h-3 inline mr-1 ${driftCheckingSlug === prod.slug ? 'animate-spin' : ''}`} />
+                            Drift
+                          </button>
                           <button
                             onClick={() => handleTestRun(prod.slug)}
                             title="Run 5-item test extraction"
@@ -403,6 +528,315 @@ export const AdminDataMarketplaceTab: React.FC = () => {
                     className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm"
                   >
                     Save Product Definition
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Link Importer Modal */}
+          {showBulkModal && (
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-3xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">Bulk Link Importer</h3>
+                    <p className="text-xs text-slate-500">
+                      Paste multiple Actor URLs or identifiers (one per line) to batch-import draft products
+                    </p>
+                  </div>
+                  <button onClick={() => { setShowBulkModal(false); setBulkResult(null); }} className="text-slate-400 hover:text-slate-600">
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">Actor Links / IDs (one per line)</label>
+                    <textarea
+                      rows={6}
+                      value={bulkInputText}
+                      onChange={(e) => setBulkInputText(e.target.value)}
+                      placeholder="https://apify.com/clearpath/shopify-store-leads&#10;ecommerce_leads/store-leads-14m-e-commerce-leads&#10;scrapesage/ycombinator-scraper"
+                      className="w-full font-mono text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      disabled={bulkImporting || !bulkInputText.trim()}
+                      onClick={handleBulkImport}
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center gap-2 transition disabled:opacity-50"
+                    >
+                      {bulkImporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      <span>Fetch & Validate Batch</span>
+                    </button>
+                  </div>
+
+                  {bulkResult && (
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800">
+                          Batch Preview: {bulkResult.drafts.length} Valid Drafts, {bulkResult.existing.length} Duplicates, {bulkResult.errors.length} Errors
+                        </span>
+                        {bulkResult.drafts.length > 0 && (
+                          <button
+                            type="button"
+                            disabled={bulkImporting}
+                            onClick={handleSaveBulkDrafts}
+                            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition"
+                          >
+                            Save {bulkResult.drafts.length} Drafts to Catalog
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
+                            <tr>
+                              <th className="p-2.5">Title & Slug</th>
+                              <th className="p-2.5">Input Fields</th>
+                              <th className="p-2.5">Suggested Sell</th>
+                              <th className="p-2.5">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {bulkResult.drafts.map((d: any, idx: number) => (
+                              <tr key={idx} className="hover:bg-slate-50">
+                                <td className="p-2.5">
+                                  <div className="font-bold text-slate-900">{d.display_name}</div>
+                                  <div className="font-mono text-[10px] text-slate-400">{d.slug}</div>
+                                </td>
+                                <td className="p-2.5 text-slate-600">
+                                  {d.input?.fields?.length || 0} mapped fields
+                                </td>
+                                <td className="p-2.5 font-bold text-slate-900">
+                                  ₹{d.pricing?.sell?.per_1000_items || 0} / 1k
+                                </td>
+                                <td className="p-2.5">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">
+                                    Ready Draft
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {bulkResult.existing.map((ex: string, idx: number) => (
+                              <tr key={`ex-${idx}`} className="bg-amber-50/50">
+                                <td colSpan={3} className="p-2.5 text-slate-700 font-mono text-[11px]">
+                                  {ex}
+                                </td>
+                                <td className="p-2.5">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                                    Already Exists
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {bulkResult.errors.map((er: any, idx: number) => (
+                              <tr key={`err-${idx}`} className="bg-rose-50/50">
+                                <td colSpan={3} className="p-2.5 text-rose-700 text-xs">
+                                  <div className="font-mono text-[11px]">{er.input}</div>
+                                  <div className="text-[10px] text-rose-500">{er.error}</div>
+                                </td>
+                                <td className="p-2.5">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
+                                    Error
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 8-Gate Review & Activate Wizard Modal */}
+          {wizardProduct && (
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                  <div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800">
+                      Product Activation Checklist
+                    </span>
+                    <h3 className="font-bold text-base text-slate-900 mt-1">{wizardProduct.display_name}</h3>
+                    <p className="text-xs text-slate-500">
+                      Verify all 8 quality gates before publishing this product to customer catalog
+                    </p>
+                  </div>
+                  <button onClick={() => setWizardProduct(null)} className="text-slate-400 hover:text-slate-600">
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-3 flex-1 overflow-y-auto">
+                  {[
+                    {
+                      key: 'link_imported',
+                      label: '1. Link Normalized & Metadata Fetched',
+                      desc: `Actor ID normalized to "${wizardProduct.provider?.actor_id || 'internal'}". Version & limits cached.`
+                    },
+                    {
+                      key: 'schema_mapped',
+                      label: '2. Input Schema Mapped',
+                      desc: `${wizardProduct.input?.fields?.length || 0} parameter fields typed with options and validation.`
+                    },
+                    {
+                      key: 'whitelabel_passed',
+                      label: '3. White-Label Blocklist Scan',
+                      desc: 'Zero upstream provider trademarks, URLs or author references found in customer-facing copy.'
+                    },
+                    {
+                      key: 'pricing_validated',
+                      label: '4. Pricing Floor & Margin Validated',
+                      desc: `Sell price (₹${wizardProduct.pricing?.sell?.per_1000_items || 0}) covers provider cost with healthy profit margin.`
+                    },
+                    {
+                      key: 'test_run_passed',
+                      label: '5. Internal Test Run Verified',
+                      desc: 'Executed a 5-item test extraction to confirm upstream execution and data delivery.'
+                    },
+                    {
+                      key: 'output_reviewed',
+                      label: '6. Output Columns & Mappings Reviewed',
+                      desc: 'Verified data fields, preview columns and sanitized drop list.'
+                    },
+                    {
+                      key: 'compliance_set',
+                      label: '7. Compliance & Regulatory Disclaimers',
+                      desc: wizardProduct.compliance?.contains_personal_data
+                        ? 'Flagged: Contains personal data. Compliance disclaimers applied.'
+                        : 'Standard web intelligence extraction. No regulated personal data.'
+                    },
+                    {
+                      key: 'studio_preview_verified',
+                      label: '8. Extraction Studio Preview Verified',
+                      desc: 'Dynamic form controls, sections, and live quotes verified in preview.'
+                    }
+                  ].map((gate) => {
+                    const gatesObj = wizardProduct.wizard_gates || {};
+                    const isChecked = Boolean(gatesObj[gate.key]);
+                    return (
+                      <div
+                        key={gate.key}
+                        className={`p-3.5 rounded-xl border flex items-start justify-between gap-3 transition ${
+                          isChecked ? 'bg-emerald-50/50 border-emerald-200' : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <button
+                            type="button"
+                            disabled={updatingGate === gate.key}
+                            onClick={() => handleToggleGate(wizardProduct.slug, gate.key, isChecked)}
+                            className="mt-0.5 text-slate-400 hover:text-emerald-600 transition"
+                          >
+                            {isChecked ? (
+                              <CheckCircle className="w-5 h-5 text-emerald-600 fill-emerald-100" />
+                            ) : (
+                              <div className="w-5 h-5 rounded-full border-2 border-slate-300" />
+                            )}
+                          </button>
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-800">{gate.label}</h4>
+                            <p className="text-[11px] text-slate-500 mt-0.5">{gate.desc}</p>
+                          </div>
+                        </div>
+
+                        {gate.key === 'test_run_passed' && !isChecked && (
+                          <button
+                            type="button"
+                            onClick={() => handleTestRun(wizardProduct.slug)}
+                            className="px-2.5 py-1 bg-slate-900 text-white rounded-lg text-[11px] font-bold shrink-0 hover:bg-slate-800 transition"
+                          >
+                            Run Test
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs text-slate-500">
+                    {Object.values(wizardProduct.wizard_gates || {}).filter(Boolean).length} / 8 Gates Verified
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWizardProduct(null)}
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleActivateFromWizard(wizardProduct)}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition"
+                    >
+                      Publish & Activate Product
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Drift Check Modal */}
+          {driftResult && (
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-sm text-slate-900">Upstream Drift Check</h3>
+                  <button onClick={() => setDriftResult(null)} className="text-slate-400 hover:text-slate-600">
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                    <span className="text-xs text-slate-600 font-medium">Sync Status:</span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        driftResult.data.status === 'IN_SYNC'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : driftResult.data.status === 'SCHEMA_CHANGED'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {driftResult.data.status}
+                    </span>
+                  </div>
+
+                  {driftResult.data.diffNotes && driftResult.data.diffNotes.length > 0 ? (
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-slate-700">Detected Changes:</span>
+                      <ul className="list-disc list-inside text-xs text-slate-600 space-y-1 bg-slate-50 p-3 rounded-xl">
+                        {driftResult.data.diffNotes.map((note: string, idx: number) => (
+                          <li key={idx}>{note}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      The extractor input schema, configuration hash, and pricing match upstream specifications perfectly.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={() => setDriftResult(null)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition"
+                  >
+                    Dismiss
                   </button>
                 </div>
               </div>

@@ -97,6 +97,19 @@ CREATE TABLE IF NOT EXISTS marketplace_settings (
   value TEXT NOT NULL,
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+-- User Input Presets for Advanced Extraction Studio
+CREATE TABLE IF NOT EXISTS marketplace_user_presets (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_slug TEXT NOT NULL,
+  name TEXT NOT NULL,
+  input_json TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mkt_presets_user_slug ON marketplace_user_presets(user_id, product_slug);
 `;
 
 /**
@@ -236,6 +249,11 @@ Extract high-fidelity verified business leads, domain contacts, decision-maker n
  */
 export function initMarketplaceSchema(db: Database.Database): void {
   db.exec(MARKETPLACE_SCHEMA_SQL);
+
+  // Safe migrations for newer columns
+  try {
+    db.prepare('ALTER TABLE marketplace_jobs ADD COLUMN is_test_run INTEGER DEFAULT 0').run();
+  } catch {}
 
   // Seed default settings if not exists
   const defaultSettings: Record<string, string> = {

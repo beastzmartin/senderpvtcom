@@ -1,4 +1,5 @@
-import { ProductDefinition, PricingMode, MarginType } from '../../types/marketplace.js';
+import crypto from 'crypto';
+import { ProductDefinition, PricingMode, MarginType, MarketplacePriceQuote } from '../../types/marketplace.js';
 import { CurrencyService } from '../virtualNumber/CurrencyService.js';
 import { getDatabase } from '../../db/database.js';
 
@@ -206,6 +207,44 @@ export class MarketplacePricingService {
         marginPct
       };
     });
+  }
+
+  /**
+   * Generate an auditable, time-stamped price quote with TTL and signature
+   */
+  public generatePriceQuote(
+    product: ProductDefinition,
+    requestedItems: number,
+    targetCurrency?: string
+  ): MarketplacePriceQuote {
+    const currency = targetCurrency || 'INR';
+    const est = this.calculateEstimatedPrice(product, requestedItems, currency);
+
+    const ttlSecs = product.pricing?.quote_ttl_secs || 300; // default 5 minutes
+    const fxBufferPct = product.pricing?.fx_safety_buffer_percent || 5; // 5% FX safety buffer
+    const fxBufferAmount = Number((est.providerCostConverted * (fxBufferPct / 100)).toFixed(2));
+
+    const rate = this.convertUsdToPlatform(1.0, currency);
+    const expiresAt = new Date(Date.now() + ttlSecs * 1000).toISOString();
+    const quoteId = `quote_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+    const quotePayload = `${quoteId}|${product.slug}|${est.requestedItems}|${est.sellPrice}|${expiresAt}`;
+    const signature = crypto.createHash('sha256').update(quotePayload).digest('hex').slice(0, 16);
+
+    return {
+      quoteId,
+      productSlug: product.slug,
+      requestedItems: est.requestedItems,
+      currency,
+      sellPrice: est.sellPrice,
+      providerCostUsd: est.providerCostUsd,
+      providerCostConverted: est.providerCostConverted,
+      exchangeRate: Number(rate.toFixed(4)),
+      fxBufferAmount,
+      expiresAt,
+      minChargeApplied: est.minChargeApplied,
+      signature
+    };
   }
 }
 

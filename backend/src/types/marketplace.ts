@@ -15,7 +15,11 @@ export type InputFieldType =
   | 'boolean'
   | 'url'
   | 'url_list'
-  | 'string_list';
+  | 'string_list'
+  | 'date'
+  | 'key_value'
+  | 'object'
+  | 'json';
 
 export interface InputFieldDefinition {
   key: string;
@@ -29,6 +33,15 @@ export interface InputFieldDefinition {
   min?: number | null;
   max?: number | null;
   visible_to_user: boolean;
+  section_caption?: string;
+  section_description?: string;
+  advanced?: boolean;
+  locked_value?: any;
+  show_if?: { field: string; equals: any };
+  affects_cost?: boolean;
+  unit?: string;
+  pattern?: string;
+  placeholder?: string;
 }
 
 export interface ProductInputDefinition {
@@ -68,6 +81,11 @@ export interface ProductPricing {
     value: number;
   };
   min_charge: number; // in platform currency
+  currency_basis?: 'BASE';
+  min_margin_percent?: number;
+  fx_safety_buffer_percent?: number;
+  quote_ttl_secs?: number;
+  price_drift_tolerance_percent?: number;
 }
 
 export interface ProductAccess {
@@ -99,8 +117,38 @@ export interface ProductCompliance {
   notes?: string;
 }
 
+export interface ProductUiConfig {
+  show_in_menu: boolean;
+  menu_group?: string;
+  display_order?: number;
+}
+
+export interface ProductWhiteLabelConfig {
+  extra_blocklist_terms: string[];
+  scrub_fields: string[];
+}
+
+export interface ProductSyncInfo {
+  provider_schema_hash: string;
+  provider_build_number: string;
+  last_synced_at: string;
+  sync_status: 'IN_SYNC' | 'SCHEMA_CHANGED' | 'PRICE_CHANGED' | 'PROVIDER_ERROR';
+  diff_notes?: string;
+}
+
+export interface ProductWizardGates {
+  link_imported: boolean;
+  schema_mapped: boolean;
+  whitelabel_passed: boolean;
+  pricing_validated: boolean;
+  test_run_passed: boolean;
+  output_reviewed: boolean;
+  compliance_set: boolean;
+  studio_preview_verified: boolean;
+}
+
 /**
- * Exact ProductDefinition Schema (v1)
+ * Exact ProductDefinition Schema (v1 + Addendum v2 Strict)
  */
 export interface ProductDefinition {
   slug: string;
@@ -123,6 +171,35 @@ export interface ProductDefinition {
   access: ProductAccess;
   output: ProductOutputDefinition;
   compliance: ProductCompliance;
+  ui?: ProductUiConfig;
+  whitelabel?: ProductWhiteLabelConfig;
+  sync?: ProductSyncInfo;
+  wizard_gates?: ProductWizardGates;
+}
+
+export interface MarketplaceUserPreset {
+  id: string;
+  user_id: string;
+  product_slug: string;
+  name: string;
+  input_data: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MarketplacePriceQuote {
+  quoteId: string;
+  productSlug: string;
+  requestedItems: number;
+  currency: string;
+  sellPrice: number;
+  providerCostUsd: number;
+  providerCostConverted: number;
+  exchangeRate: number;
+  fxBufferAmount: number;
+  expiresAt: string;
+  minChargeApplied: boolean;
+  signature: string;
 }
 
 export interface MarketplaceProductRecord {

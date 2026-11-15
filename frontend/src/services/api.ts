@@ -2098,6 +2098,26 @@ export const api = {
         body: JSON.stringify({ slug, items })
       }),
 
+    createQuote: (slug: string, requestedItems: number, currency?: string) =>
+      request<{ success: boolean; quote: any }>('/marketplace/quote', {
+        method: 'POST',
+        body: JSON.stringify({ slug, requestedItems, currency })
+      }),
+
+    listUserPresets: (slug: string) =>
+      request<{ success: boolean; presets: any[] }>(`/marketplace/products/${slug}/presets`),
+
+    saveUserPreset: (slug: string, name: string, inputData: Record<string, any>, presetId?: string) =>
+      request<{ success: boolean; preset: any }>(`/marketplace/products/${slug}/presets`, {
+        method: 'POST',
+        body: JSON.stringify({ name, inputData, presetId })
+      }),
+
+    deleteUserPreset: (presetId: string) =>
+      request<{ success: boolean }>(`/marketplace/presets/${presetId}`, {
+        method: 'DELETE'
+      }),
+
     createJob: (productSlug: string, inputValues: Record<string, any>, requestedItems: number) =>
       request<{ success: boolean; job: any }>('/marketplace/jobs', {
         method: 'POST',
@@ -2147,6 +2167,23 @@ export const api = {
       request<{ success: boolean; product: any }>('/marketplace/admin/import-provider', {
         method: 'POST',
         body: JSON.stringify({ providerType, actorIdOrUrl, actorId: actorIdOrUrl })
+      }),
+
+    adminBulkImport: (links: string[], providerType?: string) =>
+      request<{ success: boolean; drafts: any[]; existing: string[]; errors: any[] }>('/marketplace/admin/bulk-import', {
+        method: 'POST',
+        body: JSON.stringify({ links, providerType: providerType || 'apify' })
+      }),
+
+    adminCheckDrift: (slug: string) =>
+      request<{ success: boolean; drift: any }>(`/marketplace/admin/products/${slug}/drift`, {
+        method: 'POST'
+      }),
+
+    adminUpdateWizardGate: (slug: string, gateKey: string, value: boolean) =>
+      request<{ success: boolean; product: any }>(`/marketplace/admin/products/${slug}/gates`, {
+        method: 'POST',
+        body: JSON.stringify({ gateKey, value })
       }),
 
     adminDuplicateProduct: (slug: string) =>

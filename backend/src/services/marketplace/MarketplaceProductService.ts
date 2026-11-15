@@ -3,11 +3,14 @@ import { getDatabase } from '../../db/database.js';
 import {
   ProductDefinition,
   MarketplaceProductRecord,
-  ProductStatus
+  ProductStatus,
+  ProductWizardGates
 } from '../../types/marketplace.js';
 import { ProviderRegistry } from './provider/ProviderRegistry.js';
 import { MarketplacePricingService } from './MarketplacePricingService.js';
 import { WhiteLabelSanitizer } from './WhiteLabelSanitizer.js';
+import { LinkParser, ParsedActorRef } from './LinkParser.js';
+import { DraftProductGenerator, DriftDetectionResult } from './DraftProductGenerator.js';
 
 export class MarketplaceProductService {
   private static instance: MarketplaceProductService | null = null;
@@ -91,117 +94,151 @@ export class MarketplaceProductService {
   }
 
   /**
-   * Admin Tool: "Import from Provider ID"
-   * Calls adapter to inspect actor schema and pre-fills white-labeled ProductDefinition
+   * Admin Tool: "Import from Provider ID or URL" (Add-by-Link)
+   * Uses LinkParser to normalize link and DraftProductGenerator to create a compliant ProductDefinition v1
    */
   public async importFromProvider(
     providerType: string,
     actorIdOrUrl: string
-  ): Promise<Partial<ProductDefinition>> {
-    let cleanActorId = actorIdOrUrl.trim()
-      .replace(/^https?:\/\/(?:www\.)?(?:console\.)?apify\.com\/(?:actors\/)?/i, '')
-      .replace(/\/+$/, '');
-    if (cleanActorId.includes('/') && !cleanActorId.includes('~')) {
-      cleanActorId = cleanActorId.replace(/\//g, '~');
-    }
+  ): Promise<ProductDefinition> {
+    const parsedRef = LinkParser.parseActorRef(actorIdOrUrl);
     const adapter = ProviderRegistry.getInstance().getAdapter(providerType || 'apify');
-    const info = await adapter.getActorInfo(cleanActorId);
+    const info = await adapter.getActorInfo(parsedRef.normalizedActorId);
 
-    // Extract input fields from schema properties
-    const fields: any[] = [];
-    if (info.inputSchema && info.inputSchema.properties) {
-      const requiredSet = new Set(info.inputSchema.required || []);
-      for (const [propKey, propVal] of Object.entries(info.inputSchema.properties)) {
-        let fieldType: any = 'text';
-        if (propVal.type === 'integer' || propVal.type === 'number') fieldType = 'number';
-        else if (propVal.type === 'boolean') fieldType = 'boolean';
-        else if (propVal.type === 'array') fieldType = 'string_list';
-        else if (propVal.editor === 'textarea') fieldType = 'textarea';
+    const draft = DraftProductGenerator.generateDraft(parsedRef, info);
+    return draft;
+  }
 
-        fields.push({
-          key: propKey.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-          provider_key: propKey,
-          label: propVal.title || propKey,
-          help: propVal.description || '',
-          type: fieldType,
-          required: requiredSet.has(propKey),
-          default: propVal.default || null,
-          options: propVal.enum ? propVal.enum.map((e: any) => ({ label: String(e), value: e })) : [],
-          visible_to_user: true
+  /**
+   * Admin Tool: Bulk Import by Links
+   * Parses batch of links, validates, generates draft products and identifies duplicates
+   */
+  public async bulkImportFromProvider(
+    providerType: string,
+    rawLinks: string[]
+  ): Promise<{
+    drafts: ProductDefinition[];
+    existing: string[];
+    errors: Array<{ input: string; error: string }>;
+  }> {
+    const parsedBatch = LinkParser.parseBatch(rawLinks);
+    const db = getDatabase();
+
+    const drafts: ProductDefinition[] = [];
+    const existing: string[] = [];
+    const errors: Array<{ input: string; error: string }> = [];
+
+    // Pre-load all existing actor_ids in database
+    const existingProducts = db.prepare('SELECT slug, definition_json FROM extraction_marketplace_products').all() as any[];
+    const existingActorIds = new Set<string>();
+    const existingSlugs = new Set<string>();
+    for (const ep of existingProducts) {
+      existingSlugs.add(ep.slug);
+      try {
+        const def = JSON.parse(ep.definition_json);
+        if (def.provider?.actor_id) existingActorIds.add(def.provider.actor_id.toLowerCase());
+      } catch {}
+    }
+
+    const adapter = ProviderRegistry.getInstance().getAdapter(providerType || 'apify');
+
+    for (const ref of parsedBatch) {
+      if (existingActorIds.has(ref.normalizedActorId.toLowerCase())) {
+        existing.push(ref.originalInput);
+        continue;
+      }
+
+      try {
+        const info = await adapter.getActorInfo(ref.normalizedActorId);
+        const draft = DraftProductGenerator.generateDraft(ref, info);
+
+        // Ensure unique slug if collision
+        if (existingSlugs.has(draft.slug)) {
+          draft.slug = `${draft.slug}-${Date.now().toString().slice(-4)}`;
+        }
+
+        drafts.push(draft);
+      } catch (err: any) {
+        errors.push({
+          input: ref.originalInput,
+          error: err.message || 'Failed to fetch actor metadata from provider'
         });
       }
     }
 
-    // Default suggested sell price (Cost + 40% margin)
-    const costUsd = info.pricingInfo?.usdPer1000Items || 2.0;
-    const suggestedSellInr = this.pricingService.calculateSuggestedSellPrice(costUsd, 'percent', 40.0, 'INR');
+    return { drafts, existing, errors };
+  }
 
-    const cleanSlug = info.name
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, '-')
-      .replace(/^-+|-+$/g, '');
+  /**
+   * Re-sync & Drift Detection
+   * Compares currently stored product definition against fresh provider info
+   */
+  public async checkDrift(slug: string): Promise<DriftDetectionResult> {
+    const product = this.getProductBySlug(slug, true);
+    if (!product) {
+      throw new Error(`Product not found: ${slug}`);
+    }
 
-    return {
-      slug: cleanSlug,
-      display_name: info.title || info.name,
-      tagline: `High-speed automated data intelligence extraction for ${info.title || info.name}`,
-      description_md: `# ${info.title || info.name}\n\n${info.description || 'Extract structured data with guaranteed delivery.'}`,
-      category: 'General & Leads',
-      icon: 'Building2',
-      status: 'draft',
-      provider: {
-        type: providerType as any || 'apify',
-        actor_id: cleanActorId,
-        build: 'latest'
-      },
-      input: {
-        fields: fields.slice(0, 10), // Take top 10 relevant fields
-        static_overrides: {},
-        hidden_defaults: {}
-      },
-      limits: {
-        min_items: 10,
-        max_items_per_run: 1000,
-        max_concurrent_runs_per_user: 2,
-        timeout_secs: info.defaultTimeoutSecs || 1800,
-        memory_mb: info.defaultMemoryMbytes || 1024
-      },
-      pricing: {
-        mode: 'per_item',
-        provider_cost_reference: {
-          model: (info.pricingInfo?.model as any) || 'pay_per_result',
-          usd_per_1000_items: costUsd,
-          usd_per_run_start: info.pricingInfo?.usdPerRunStart || 0.0,
-          notes: 'Imported from provider configuration'
-        },
-        sell: {
-          per_1000_items: suggestedSellInr,
-          per_run_flat: 0.0
-        },
-        margin: {
-          type: 'percent',
-          value: 40.0
-        },
-        min_charge: 10.0
-      },
-      access: {
-        requires_subscription: false,
-        allowed_plan_slugs: []
-      },
-      output: {
-        item_mapping: [],
-        drop_fields: ['_internalId', 'actorExecutionId', 'provider_debug_info'],
-        preview_columns: [],
-        export_formats: ['csv', 'xlsx', 'json'],
-        sanitize: {
-          strip_provider_urls: true
-        }
-      },
-      compliance: {
-        contains_personal_data: false,
-        disclaimer_md: 'Extract public web data responsibly according to terms and applicable privacy laws.'
+    const providerType = product.definition.provider?.type || 'apify';
+    const actorId = product.definition.provider?.actor_id;
+    if (!actorId) {
+      throw new Error(`No provider actor_id associated with product: ${slug}`);
+    }
+
+    const adapter = ProviderRegistry.getInstance().getAdapter(providerType);
+    const freshInfo = await adapter.getActorInfo(actorId);
+
+    const drift = DraftProductGenerator.detectDrift(product.definition, freshInfo);
+
+    // Update product sync status in database
+    const updatedDef: ProductDefinition = {
+      ...product.definition,
+      sync: {
+        provider_schema_hash: drift.freshSchemaHash,
+        provider_build_number: drift.freshBuildNumber || 'latest',
+        last_synced_at: new Date().toISOString(),
+        sync_status: drift.status,
+        diff_notes: drift.diffNotes.join('; ')
       }
     };
+
+    this.saveProduct(updatedDef, undefined, `Drift check: ${drift.status}`);
+    return drift;
+  }
+
+  /**
+   * Wizard Gate Update
+   * Updates verification checklist state for the Review & Activate Wizard
+   */
+  public updateWizardGate(
+    slug: string,
+    gateKey: keyof ProductWizardGates,
+    value: boolean
+  ): MarketplaceProductRecord {
+    const product = this.getProductBySlug(slug, true);
+    if (!product) {
+      throw new Error(`Product not found: ${slug}`);
+    }
+
+    const currentGates: ProductWizardGates = product.definition.wizard_gates || {
+      link_imported: true,
+      schema_mapped: true,
+      whitelabel_passed: true,
+      pricing_validated: true,
+      test_run_passed: false,
+      output_reviewed: false,
+      compliance_set: true,
+      studio_preview_verified: false
+    };
+
+    currentGates[gateKey] = value;
+
+    const updatedDef: ProductDefinition = {
+      ...product.definition,
+      wizard_gates: currentGates
+    };
+
+    return this.saveProduct(updatedDef, undefined, `Wizard gate "${gateKey}" updated to ${value}`);
   }
 
   /**

@@ -31,6 +31,11 @@ router.post('/admin/entitlements/override', requireAuth, controller.adminSetOver
 router.get('/products', WhiteLabelSanitizer.middleware(), controller.listProducts);
 router.get('/products/:slug', WhiteLabelSanitizer.middleware(), controller.getProduct);
 router.post('/estimate', WhiteLabelSanitizer.middleware(), controller.estimatePrice);
+router.post('/quote', WhiteLabelSanitizer.middleware(), controller.createQuote);
+
+router.get('/products/:slug/presets', requireAuth, WhiteLabelSanitizer.middleware(), controller.listUserPresets);
+router.post('/products/:slug/presets', requireAuth, WhiteLabelSanitizer.middleware(), controller.saveUserPreset);
+router.delete('/presets/:id', requireAuth, WhiteLabelSanitizer.middleware(), controller.deleteUserPreset);
 
 router.post('/jobs', requireAuth, WhiteLabelSanitizer.middleware(), controller.createJob);
 router.get('/jobs', requireAuth, WhiteLabelSanitizer.middleware(), controller.listUserJobs);
@@ -45,6 +50,9 @@ router.post('/jobs/:id/abort', requireAuth, WhiteLabelSanitizer.middleware(), co
 router.get('/admin/products', requireAuth, requireAdmin, controller.adminListProducts);
 router.post('/admin/products', requireAuth, requireAdmin, controller.adminSaveProduct);
 router.post('/admin/import-provider', requireAuth, requireAdmin, controller.adminImportFromProvider);
+router.post('/admin/bulk-import', requireAuth, requireAdmin, controller.adminBulkImport);
+router.post('/admin/products/:slug/drift', requireAuth, requireAdmin, controller.adminCheckDrift);
+router.post('/admin/products/:slug/gates', requireAuth, requireAdmin, controller.adminUpdateWizardGate);
 router.post('/admin/products/:slug/duplicate', requireAuth, requireAdmin, controller.adminDuplicateProduct);
 router.delete('/admin/products/:slug', requireAuth, requireAdmin, controller.adminDeleteProduct);
 router.post('/admin/products/:slug/test-run', requireAuth, requireAdmin, controller.adminTestRun);

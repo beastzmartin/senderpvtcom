@@ -93,4 +93,19 @@ export class WhiteLabelSanitizer {
       next();
     };
   }
+
+  /**
+   * Scans text or objects for blocked provider terms
+   */
+  public static detectLeaks(textOrObj: any): { hasLeak: boolean; matches: string[] } {
+    const str = typeof textOrObj === 'string' ? textOrObj : JSON.stringify(textOrObj);
+    const matches: string[] = [];
+    if (/apify\.com/i.test(str)) matches.push('apify.com');
+    if (/api\.apify/i.test(str)) matches.push('api.apify');
+    if (/\bapify\b/i.test(str)) matches.push('apify');
+    return {
+      hasLeak: matches.length > 0,
+      matches
+    };
+  }
 }

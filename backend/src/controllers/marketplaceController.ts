@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { MarketplaceProductService } from '../services/marketplace/MarketplaceProductService.js';
 import { MarketplaceJobService } from '../services/marketplace/MarketplaceJobService.js';
 import { MarketplacePricingService } from '../services/marketplace/MarketplacePricingService.js';
+import { MarketplacePresetService } from '../services/marketplace/MarketplacePresetService.js';
 import { ProviderRegistry } from '../services/marketplace/provider/ProviderRegistry.js';
 import { ApifyAdapter } from '../services/marketplace/provider/ApifyAdapter.js';
 import { MarketplaceService } from '../services/marketplaceService.js';
@@ -13,6 +14,7 @@ export class MarketplaceController {
   private productService = MarketplaceProductService.getInstance();
   private jobService = MarketplaceJobService.getInstance();
   private pricingService = MarketplacePricingService.getInstance();
+  private presetService = MarketplacePresetService.getInstance();
   private extensionMarketplaceService = MarketplaceService.getInstance();
 
   // =========================================================================
@@ -224,13 +226,92 @@ export class MarketplaceController {
   };
 
   /**
+   * POST /api/marketplace/quote
+   * Customer: generate signed price quote with TTL countdown
+   */
+  public createQuote = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { slug, requestedItems, currency } = req.body;
+      const product = this.productService.getProductBySlug(slug, true);
+      if (!product) {
+        res.status(404).json({ error: 'Product not found.' });
+        return;
+      }
+
+      const quote = this.pricingService.generatePriceQuote(
+        product.definition,
+        Number(requestedItems) || 100,
+        currency
+      );
+
+      res.json({ success: true, quote });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to generate price quote' });
+    }
+  };
+
+  /**
+   * GET /api/marketplace/products/:slug/presets
+   * Customer: list saved parameter presets
+   */
+  public listUserPresets = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const slug = String(req.params.slug);
+      const presets = this.presetService.listPresets(userId, slug);
+      res.json({ success: true, presets });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch presets' });
+    }
+  };
+
+  /**
+   * POST /api/marketplace/products/:slug/presets
+   * Customer: save or update a parameter preset
+   */
+  public saveUserPreset = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const slug = String(req.params.slug);
+      const { name, inputData, presetId } = req.body;
+
+      if (!name || !name.trim()) {
+        res.status(400).json({ error: 'Preset name is required.' });
+        return;
+      }
+
+      const preset = this.presetService.savePreset(userId, slug, name, inputData || {}, presetId);
+      res.json({ success: true, preset });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to save preset' });
+    }
+  };
+
+  /**
+   * DELETE /api/marketplace/presets/:id
+   * Customer: delete a parameter preset
+   */
+  public deleteUserPreset = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const presetId = String(req.params.id);
+      const deleted = this.presetService.deletePreset(userId, presetId);
+      res.json({ success: deleted });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to delete preset' });
+    }
+  };
+
+  /**
    * POST /api/marketplace/jobs
    * Customer: launch an extraction job
    */
   public createJob = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
-      const { slug, input, requestedItems } = req.body;
+      const slug = req.body.slug || req.body.productSlug;
+      const input = req.body.input || req.body.inputValues;
+      const requestedItems = req.body.requestedItems;
 
       if (!slug) {
         res.status(400).json({ error: 'Product slug is required.' });
@@ -420,7 +501,7 @@ export class MarketplaceController {
 
   /**
    * POST /api/marketplace/admin/import-provider
-   * Admin: "Import from Provider ID" tool
+   * Admin: "Import from Provider ID" tool (Single Add-by-Link)
    */
   public adminImportFromProvider = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
@@ -435,6 +516,60 @@ export class MarketplaceController {
       res.json({ success: true, product: prefilled });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to import from provider.' });
+    }
+  };
+
+  /**
+   * POST /api/marketplace/admin/bulk-import
+   * Admin: Bulk Link Importer
+   */
+  public adminBulkImport = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const { providerType, links } = req.body;
+      if (!Array.isArray(links) || links.length === 0) {
+        res.status(400).json({ error: 'Array of actor URLs or IDs is required.' });
+        return;
+      }
+
+      const result = await this.productService.bulkImportFromProvider(providerType || 'apify', links);
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to process bulk import.' });
+    }
+  };
+
+  /**
+   * POST /api/marketplace/admin/products/:slug/drift
+   * Admin: Check upstream drift for schema and pricing
+   */
+  public adminCheckDrift = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const slug = String(req.params.slug);
+      const drift = await this.productService.checkDrift(slug);
+      res.json({ success: true, drift });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to check drift.' });
+    }
+  };
+
+  /**
+   * POST /api/marketplace/admin/products/:slug/gates
+   * Admin: Toggle or verify Review & Activate Wizard gate
+   */
+  public adminUpdateWizardGate = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const slug = String(req.params.slug);
+      const { gateKey, value } = req.body;
+
+      if (!gateKey) {
+        res.status(400).json({ error: 'gateKey is required.' });
+        return;
+      }
+
+      const updated = this.productService.updateWizardGate(slug, gateKey, Boolean(value));
+      res.json({ success: true, product: updated });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to update wizard gate.' });
     }
   };
 
