@@ -298,14 +298,28 @@ CREATE INDEX IF NOT EXISTS idx_grizzly_logs_action ON grizzly_api_logs(action);
 -- 15. Official Grizzly Countries Database
 CREATE TABLE IF NOT EXISTS grizzly_countries (
   id TEXT PRIMARY KEY,
+  provider TEXT DEFAULT 'grizzlysms',
   provider_country_id INTEGER UNIQUE NOT NULL,
   country_name TEXT NOT NULL,
   country_code_iso2 TEXT,
   country_code_iso3 TEXT,
   flag TEXT,
   dial_code TEXT,
+  rus TEXT,
+  eng TEXT,
+  chn TEXT,
+  tur TEXT,
+  spa TEXT,
+  hin TEXT,
+  ara TEXT,
+  fra TEXT,
+  custom_display_name TEXT,
+  custom_flag TEXT,
+  admin_notes TEXT,
   is_active INTEGER DEFAULT 1,
   is_supported INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'active',
+  first_imported_at TEXT DEFAULT (datetime('now')),
   last_synced_at TEXT DEFAULT (datetime('now')),
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
@@ -317,13 +331,17 @@ CREATE INDEX IF NOT EXISTS idx_grizzly_countries_active ON grizzly_countries(is_
 -- 16. Official Grizzly Service Registry
 CREATE TABLE IF NOT EXISTS grizzly_services (
   id TEXT PRIMARY KEY,
+  provider TEXT DEFAULT 'grizzlysms',
   provider_service_code TEXT UNIQUE NOT NULL,
   service_name TEXT NOT NULL,
   display_name TEXT NOT NULL,
   icon TEXT,
   category TEXT DEFAULT 'general',
+  description TEXT,
   is_active INTEGER DEFAULT 1,
   is_supported INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'active',
+  first_imported_at TEXT DEFAULT (datetime('now')),
   last_synced_at TEXT DEFAULT (datetime('now')),
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
@@ -395,6 +413,27 @@ CREATE TABLE IF NOT EXISTS grizzly_customer_config (
   cached_balance_currency TEXT DEFAULT 'RUB',
   last_health_check_at TEXT,
   last_error TEXT,
+  pricing_endpoint TEXT DEFAULT 'getPricesV3',
+  price_sync_interval_minutes INTEGER DEFAULT 60,
+  auto_price_sync INTEGER DEFAULT 1,
+  reconciliation_interval_minutes INTEGER DEFAULT 30,
+  auto_reconciliation INTEGER DEFAULT 1,
+  preferred_providers TEXT DEFAULT '',
+  min_profit REAL DEFAULT 2.0,
+  max_acceptable_provider_cost REAL DEFAULT 100.0,
+  currency_conversion_rate REAL DEFAULT 1.0,
+  last_price_sync_at TEXT,
+  last_reconciliation_at TEXT,
+  crypto_wallet_address TEXT DEFAULT NULL,
+  crypto_coin TEXT DEFAULT 'usdt',
+  crypto_network TEXT DEFAULT 'tron',
+  crypto_threshold_usd REAL DEFAULT 50.0,
+  crypto_wallet_fetched_at TEXT,
+  crypto_wallet_status TEXT DEFAULT 'active',
+  services_sync_interval_hours INTEGER DEFAULT 24,
+  countries_sync_interval_hours INTEGER DEFAULT 24,
+  auto_services_sync INTEGER DEFAULT 1,
+  auto_countries_sync INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -421,6 +460,17 @@ CREATE TABLE IF NOT EXISTS grizzly_customer_activations (
   sms_text TEXT,
   sms_code TEXT,
   sms_status TEXT DEFAULT 'PENDING' CHECK(sms_status IN ('PENDING', 'RECEIVED', 'EXPIRED')),
+  verification_type INTEGER DEFAULT NULL,
+  sms_history TEXT DEFAULT '[]',
+  can_get_another_sms INTEGER DEFAULT 1,
+  currency_code TEXT DEFAULT 'RUB',
+  currency_numeric INTEGER DEFAULT 643,
+  discount REAL DEFAULT 0.0,
+  repeated INTEGER DEFAULT 0,
+  activation_time TEXT,
+  last_polled_at TEXT,
+  reconciliation_status TEXT DEFAULT 'pending',
+  last_reconciled_at TEXT,
   idempotency_key TEXT UNIQUE,
   expires_at TEXT,
   completed_at TEXT,
@@ -591,7 +641,14 @@ CREATE INDEX IF NOT EXISTS idx_grizzly_sync_hist_created ON grizzly_sync_history
 `;
 
 export function initGrizzlyDatabase(db: Database.Database): void {
-  // Perform safe column additions first if upgrading existing database
+  // 1. Ensure all base tables and indexes exist
+  try {
+    db.exec(GRIZZLY_SCHEMA_SQL);
+  } catch (err: any) {
+    console.error('[DB] Error executing base Grizzly schema:', err.message);
+  }
+
+  // 2. Perform safe column additions if upgrading existing database
   try {
     db.prepare("ALTER TABLE grizzly_provider_config ADD COLUMN outbound_api_url TEXT DEFAULT 'https://api.grizzlysms.com/agent/api/sms'").run();
   } catch {}
@@ -792,8 +849,6 @@ export function initGrizzlyDatabase(db: Database.Database): void {
   try {
     db.prepare("ALTER TABLE grizzly_countries ADD COLUMN first_imported_at TEXT").run();
   } catch {}
-
-  db.exec(GRIZZLY_SCHEMA_SQL);
 
   try {
     db.prepare(`
