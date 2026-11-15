@@ -81,7 +81,7 @@ export class GoogleMapsConnector extends BaseConnector {
       rating: rating && !isNaN(rating) ? rating : null,
       reviews_count: !isNaN(reviewsCount) ? reviewsCount : 0,
       operating_status: raw.operating_status || raw.status_text || 'Operational',
-      place_id: raw.place_id || raw.data_id || null,
+      place_id: (typeof raw.place_id === 'string' ? raw.place_id : (raw.place_id ? String(raw.place_id) : (raw.data_id ? String(raw.data_id) : null))),
       listing_url: raw.listing_url || raw.maps_url || raw.href || null,
       source: 'google_maps',
       source_url: raw.source_url || raw.listing_url || 'https://maps.google.com',

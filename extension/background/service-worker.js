@@ -60,8 +60,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
  * Deterministic lead fingerprinting for duplicate avoidance across sessions
  */
 function getLeadFingerprint(lead) {
-  if (lead.place_id && !lead.place_id.startsWith('gmap_single_') && !lead.place_id.startsWith('gmap_')) {
-    return lead.place_id;
+  if (!lead) return '';
+  const placeId = typeof lead.place_id === 'string' ? lead.place_id : (lead.place_id ? String(lead.place_id) : '');
+  if (placeId && !placeId.startsWith('gmap_single_') && !placeId.startsWith('gmap_') && !placeId.startsWith('[object')) {
+    return placeId;
   }
   const cleanName = (lead.business_name || '').toLowerCase().trim();
   const cleanPhone = (lead.phone || '').replace(/\D/g, '');

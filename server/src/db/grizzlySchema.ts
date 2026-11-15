@@ -294,6 +294,86 @@ CREATE TABLE IF NOT EXISTS grizzly_api_logs (
 
 CREATE INDEX IF NOT EXISTS idx_grizzly_logs_created ON grizzly_api_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_grizzly_logs_action ON grizzly_api_logs(action);
+
+-- 15. Official Grizzly Countries Database
+CREATE TABLE IF NOT EXISTS grizzly_countries (
+  id TEXT PRIMARY KEY,
+  provider_country_id INTEGER UNIQUE NOT NULL,
+  country_name TEXT NOT NULL,
+  country_code_iso2 TEXT,
+  country_code_iso3 TEXT,
+  flag TEXT,
+  dial_code TEXT,
+  is_active INTEGER DEFAULT 1,
+  is_supported INTEGER DEFAULT 1,
+  last_synced_at TEXT DEFAULT (datetime('now')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_countries_prov_id ON grizzly_countries(provider_country_id);
+CREATE INDEX IF NOT EXISTS idx_grizzly_countries_iso2 ON grizzly_countries(country_code_iso2);
+CREATE INDEX IF NOT EXISTS idx_grizzly_countries_active ON grizzly_countries(is_active);
+
+-- 16. Official Grizzly Service Registry
+CREATE TABLE IF NOT EXISTS grizzly_services (
+  id TEXT PRIMARY KEY,
+  provider_service_code TEXT UNIQUE NOT NULL,
+  service_name TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  icon TEXT,
+  category TEXT DEFAULT 'general',
+  is_active INTEGER DEFAULT 1,
+  is_supported INTEGER DEFAULT 1,
+  last_synced_at TEXT DEFAULT (datetime('now')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_services_code ON grizzly_services(provider_service_code);
+CREATE INDEX IF NOT EXISTS idx_grizzly_services_active ON grizzly_services(is_active);
+
+-- 17. Grizzly Operators Configuration
+CREATE TABLE IF NOT EXISTS grizzly_operators (
+  id TEXT PRIMARY KEY,
+  provider_operator_code TEXT NOT NULL,
+  operator_name TEXT NOT NULL,
+  country_id INTEGER,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(provider_operator_code, country_id)
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_operators_code ON grizzly_operators(provider_operator_code);
+
+-- 18. Grizzly Country-Service Availability Registry
+CREATE TABLE IF NOT EXISTS grizzly_country_services (
+  id TEXT PRIMARY KEY,
+  country_id TEXT,
+  provider_country_id INTEGER NOT NULL,
+  service_id TEXT,
+  provider_service_code TEXT NOT NULL,
+  operator_code TEXT DEFAULT 'any',
+  available_quantity INTEGER DEFAULT 0,
+  last_inventory_sync TEXT DEFAULT (datetime('now')),
+  is_available INTEGER DEFAULT 1,
+  is_enabled INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(provider_country_id, provider_service_code, operator_code)
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cs_pair ON grizzly_country_services(provider_country_id, provider_service_code);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cs_avail ON grizzly_country_services(is_available, is_enabled);
+
+-- 19. Grizzly Data Import History & Audit Logs
+CREATE TABLE IF NOT EXISTS grizzly_data_imports (
+  id TEXT PRIMARY KEY,
+  import_type TEXT NOT NULL,
+  file_name TEXT,
+  records_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'completed',
+  errors TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_imports_type ON grizzly_data_imports(import_type);
 `;
 
 export function initGrizzlyDatabase(db: Database.Database): void {

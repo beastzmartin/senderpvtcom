@@ -174,6 +174,7 @@ export class GrizzlySmsQueueService {
       const pendingMessages = db.prepare(`
         SELECT * FROM grizzly_sms_messages
         WHERE delivery_status = 'pending'
+          AND sms_id IS NOT NULL
           AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
         ORDER BY created_at ASC
         LIMIT 25

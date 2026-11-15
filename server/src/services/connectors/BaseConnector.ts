@@ -90,7 +90,10 @@ export abstract class BaseConnector implements IExtractionConnector {
       return `email:${lead.email.trim().toLowerCase()}`;
     }
     if (lead.place_id) {
-      return `place:${lead.place_id.trim()}`;
+      const pId = typeof lead.place_id === 'string' ? lead.place_id.trim() : String(lead.place_id).trim();
+      if (pId && !pId.startsWith('[object')) {
+        return `place:${pId}`;
+      }
     }
     const cleanName = (lead.business_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const cleanCity = (lead.city || '').toLowerCase().replace(/[^a-z0-9]/g, '');

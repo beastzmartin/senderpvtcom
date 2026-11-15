@@ -432,7 +432,7 @@
                 rating: !isNaN(rating) ? rating : null,
                 reviews_count: reviewsCount || 0,
                 operating_status: 'Operational',
-                place_id: o[9] || `gmap_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+                place_id: (typeof o[9] === 'string' ? o[9] : (Array.isArray(o[9]) && typeof o[9][0] === 'string' ? o[9][0] : null)) || `gmap_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
                 listing_url: window.location.href,
                 source: 'google_maps',
                 source_url: window.location.href,

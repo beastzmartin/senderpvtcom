@@ -112,26 +112,6 @@ export interface GrizzlyPushSmsResponse {
   error?: string;
 }
 
-export interface GrizzlyPushSmsPayload {
-  activationId: number;
-  phoneNumber: string;
-  sender: string;
-  messageContent: string;
-  receivedTimestamp?: string;
-  smsId?: number;
-  phone?: string | number;
-  phoneFrom?: string;
-  text?: string;
-}
-
-export interface GrizzlyPushSmsResult {
-  success: boolean;
-  messageId?: string;
-  status?: string;
-  error?: string;
-  providerResponse?: any;
-}
-
 // 4. PUSH_CALL Outbound Contract (https://api.grizzlysms.com/agent/api/sms)
 export interface GrizzlyPushCallOutboundRequest {
   action: 'PUSH_CALL';
@@ -150,7 +130,7 @@ export interface GrizzlyPushCallResponse {
 export interface GrizzlyPushCallRecordData {
   recordId: number;
   callId?: number;
-  activationId?: number;
+  activationId?: number | string;
   phone: number;
   phoneFrom: string;
   filePath?: string;

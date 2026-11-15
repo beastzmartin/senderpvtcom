@@ -164,6 +164,7 @@ export class GrizzlyVoiceQueueService {
       const pendingCalls = db.prepare(`
         SELECT * FROM grizzly_voice_calls
         WHERE delivery_status = 'pending'
+          AND call_id IS NOT NULL
           AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
         ORDER BY created_at ASC
         LIMIT 25

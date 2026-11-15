@@ -79,10 +79,13 @@ export class LeadService {
 
     // 3. Place ID match
     if (data.place_id) {
-      const match = db
-        .prepare(`SELECT * FROM leads WHERE user_id = ? AND place_id = ? LIMIT 1`)
-        .get(userId, data.place_id.trim()) as any;
-      if (match) return this.mapRow(match);
+      const placeIdStr = typeof data.place_id === 'string' ? data.place_id.trim() : String(data.place_id).trim();
+      if (placeIdStr && !placeIdStr.startsWith('[object')) {
+        const match = db
+          .prepare(`SELECT * FROM leads WHERE user_id = ? AND place_id = ? LIMIT 1`)
+          .get(userId, placeIdStr) as any;
+        if (match) return this.mapRow(match);
+      }
     }
 
     // 4. Exact business name + city match

@@ -44,13 +44,17 @@
         "*://*.google.co.in/maps/*",
         "*://maps.google.com/*"
       ],
-      "js": ["content/maps-extractor.js"],
+      "js": [
+        "content/maps-extractor.js"
+      ],
       "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["content/interceptData.js"],
+      "resources": [
+        "content/interceptData.js"
+      ],
       "matches": [
         "*://*.google.com/*",
         "*://*.google.co.in/*",
