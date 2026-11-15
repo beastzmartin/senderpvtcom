@@ -4,6 +4,7 @@ import { FiveSimUserService } from '../services/virtualNumber/fivesim/FiveSimUse
 import { FiveSimPriceLimitsService } from '../services/virtualNumber/fivesim/FiveSimPriceLimitsService.js';
 import { FiveSimCatalogService } from '../services/virtualNumber/fivesim/FiveSimCatalogService.js';
 import { FiveSimOrderService } from '../services/virtualNumber/fivesim/FiveSimOrderService.js';
+import { FiveSimVendorService } from '../services/virtualNumber/fivesim/FiveSimVendorService.js';
 
 export class FiveSimController {
   private configService: FiveSimConfigService;
@@ -11,6 +12,7 @@ export class FiveSimController {
   private priceLimitsService: FiveSimPriceLimitsService;
   private catalogService: FiveSimCatalogService;
   private orderService: FiveSimOrderService;
+  private vendorService: FiveSimVendorService;
 
   constructor() {
     this.configService = FiveSimConfigService.getInstance();
@@ -18,6 +20,7 @@ export class FiveSimController {
     this.priceLimitsService = new FiveSimPriceLimitsService();
     this.catalogService = new FiveSimCatalogService();
     this.orderService = FiveSimOrderService.getInstance();
+    this.vendorService = FiveSimVendorService.getInstance();
   }
 
   // =========================================================================
@@ -423,6 +426,209 @@ export class FiveSimController {
           maxPricesCount: maxPrices.length,
           syncedAt: new Date().toISOString()
         }
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  // =========================================================================
+  // PART 7: FLASH NOTIFICATIONS
+  // =========================================================================
+
+  public getFlash = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const lang = (req.params.lang as string) || 'en';
+      const flash = await this.configService.getClient().getFlashNotifications(lang);
+      res.json({ success: true, flash });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  // =========================================================================
+  // PART 8: VENDOR API (PARTNER & RESELLER SUITE)
+  // =========================================================================
+
+  public getVendorStats = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const stats = await this.vendorService.getVendorStats();
+      res.json({ success: true, stats });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public getVendorWallets = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const wallets = await this.vendorService.getVendorWallets();
+      res.json({ success: true, wallets });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public getVendorOrders = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const category = (req.query.category as string) === 'hosting' ? 'hosting' : 'activation';
+      const limit = parseInt(req.query.limit as string, 10) || 50;
+      const offset = parseInt(req.query.offset as string, 10) || 0;
+      const order = req.query.order as string;
+      const reverse = req.query.reverse === 'true';
+
+      const orders = await this.vendorService.getVendorOrders({
+        category,
+        limit,
+        offset,
+        order,
+        reverse
+      });
+
+      res.json({ success: true, orders });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public getVendorPayments = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const limit = parseInt(req.query.limit as string, 10) || 50;
+      const offset = parseInt(req.query.offset as string, 10) || 0;
+      const order = req.query.order as string;
+      const reverse = req.query.reverse === 'true';
+
+      const payments = await this.vendorService.getVendorPayments({
+        limit,
+        offset,
+        order,
+        reverse
+      });
+
+      res.json({ success: true, payments });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public requestVendorWithdraw = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { receiver, method, amount, fee } = req.body;
+      if (!receiver || !method || !amount || !fee) {
+        res.status(400).json({ success: false, error: 'receiver, method, amount, and fee are required.' });
+        return;
+      }
+
+      const result = await this.vendorService.requestWithdraw({ receiver, method, amount, fee });
+      res.json({ success: true, message: 'Withdrawal payout requested successfully.', result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public getVendorPrices = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const source = (req.query.source as string) || 'cached'; // 'live' or 'cached'
+
+      if (source === 'live') {
+        const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
+        const perPage = req.query.perPage ? parseInt(req.query.perPage as string, 10) : undefined;
+        const sortDir = req.query.sortDir as 'ASC' | 'DESC';
+        const sortField = req.query.sortField as string;
+
+        let filters: any;
+        if (req.query.filters) {
+          try {
+            filters = typeof req.query.filters === 'string' ? JSON.parse(req.query.filters) : req.query.filters;
+          } catch {}
+        }
+
+        const liveData = await this.vendorService.fetchVendorPrices({
+          filters,
+          sortDir,
+          sortField,
+          page,
+          perPage
+        });
+
+        res.json({ success: true, source: 'live', data: liveData });
+        return;
+      }
+
+      // Default: cached
+      const cached = this.vendorService.getCachedVendorPrices({
+        product: req.query.product as string,
+        country: req.query.country as string,
+        operator: req.query.operator as string,
+        enabled: req.query.enabled !== undefined ? req.query.enabled === 'true' : undefined,
+        limit: parseInt(req.query.limit as string, 10) || 50,
+        offset: parseInt(req.query.offset as string, 10) || 0
+      });
+
+      res.json({
+        success: true,
+        source: 'cached',
+        total: cached.total,
+        prices: cached.rows
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public createVendorPrice = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { Price, ProductName, CountryName, OperatorName } = req.body;
+      if (!Price || !ProductName || !CountryName || !OperatorName) {
+        res.status(400).json({ success: false, error: 'Price, ProductName, CountryName, OperatorName are required.' });
+        return;
+      }
+
+      const result = await this.vendorService.createVendorPrice({
+        Price: Number(Price),
+        ProductName: String(ProductName).toLowerCase(),
+        CountryName: String(CountryName).toLowerCase(),
+        OperatorName: String(OperatorName).toLowerCase()
+      });
+
+      res.json({ success: true, message: 'Vendor price created successfully.', result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public updateVendorPrice = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { Price, Product, Country, Operator } = req.body;
+      if (!Price || !Product || !Country || !Operator) {
+        res.status(400).json({ success: false, error: 'Price, Product, Country, Operator are required.' });
+        return;
+      }
+
+      const result = await this.vendorService.updateVendorPrice({
+        Price: Number(Price),
+        Product: String(Product).toLowerCase(),
+        Country: String(Country).toLowerCase(),
+        Operator: String(Operator).toLowerCase()
+      });
+
+      res.json({ success: true, message: 'Vendor price updated successfully.', result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public toggleVendorPrice = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { Disable, List } = req.body;
+      const result = await this.vendorService.toggleVendorPrices({
+        Disable: Boolean(Disable),
+        List: Array.isArray(List) ? List : undefined
+      });
+
+      res.json({
+        success: true,
+        message: Disable ? 'Vendor prices disabled.' : 'Vendor prices enabled.',
+        result
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });

@@ -1151,6 +1151,48 @@ export interface FiveSimHostingSmsItem {
   code: string;
 }
 
+// Parts 7 & 8 Types
+export interface FiveSimFlashNotification {
+  text: string;
+}
+
+export interface FiveSimVendorWallets {
+  fkwallet?: number;
+  payeer?: number;
+  unitpay?: number;
+  [wallet: string]: number | undefined;
+}
+
+export interface FiveSimVendorPriceItem {
+  ID: number;
+  CountryName: string;
+  ProductName: string;
+  OperatorName: string;
+  Price: number;
+  Count?: number;
+  Rate?: number;
+  Hours?: number;
+  Enabled?: boolean;
+  AutoDisabled?: boolean;
+  DeletedAt?: string;
+}
+
+export interface FiveSimVendorPricesResponse {
+  Prices: FiveSimVendorPriceItem[];
+  Products: string[];
+  Country: string[];
+  Operators: string[];
+  Total: number;
+}
+
+export interface FiveSimVendorWithdrawParams {
+  receiver: string;
+  method: string;
+  amount: string | number;
+  fee: string;
+}
+
+
 
 
 

@@ -8,7 +8,11 @@ import {
   FiveSimMaxPriceItem,
   FiveSimConfig,
   BestOperatorRecommendation,
-  FiveSimHostingSmsItem
+  FiveSimHostingSmsItem,
+  FiveSimFlashNotification,
+  FiveSimVendorWallets,
+  FiveSimVendorPriceItem,
+  FiveSimVendorWithdrawParams
 } from '../../../types';
 import {
   Radio,
@@ -45,13 +49,19 @@ import {
   Inbox,
   Send,
   HelpCircle,
-  CheckCheck
+  CheckCheck,
+  Bell,
+  Wallet,
+  ArrowDownToLine,
+  Volume2,
+  ShieldAlert,
+  Edit2
 } from 'lucide-react';
 
 export const FiveSimAdminConsole: React.FC = () => {
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<
-    'rates' | 'live-orders' | 'profile' | 'max-prices' | 'orders' | 'payments' | 'settings'
+    'rates' | 'live-orders' | 'profile' | 'max-prices' | 'orders' | 'payments' | 'vendor' | 'settings'
   >('rates');
 
   const { socket } = useWhatsApp();
@@ -60,6 +70,9 @@ export const FiveSimAdminConsole: React.FC = () => {
   const [testingConnection, setTestingConnection] = useState<boolean>(false);
   const [syncingAll, setSyncingAll] = useState<boolean>(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info' | 'warning'; message: string } | null>(null);
+
+  // Part 7: Flash Notification
+  const [flashNotice, setFlashNotice] = useState<string | null>(null);
 
   // 5SIM Data
   const [config, setConfig] = useState<FiveSimConfig | null>(null);
@@ -84,7 +97,6 @@ export const FiveSimAdminConsole: React.FC = () => {
   const [operatorRates, setOperatorRates] = useState<BestOperatorRecommendation[]>([]);
   const [bestOperator, setBestOperator] = useState<BestOperatorRecommendation | null>(null);
   const [loadingRates, setLoadingRates] = useState<boolean>(false);
-  const [countrySearch, setCountrySearch] = useState<string>('');
 
   // Purchase Modal (Part 5)
   const [isBuyModalOpen, setIsBuyModalOpen] = useState<boolean>(false);
@@ -102,6 +114,30 @@ export const FiveSimAdminConsole: React.FC = () => {
   const [inboxModalOrder, setInboxModalOrder] = useState<FiveSimOrderItem | null>(null);
   const [inboxMessages, setInboxMessages] = useState<FiveSimHostingSmsItem[]>([]);
   const [loadingInbox, setLoadingInbox] = useState<boolean>(false);
+
+  // Part 8: Vendor Suite
+  const [vendorStats, setVendorStats] = useState<FiveSimProfile | null>(null);
+  const [vendorWallets, setVendorWallets] = useState<FiveSimVendorWallets | null>(null);
+  const [vendorPrices, setVendorPrices] = useState<FiveSimVendorPriceItem[]>([]);
+  const [vendorPricesTotal, setVendorPricesTotal] = useState<number>(0);
+  const [loadingVendor, setLoadingVendor] = useState<boolean>(false);
+  const [vendorPriceSource, setVendorPriceSource] = useState<'cached' | 'live'>('cached');
+
+  // Vendor Payout Modal
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState<boolean>(false);
+  const [withdrawReceiver, setWithdrawReceiver] = useState<string>('');
+  const [withdrawMethod, setWithdrawMethod] = useState<string>('visa');
+  const [withdrawAmount, setWithdrawAmount] = useState<string>('');
+  const [withdrawFee, setWithdrawFee] = useState<string>('payeer');
+  const [isSubmittingWithdraw, setIsSubmittingWithdraw] = useState<boolean>(false);
+
+  // Vendor Price Create / Edit Modal
+  const [isAddVendorPriceOpen, setIsAddVendorPriceOpen] = useState<boolean>(false);
+  const [newVendorProduct, setNewVendorProduct] = useState<string>('whatsapp');
+  const [newVendorCountry, setNewVendorCountry] = useState<string>('england');
+  const [newVendorOperator, setNewVendorOperator] = useState<string>('virtual59');
+  const [newVendorPrice, setNewVendorPrice] = useState<number>(1.5);
+  const [isSubmittingVendorPrice, setIsSubmittingVendorPrice] = useState<boolean>(false);
 
   // Settings form
   const [apiKeyInput, setApiKeyInput] = useState<string>('');
@@ -162,6 +198,26 @@ export const FiveSimAdminConsole: React.FC = () => {
     setTimeout(() => setCopiedText(null), 2500);
   };
 
+  // Synthesized Web Audio Chime on SMS arrival
+  const playSmsChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12); // A5
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    } catch {}
+  };
+
   // Timer ticker for dynamic countdown updates
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -183,6 +239,7 @@ export const FiveSimAdminConsole: React.FC = () => {
     const handleSmsReceived = (data: any) => {
       const code = data?.sms?.code || data?.code || 'OTP';
       const phone = data?.phone || 'Virtual Number';
+      playSmsChime();
       showToast(`📩 OTP Code [${code}] arrived for ${phone}!`, 'success');
       loadActiveOrders();
       loadProfile();
@@ -204,6 +261,12 @@ export const FiveSimAdminConsole: React.FC = () => {
       loadProfile();
     };
 
+    const handleOrderAutoCanceled = (data: any) => {
+      showToast(`🛡️ Order #${data?.orderId || ''} auto-canceled at 14m to protect rating (-0.1 vs -0.15 timeout). Balance refunded.`, 'warning');
+      loadActiveOrders();
+      loadProfile();
+    };
+
     const handleOrderBanned = (data: any) => {
       showToast(`🚫 Order #${data?.orderId || ''} banned/reported.`, 'warning');
       loadActiveOrders();
@@ -215,6 +278,7 @@ export const FiveSimAdminConsole: React.FC = () => {
     socket.on('fivesim:order_updated', handleOrderUpdated);
     socket.on('fivesim:order_finished', handleOrderFinished);
     socket.on('fivesim:order_canceled', handleOrderCanceled);
+    socket.on('fivesim:order_autocanceled', handleOrderAutoCanceled);
     socket.on('fivesim:order_banned', handleOrderBanned);
 
     return () => {
@@ -223,6 +287,7 @@ export const FiveSimAdminConsole: React.FC = () => {
       socket.off('fivesim:order_updated', handleOrderUpdated);
       socket.off('fivesim:order_finished', handleOrderFinished);
       socket.off('fivesim:order_canceled', handleOrderCanceled);
+      socket.off('fivesim:order_autocanceled', handleOrderAutoCanceled);
       socket.off('fivesim:order_banned', handleOrderBanned);
     };
   }, [socket]);
@@ -236,6 +301,8 @@ export const FiveSimAdminConsole: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'rates') {
       loadRates(selectedCountry, selectedProduct);
+    } else if (activeTab === 'vendor') {
+      loadVendorData();
     }
   }, [selectedCountry, selectedProduct, activeTab]);
 
@@ -248,6 +315,14 @@ export const FiveSimAdminConsole: React.FC = () => {
         setApiKeyInput(cfgRes.config.apiKey || '');
         setBaseUrlInput(cfgRes.config.baseUrl || 'https://5sim.net/v1');
       }
+
+      // Check Part 7 Flash announcements
+      try {
+        const flashRes = await api.fiveSim.getFlash('en');
+        if (flashRes?.flash?.text && flashRes.flash.text.trim()) {
+          setFlashNotice(flashRes.flash.text);
+        }
+      } catch {}
 
       await Promise.all([
         loadProfile(),
@@ -351,6 +426,39 @@ export const FiveSimAdminConsole: React.FC = () => {
       }
     } catch (err: any) {
       showToast(err.message || 'Failed to fetch payments.', 'error');
+    }
+  };
+
+  // --- Part 8: Vendor Data Loaders ---
+  const loadVendorData = async () => {
+    setLoadingVendor(true);
+    try {
+      const [statsRes, walletsRes, pricesRes] = await Promise.allSettled([
+        api.fiveSim.getVendorStats(),
+        api.fiveSim.getVendorWallets(),
+        api.fiveSim.getVendorPrices({ source: vendorPriceSource, limit: 50 })
+      ]);
+
+      if (statsRes.status === 'fulfilled' && statsRes.value?.stats) {
+        setVendorStats(statsRes.value.stats);
+      }
+      if (walletsRes.status === 'fulfilled' && walletsRes.value?.wallets) {
+        setVendorWallets(walletsRes.value.wallets);
+      }
+      if (pricesRes.status === 'fulfilled') {
+        const val = pricesRes.value;
+        if (val.prices) {
+          setVendorPrices(val.prices);
+          setVendorPricesTotal(val.total || val.prices.length);
+        } else if (val.data?.Prices) {
+          setVendorPrices(val.data.Prices);
+          setVendorPricesTotal(val.data.Total || val.data.Prices.length);
+        }
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to fetch vendor data.', 'error');
+    } finally {
+      setLoadingVendor(false);
     }
   };
 
@@ -463,6 +571,11 @@ export const FiveSimAdminConsole: React.FC = () => {
     }
   };
 
+  const handleCopyAndFinish = async (order: FiveSimOrderItem, code: string) => {
+    copyToClipboard(code, 'OTP code');
+    await handleFinishOrder(order.id);
+  };
+
   const handleCancelOrder = async (orderId: number) => {
     if (!confirm(`Cancel order #${orderId}? Your balance will be refunded.`)) return;
     setOperatingOrderId(orderId);
@@ -509,6 +622,70 @@ export const FiveSimAdminConsole: React.FC = () => {
       showToast(err.message || 'Failed to fetch hosting inbox', 'error');
     } finally {
       setLoadingInbox(false);
+    }
+  };
+
+  // --- Part 8 Vendor Actions ---
+  const handleExecuteWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!withdrawReceiver || !withdrawAmount) return;
+    setIsSubmittingWithdraw(true);
+    try {
+      const res = await api.fiveSim.requestVendorWithdraw({
+        receiver: withdrawReceiver.trim(),
+        method: withdrawMethod,
+        amount: parseFloat(withdrawAmount),
+        fee: withdrawFee
+      });
+      if (res.success) {
+        showToast(`Withdrawal requested: ${withdrawAmount} RUB via ${withdrawMethod}!`, 'success');
+        setIsWithdrawModalOpen(false);
+        setWithdrawReceiver('');
+        setWithdrawAmount('');
+        await loadVendorData();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Withdrawal request failed.', 'error');
+    } finally {
+      setIsSubmittingWithdraw(false);
+    }
+  };
+
+  const handleCreateVendorPrice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVendorProduct || !newVendorCountry || !newVendorOperator || newVendorPrice <= 0) return;
+    setIsSubmittingVendorPrice(true);
+    try {
+      const res = await api.fiveSim.createVendorPrice({
+        Price: Number(newVendorPrice),
+        ProductName: newVendorProduct.trim().toLowerCase(),
+        CountryName: newVendorCountry.trim().toLowerCase(),
+        OperatorName: newVendorOperator.trim().toLowerCase()
+      });
+      if (res.success) {
+        showToast(`Vendor price created for ${newVendorProduct}!`, 'success');
+        setIsAddVendorPriceOpen(false);
+        await loadVendorData();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create vendor price.', 'error');
+    } finally {
+      setIsSubmittingVendorPrice(false);
+    }
+  };
+
+  const handleToggleVendorPrice = async (disable: boolean, priceId?: number) => {
+    try {
+      const res = await api.fiveSim.toggleVendorPrice({
+        Disable: disable,
+        List: priceId ? [priceId] : undefined
+      });
+      if (res.success) {
+        showToast(disable ? 'Price disabled' : 'Price enabled', 'success');
+        await loadVendorData();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to toggle price.', 'error');
     }
   };
 
@@ -665,17 +842,33 @@ export const FiveSimAdminConsole: React.FC = () => {
         </div>
       )}
 
+      {/* Part 7: Official Flash Broadcast Banner */}
+      {flashNotice && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3.5 rounded-2xl flex items-center justify-between text-xs shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <Bell className="w-4 h-4 text-amber-600 shrink-0 animate-bounce" />
+            <span className="font-semibold">{flashNotice}</span>
+          </div>
+          <button
+            onClick={() => setFlashNotice(null)}
+            className="text-amber-500 hover:text-amber-800 text-sm font-bold px-1"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="bg-gradient-to-r from-sky-950 via-indigo-950 to-slate-950 text-white rounded-3xl p-6 shadow-md flex flex-wrap items-center justify-between gap-4 border border-sky-900/40">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-500/25 text-sky-200 border border-sky-400/30 flex items-center gap-1">
               <Zap className="w-3 h-3 text-sky-400" />
-              Official 5SIM.NET Integration (Parts 0 - 6)
+              Official 5SIM Integration (Parts 0 - 8 Complete)
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Live Gateway Active
+              Carrier Mesh Active
             </span>
           </div>
 
@@ -685,7 +878,7 @@ export const FiveSimAdminConsole: React.FC = () => {
           </h1>
 
           <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-            Live operator rate matrices, stock counts, automated best-carrier selection, instant purchase flows, 15-minute OTP countdowns, and real-time dashboard notifications.
+            Live operator rate matrices, stock counts, automated best-carrier selection, instant purchase flows, 15-minute OTP countdowns, rating auto-cancellation safeguards, and full Partner/Vendor API suite.
           </p>
         </div>
 
@@ -806,6 +999,18 @@ export const FiveSimAdminConsole: React.FC = () => {
         >
           <DollarSign className="w-4 h-4" />
           <span>Payments ({paymentsTotal})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('vendor')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'vendor'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Wallet className="w-4 h-4" />
+          <span>Vendor & Reseller Hub (Part 8)</span>
         </button>
 
         <button
@@ -1101,7 +1306,7 @@ export const FiveSimAdminConsole: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: ACTIVE SMS & ORDER MONITOR (PART 6) */}
+      {/* TAB 2: ACTIVE SMS & ORDER MONITOR (PART 6 ENHANCED) */}
       {/* ========================================================================= */}
       {activeTab === 'live-orders' && (
         <div className="space-y-6">
@@ -1118,6 +1323,10 @@ export const FiveSimAdminConsole: React.FC = () => {
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-100 text-slate-700">
                   Auto-Polling 3.5s
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                  Auto-Cancel at 14m Active
                 </span>
               </div>
               <p className="text-xs text-slate-500">
@@ -1155,7 +1364,7 @@ export const FiveSimAdminConsole: React.FC = () => {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">No Active Virtual Numbers Waiting for SMS</h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                When you buy an activation number or rental line, it will appear here with a 15-minute countdown and live incoming SMS radar.
+                When you buy an activation number or rental line, it will appear here with a 15-minute countdown, audio alerts, and live incoming SMS radar.
               </p>
               <button
                 type="button"
@@ -1243,18 +1452,27 @@ export const FiveSimAdminConsole: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Expiry Progress Bar */}
-                    <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-1000 ${
-                          remaining.percent > 40
-                            ? 'bg-emerald-500'
-                            : remaining.percent > 15
-                            ? 'bg-amber-500'
-                            : 'bg-rose-500'
-                        }`}
-                        style={{ width: `${remaining.percent}%` }}
-                      />
+                    {/* Expiry Progress Bar & Rating Shield Indicator */}
+                    <div className="space-y-1">
+                      <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-1000 ${
+                            remaining.percent > 40
+                              ? 'bg-emerald-500'
+                              : remaining.percent > 15
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
+                          }`}
+                          style={{ width: `${remaining.percent}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span>Started: {order.created_at?.slice(11, 16)}</span>
+                        <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                          <ShieldCheck className="w-3 h-3" />
+                          Auto-Cancel @ 14m
+                        </span>
+                      </div>
                     </div>
 
                     {/* SMS Payload Display Card */}
@@ -1266,7 +1484,7 @@ export const FiveSimAdminConsole: React.FC = () => {
                             <span>Verification Code Ready</span>
                           </div>
                           <span className="text-[10px] font-mono text-emerald-700">
-                            {latestSms?.sender || 'SMS Gate'}
+                            {latestSms?.sender || 'SMS Gate'} ({order.sms?.length || 1} msg)
                           </span>
                         </div>
 
@@ -1276,33 +1494,56 @@ export const FiveSimAdminConsole: React.FC = () => {
                             {latestSms?.code || 'Received'}
                           </div>
 
-                          {latestSms?.code && (
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(latestSms.code, 'OTP code')}
-                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-2xs"
-                            >
-                              {copiedText === 'OTP code' ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>Copied!</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3.5 h-3.5" />
-                                  <span>Copy Code</span>
-                                </>
-                              )}
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {/* Copy Code button */}
+                            {latestSms?.code && (
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(latestSms.code, 'OTP code')}
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1"
+                              >
+                                {copiedText === 'OTP code' ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>Copy</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+
+                            {/* Combo: Copy & Finish in 1 click! */}
+                            {latestSms?.code && (
+                              <button
+                                type="button"
+                                onClick={() => handleCopyAndFinish(order, latestSms.code)}
+                                disabled={isOperating}
+                                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg transition flex items-center gap-1.5 shadow-2xs"
+                                title="Copy code and immediately mark order completed for +0.5 rating points"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                <span>Copy & Finish (+0.5)</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
 
-                        {/* Full SMS Message text */}
-                        {latestSms?.text && (
-                          <div className="text-[11px] text-slate-600 bg-white/70 p-2.5 rounded-lg border border-emerald-100 leading-relaxed font-mono">
-                            {latestSms.text}
-                          </div>
-                        )}
+                        {/* Sequential SMS list if multiple messages */}
+                        <div className="space-y-1.5 pt-1">
+                          {order.sms && order.sms.map((s, idx) => (
+                            <div key={idx} className="text-[11px] text-slate-600 bg-white/70 p-2.5 rounded-lg border border-emerald-100 leading-relaxed font-mono">
+                              <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
+                                <span>Msg #{idx + 1} from {s.sender || 'System'}</span>
+                                <span>{s.date || s.created_at}</span>
+                              </div>
+                              <div>{s.text}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-center space-y-1.5">
@@ -1337,7 +1578,7 @@ export const FiveSimAdminConsole: React.FC = () => {
                           onClick={() => handleBanOrder(order.id)}
                           disabled={isOperating}
                           className="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 text-[11px] font-bold rounded-xl transition flex items-center gap-1"
-                          title="Ban/Report number if already registered"
+                          title="Ban/Report number if already registered on WhatsApp"
                         >
                           <Ban className="w-3 h-3" />
                           <span>Ban</span>
@@ -1778,7 +2019,203 @@ export const FiveSimAdminConsole: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 7: CREDENTIALS SETTINGS (PART 1.2) */}
+      {/* TAB 7: VENDOR & RESELLER HUB (PART 8) */}
+      {/* ========================================================================= */}
+      {activeTab === 'vendor' && (
+        <div className="space-y-6">
+          {/* Vendor Overview Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Vendor Identity */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-2xs space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                Partner / Vendor ID
+              </span>
+              <div className="text-lg font-black text-slate-900 truncate">
+                {vendorStats?.vendor || profile?.vendor || 'Partner Account'}
+              </div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                Email: {vendorStats?.email || profile?.email || 'Authenticated'}
+              </div>
+            </div>
+
+            {/* FKWallet Reserve */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-2xs space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                FKWallet Reserve
+              </span>
+              <div className="text-xl font-black font-mono text-emerald-600">
+                {(vendorWallets?.fkwallet || 0).toLocaleString()} RUB
+              </div>
+              <div className="text-[11px] text-slate-400">Available Payout Reserve</div>
+            </div>
+
+            {/* Payeer Reserve */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-2xs space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                Payeer Reserve
+              </span>
+              <div className="text-xl font-black font-mono text-sky-600">
+                {(vendorWallets?.payeer || 0).toLocaleString()} RUB
+              </div>
+              <div className="text-[11px] text-slate-400">Available Payout Reserve</div>
+            </div>
+
+            {/* UnitPay Reserve */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-2xs space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                UnitPay Reserve
+              </span>
+              <div className="text-xl font-black font-mono text-indigo-600">
+                {(vendorWallets?.unitpay || 0).toLocaleString()} RUB
+              </div>
+              <div className="text-[11px] text-slate-400">Available Payout Reserve</div>
+            </div>
+          </div>
+
+          {/* Action Bar */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-indigo-600" />
+                Vendor Price Management & Payouts (Part 8)
+              </h2>
+              <p className="text-xs text-slate-500">
+                Supply your own carrier numbers, configure vendor rates, manage payment system reserves, and withdraw payouts.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setVendorPriceSource(vendorPriceSource === 'live' ? 'cached' : 'live');
+                  loadVendorData();
+                }}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingVendor ? 'animate-spin' : ''}`} />
+                <span>Source: {vendorPriceSource}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsWithdrawModalOpen(true)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-2xs"
+              >
+                <ArrowDownToLine className="w-3.5 h-3.5" />
+                <span>Request Payout</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAddVendorPriceOpen(true)}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-2xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Vendor Price</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Vendor Prices Table */}
+          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-2xs">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800">
+                Active Vendor Prices ({vendorPricesTotal})
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleToggleVendorPrice(false)}
+                  className="px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100"
+                >
+                  Enable All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleVendorPrice(true)}
+                  className="px-2.5 py-1 text-[11px] font-bold text-rose-700 bg-rose-50 rounded-lg hover:bg-rose-100"
+                >
+                  Disable All
+                </button>
+              </div>
+            </div>
+
+            {loadingVendor ? (
+              <div className="p-12 text-center space-y-2">
+                <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+                <p className="text-xs text-slate-500">Loading vendor data & prices...</p>
+              </div>
+            ) : vendorPrices.length === 0 ? (
+              <div className="p-12 text-center space-y-2 text-slate-500 text-xs">
+                <Wallet className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="font-bold text-slate-800">No vendor prices configured yet.</p>
+                <p>Click "Add Vendor Price" to supply phone numbers or customize carrier rates.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px]">
+                      <th className="py-3 px-4">Price ID</th>
+                      <th className="py-3 px-4">Service</th>
+                      <th className="py-3 px-4">Country</th>
+                      <th className="py-3 px-4">Carrier</th>
+                      <th className="py-3 px-4">Vendor Price</th>
+                      <th className="py-3 px-4">Stock</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Toggle Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {vendorPrices.map((vp) => (
+                      <tr key={vp.ID} className="hover:bg-slate-50/70">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-500">#{vp.ID}</td>
+                        <td className="py-3 px-4 capitalize font-bold text-slate-900">{vp.ProductName}</td>
+                        <td className="py-3 px-4 capitalize text-slate-700">{vp.CountryName}</td>
+                        <td className="py-3 px-4 uppercase font-mono text-slate-600">{vp.OperatorName}</td>
+                        <td className="py-3 px-4 font-mono font-bold text-indigo-700 text-sm">
+                          {vp.Price.toFixed(2)} RUB
+                        </td>
+                        <td className="py-3 px-4 font-mono text-slate-700">
+                          {vp.Count !== undefined ? vp.Count : 'Live'}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              vp.Enabled !== false
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            {vp.Enabled !== false ? 'Active' : 'Disabled'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleVendorPrice(vp.Enabled !== false, vp.ID)}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                              vp.Enabled !== false
+                                ? 'text-rose-600 hover:bg-rose-50'
+                                : 'text-emerald-600 hover:bg-emerald-50'
+                            }`}
+                          >
+                            {vp.Enabled !== false ? 'Disable' : 'Enable'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 8: CREDENTIALS SETTINGS (PART 1.2) */}
       {/* ========================================================================= */}
       {activeTab === 'settings' && (
         <form onSubmit={handleSaveSettings} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-2xs space-y-5">
@@ -2175,6 +2612,188 @@ export const FiveSimAdminConsole: React.FC = () => {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 4: VENDOR PAYOUT / WITHDRAWAL MODAL (PART 8.5) */}
+      {/* ========================================================================= */}
+      {isWithdrawModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <ArrowDownToLine className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-sm font-black text-slate-900">
+                  Request Vendor Payout (Part 8.5)
+                </h3>
+              </div>
+              <button onClick={() => setIsWithdrawModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteWithdraw} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Receiver Account / Wallet Number</label>
+                <input
+                  type="text"
+                  value={withdrawReceiver}
+                  onChange={(e) => setWithdrawReceiver(e.target.value)}
+                  placeholder="e.g. P1002345678 or 4111222233334444"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-sky-500/20"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Withdrawal Output Method</label>
+                <select
+                  value={withdrawMethod}
+                  onChange={(e) => setWithdrawMethod(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white"
+                >
+                  <option value="visa">Visa / Mastercard</option>
+                  <option value="payeer">Payeer Wallet</option>
+                  <option value="fkwallet">FKWallet</option>
+                  <option value="unitpay">UnitPay</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Withdrawal Amount (RUB)</label>
+                <input
+                  type="number"
+                  step="1"
+                  min="10"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  placeholder="100.00"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Payment System Fee Provider</label>
+                <select
+                  value={withdrawFee}
+                  onChange={(e) => setWithdrawFee(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white"
+                >
+                  <option value="payeer">Payeer</option>
+                  <option value="fkwallet">FKWallet</option>
+                  <option value="unitpay">UnitPay</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsWithdrawModalOpen(false)}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingWithdraw}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-2xs disabled:opacity-50"
+                >
+                  {isSubmittingWithdraw ? 'Submitting Payout...' : 'Confirm Withdrawal'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: ADD VENDOR PRICE MODAL (PART 8.7) */}
+      {/* ========================================================================= */}
+      {isAddVendorPriceOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-sm font-black text-slate-900">
+                  Configure New Vendor Price (Part 8.7)
+                </h3>
+              </div>
+              <button onClick={() => setIsAddVendorPriceOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateVendorPrice} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Product / Service</label>
+                <input
+                  type="text"
+                  value={newVendorProduct}
+                  onChange={(e) => setNewVendorProduct(e.target.value.toLowerCase())}
+                  placeholder="e.g. whatsapp, telegram"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Country Slug</label>
+                <input
+                  type="text"
+                  value={newVendorCountry}
+                  onChange={(e) => setNewVendorCountry(e.target.value.toLowerCase())}
+                  placeholder="e.g. england, usa, india"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Carrier / Operator</label>
+                <input
+                  type="text"
+                  value={newVendorOperator}
+                  onChange={(e) => setNewVendorOperator(e.target.value.toLowerCase())}
+                  placeholder="e.g. virtual59, vodafone"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Vendor Price (RUB)</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  min="0.1"
+                  value={newVendorPrice}
+                  onChange={(e) => setNewVendorPrice(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:bg-white"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddVendorPriceOpen(false)}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingVendorPrice}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-2xs disabled:opacity-50"
+                >
+                  {isSubmittingVendorPrice ? 'Saving Price...' : 'Save Vendor Price'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

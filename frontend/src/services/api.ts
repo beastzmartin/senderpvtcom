@@ -64,7 +64,12 @@ import {
   FiveSimProductsMap,
   BestOperatorRecommendation,
   BuyActivationParams,
-  FiveSimHostingSmsItem
+  FiveSimHostingSmsItem,
+  FiveSimFlashNotification,
+  FiveSimVendorWallets,
+  FiveSimVendorPriceItem,
+  FiveSimVendorPricesResponse,
+  FiveSimVendorWithdrawParams
 } from '../types';
 
 const getApiBase = (): string => {
@@ -1678,6 +1683,107 @@ export const api = {
       }),
 
     getHostingInbox: (id: number | string) =>
-      request<{ success: boolean; total: number; messages: FiveSimHostingSmsItem[] }>(`/fivesim/orders/${id}/inbox`)
+      request<{ success: boolean; total: number; messages: FiveSimHostingSmsItem[] }>(`/fivesim/orders/${id}/inbox`),
+
+    // --- Part 7: Flash Notifications ---
+    getFlash: (lang = 'en') =>
+      request<{ success: boolean; flash: FiveSimFlashNotification }>(`/fivesim/flash/${encodeURIComponent(lang)}`),
+
+    // --- Part 8: Vendor API ---
+    getVendorStats: () =>
+      request<{ success: boolean; stats: FiveSimProfile }>('/fivesim/vendor/stats'),
+
+    getVendorWallets: () =>
+      request<{ success: boolean; wallets: FiveSimVendorWallets }>('/fivesim/vendor/wallets'),
+
+    getVendorOrders: (params?: {
+      category?: 'activation' | 'hosting';
+      limit?: number;
+      offset?: number;
+      order?: string;
+      reverse?: boolean;
+    }) => {
+      const query = new URLSearchParams();
+      if (params?.category) query.set('category', params.category);
+      if (params?.limit) query.set('limit', String(params.limit));
+      if (params?.offset) query.set('offset', String(params.offset));
+      if (params?.order) query.set('order', params.order);
+      if (params?.reverse !== undefined) query.set('reverse', String(params.reverse));
+      return request<{ success: boolean; orders: any }>(`/fivesim/vendor/orders?${query.toString()}`);
+    },
+
+    getVendorPayments: (params?: {
+      limit?: number;
+      offset?: number;
+      order?: string;
+      reverse?: boolean;
+    }) => {
+      const query = new URLSearchParams();
+      if (params?.limit) query.set('limit', String(params.limit));
+      if (params?.offset) query.set('offset', String(params.offset));
+      if (params?.order) query.set('order', params.order);
+      if (params?.reverse !== undefined) query.set('reverse', String(params.reverse));
+      return request<{ success: boolean; payments: any }>(`/fivesim/vendor/payments?${query.toString()}`);
+    },
+
+    requestVendorWithdraw: (data: FiveSimVendorWithdrawParams) =>
+      request<{ success: boolean; message: string; result: any }>('/fivesim/vendor/withdraw', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getVendorPrices: (params?: {
+      source?: 'live' | 'cached';
+      country?: string;
+      product?: string;
+      operator?: string;
+      enabled?: boolean;
+      page?: number;
+      perPage?: number;
+      limit?: number;
+      offset?: number;
+      sortDir?: string;
+      sortField?: string;
+      filters?: any;
+    }) => {
+      const query = new URLSearchParams();
+      if (params?.source) query.set('source', params.source);
+      if (params?.country) query.set('country', params.country);
+      if (params?.product) query.set('product', params.product);
+      if (params?.operator) query.set('operator', params.operator);
+      if (params?.enabled !== undefined) query.set('enabled', String(params.enabled));
+      if (params?.page !== undefined) query.set('page', String(params.page));
+      if (params?.perPage !== undefined) query.set('perPage', String(params.perPage));
+      if (params?.limit !== undefined) query.set('limit', String(params.limit));
+      if (params?.offset !== undefined) query.set('offset', String(params.offset));
+      if (params?.sortDir) query.set('sortDir', params.sortDir);
+      if (params?.sortField) query.set('sortField', params.sortField);
+      if (params?.filters) query.set('filters', JSON.stringify(params.filters));
+      return request<{
+        success: boolean;
+        source: 'live' | 'cached';
+        total?: number;
+        prices?: FiveSimVendorPriceItem[];
+        data?: FiveSimVendorPricesResponse;
+      }>(`/fivesim/vendor/prices?${query.toString()}`);
+    },
+
+    createVendorPrice: (data: { Price: number; ProductName: string; CountryName: string; OperatorName: string }) =>
+      request<{ success: boolean; message: string; result: any }>('/fivesim/vendor/prices', {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    updateVendorPrice: (data: { Price: number; Product: string; Country: string; Operator: string }) =>
+      request<{ success: boolean; message: string; result: any }>('/fivesim/vendor/prices', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    toggleVendorPrice: (data: { Disable: boolean; List?: number[] }) =>
+      request<{ success: boolean; message: string; result: any }>('/fivesim/vendor/prices/disable', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      })
   }
 };

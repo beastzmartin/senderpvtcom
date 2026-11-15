@@ -185,6 +185,30 @@ export class FiveSimOrderService {
   // =========================================================================
 
   /**
+   * Smart OTP Code Extractor from SMS text
+   */
+  public static extractOtpFromText(text: string): string {
+    if (!text) return '';
+    // 1. Google style "G-123456"
+    const gMatch = text.match(/\bG-(\d{4,8})\b/i);
+    if (gMatch) return gMatch[1];
+
+    // 2. WhatsApp style hyphenated "123-456"
+    const hyphenMatch = text.match(/\b(\d{3}-\d{3})\b/);
+    if (hyphenMatch) return hyphenMatch[1];
+
+    // 3. Keyword followed by digits: "code is 123456", "verification code: 123456", "OTP: 1234"
+    const kwMatch = text.match(/(?:code|otp|pin|verification|password|código|код)[^\d\r\n]{1,15}(\d{4,8})\b/i);
+    if (kwMatch) return kwMatch[1];
+
+    // 4. Standalone 4 to 8 digit number
+    const standaloneMatch = text.match(/\b(\d{4,8})\b/);
+    if (standaloneMatch) return standaloneMatch[1];
+
+    return '';
+  }
+
+  /**
    * Start 3.5s polling loop for incoming SMS
    */
   public startSmsWatcher(orderId: number, userId?: string): void {
@@ -199,21 +223,54 @@ export class FiveSimOrderService {
         const startTime = this.pollingStartTimes.get(orderId) || Date.now();
         const elapsedMs = Date.now() - startTime;
 
-        // Auto-stop after 15 minutes max waiting time
-        if (elapsedMs > 15 * 60 * 1000) {
-          console.log(`[5SIM Watcher] Order #${orderId} exceeded 15min max waiting window. Stopping watcher.`);
-          this.stopSmsWatcher(orderId);
-          return;
+        const order = await this.client.checkOrder(orderId);
+
+        // Sanitize & enhance SMS array with smart OTP extractor
+        if (Array.isArray(order.sms)) {
+          for (const s of order.sms) {
+            if (!s.code && s.text) {
+              s.code = FiveSimOrderService.extractOtpFromText(s.text);
+            }
+          }
         }
 
-        const order = await this.client.checkOrder(orderId);
         const hasSms = Array.isArray(order.sms) && order.sms.length > 0;
 
         // Check if SMS arrived
         if (hasSms) {
           console.log(`[5SIM Watcher] SMS ARRIVED for Order #${orderId}! Code: [${order.sms![0].code}]`);
           this.updateOrderInDb(order, userId, true);
-          // Once SMS is received, we can slow down or stop polling after updating
+          // Once SMS is received, stop polling
+          this.stopSmsWatcher(orderId);
+          return;
+        }
+
+        // Auto-cancellation safeguard at 14 minutes:
+        // Automatically cancels order to prevent the harsh -0.15 rating timeout penalty
+        // (Cancellation only costs -0.1 rating points and refunds balance immediately)
+        if (elapsedMs >= 14 * 60 * 1000 && !hasSms) {
+          console.log(`[5SIM Watcher] Order #${orderId} reached 14 minutes without SMS. Auto-canceling to protect rating (-0.1 vs -0.15)...`);
+          try {
+            await this.cancelOrder(orderId, userId);
+            const io = getSocketIO();
+            if (io) {
+              const payload = {
+                orderId,
+                message: 'Order auto-canceled at 14 minutes to protect account rating (-0.1 vs -0.15 timeout). Balance refunded.'
+              };
+              if (userId) io.to(`user:${userId}`).emit('fivesim:order_autocanceled', payload);
+              io.emit('fivesim:order_autocanceled', payload);
+            }
+          } catch (cancelErr: any) {
+            console.warn(`[5SIM Watcher] Failed to auto-cancel #${orderId}:`, cancelErr.message);
+          }
+          this.stopSmsWatcher(orderId);
+          return;
+        }
+
+        // Auto-stop after 15 minutes max waiting time
+        if (elapsedMs > 15 * 60 * 1000) {
+          console.log(`[5SIM Watcher] Order #${orderId} exceeded 15min max waiting window. Stopping watcher.`);
           this.stopSmsWatcher(orderId);
           return;
         }
@@ -290,6 +347,15 @@ export class FiveSimOrderService {
 
   private updateOrderInDb(order: FiveSimOrderItem, userId?: string, isNewSms = false): void {
     try {
+      // Auto-extract OTP if missing from SMS text
+      if (Array.isArray(order.sms)) {
+        for (const s of order.sms) {
+          if (!s.code && s.text) {
+            s.code = FiveSimOrderService.extractOtpFromText(s.text);
+          }
+        }
+      }
+
       const db = getDatabase();
       const existing = db.prepare('SELECT sms_count FROM fivesim_orders WHERE id = ?').get(order.id) as any;
       const prevSmsCount = existing?.sms_count || 0;
@@ -344,3 +410,4 @@ export class FiveSimOrderService {
     }
   }
 }
+

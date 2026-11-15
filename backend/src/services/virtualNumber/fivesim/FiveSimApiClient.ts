@@ -9,7 +9,16 @@ import {
   BuyActivationParams,
   BuyHostingParams,
   ReuseNumberParams,
-  FiveSimHostingInboxResponse
+  FiveSimHostingInboxResponse,
+  FiveSimFlashNotification,
+  FiveSimVendorStats,
+  FiveSimVendorWallets,
+  FiveSimVendorWithdrawParams,
+  FiveSimVendorPricesResponse,
+  FiveSimVendorPricesQueryParams,
+  CreateVendorPriceParams,
+  UpdateVendorPriceParams,
+  ToggleVendorPriceParams
 } from './types.js';
 
 export interface FiveSimClientOptions {
@@ -490,6 +499,163 @@ export class FiveSimApiClient {
     return this.request<FiveSimHostingInboxResponse>(`/user/sms/inbox/${id}`, {
       method: 'GET'
     });
+  }
+
+  // =========================================================================
+  // PART 7: NOTIFICATIONS & FLASH BROADCASTS
+  // =========================================================================
+
+  /**
+   * 7.1 Flash Notifications
+   * GET https://5sim.net/v1/guest/flash/$lang
+   */
+  public async getFlashNotifications(lang = 'en'): Promise<FiveSimFlashNotification> {
+    try {
+      return await this.request<FiveSimFlashNotification>(`/guest/flash/${encodeURIComponent(lang)}`, {
+        method: 'GET',
+        isGuest: true
+      });
+    } catch {
+      return { text: '' };
+    }
+  }
+
+  // =========================================================================
+  // PART 8: VENDOR API (PARTNER & RESELLER ENDPOINTS)
+  // =========================================================================
+
+  /**
+   * 8.1 Vendor Statistics
+   * GET https://5sim.net/v1/user/vendor
+   */
+  public async getVendorStats(): Promise<FiveSimVendorStats> {
+    return this.request<FiveSimVendorStats>('/user/vendor', {
+      method: 'GET'
+    });
+  }
+
+  /**
+   * 8.2 Wallets Reserve
+   * GET https://5sim.net/v1/vendor/wallets
+   */
+  public async getVendorWallets(): Promise<FiveSimVendorWallets> {
+    return this.request<FiveSimVendorWallets>('/vendor/wallets', {
+      method: 'GET'
+    });
+  }
+
+  /**
+   * 8.3 Vendor Orders History
+   * GET https://5sim.net/v1/vendor/orders?category=$category
+   */
+  public async getVendorOrders(params: {
+    category: 'activation' | 'hosting';
+    limit?: number;
+    offset?: number;
+    order?: string;
+    reverse?: boolean;
+  }): Promise<FiveSimOrdersResponse> {
+    return this.request<FiveSimOrdersResponse>('/vendor/orders', {
+      method: 'GET',
+      params: {
+        category: params.category,
+        limit: params.limit,
+        offset: params.offset,
+        order: params.order,
+        reverse: params.reverse !== undefined ? String(params.reverse) : undefined
+      }
+    });
+  }
+
+  /**
+   * 8.4 Vendor Payments History
+   * GET https://5sim.net/v1/vendor/payments
+   */
+  public async getVendorPayments(params?: {
+    limit?: number;
+    offset?: number;
+    order?: string;
+    reverse?: boolean;
+  }): Promise<FiveSimPaymentsResponse> {
+    return this.request<FiveSimPaymentsResponse>('/vendor/payments', {
+      method: 'GET',
+      params: params
+        ? {
+            limit: params.limit,
+            offset: params.offset,
+            order: params.order,
+            reverse: params.reverse !== undefined ? String(params.reverse) : undefined
+          }
+        : undefined
+    });
+  }
+
+  /**
+   * 8.5 Create Payouts
+   * POST https://5sim.net/v1/vendor/withdraw
+   */
+  public async requestVendorWithdraw(params: FiveSimVendorWithdrawParams): Promise<{ success: boolean; data?: any }> {
+    const res = await this.request<any>('/vendor/withdraw', {
+      method: 'POST',
+      body: params
+    });
+    return { success: true, data: res };
+  }
+
+  /**
+   * 8.6 Vendor Prices — Get List
+   * GET https://5sim.net/v1/vendor/prices
+   */
+  public async getVendorPrices(params?: FiveSimVendorPricesQueryParams): Promise<FiveSimVendorPricesResponse> {
+    const queryParams: Record<string, any> = {};
+    if (params?.filters && Object.keys(params.filters).length > 0) {
+      queryParams._filters = JSON.stringify(params.filters);
+    }
+    if (params?.sortDir) queryParams._sortDir = params.sortDir;
+    if (params?.sortField) queryParams._sortField = params.sortField;
+    if (params?.page !== undefined) queryParams._page = params.page;
+    if (params?.perPage !== undefined) queryParams._perPage = params.perPage;
+
+    return this.request<FiveSimVendorPricesResponse>('/vendor/prices', {
+      method: 'GET',
+      params: queryParams
+    });
+  }
+
+  /**
+   * 8.7 Create Vendor Price
+   * PUT https://5sim.net/v1/vendor/prices
+   */
+  public async createVendorPrice(params: CreateVendorPriceParams): Promise<{ success: boolean; data?: any }> {
+    const res = await this.request<any>('/vendor/prices', {
+      method: 'PUT',
+      body: params
+    });
+    return { success: true, data: res };
+  }
+
+  /**
+   * 8.8 Change Vendor Price
+   * POST https://5sim.net/v1/vendor/prices
+   */
+  public async updateVendorPrice(params: UpdateVendorPriceParams): Promise<{ success: boolean; data?: any }> {
+    const res = await this.request<any>('/vendor/prices', {
+      method: 'POST',
+      body: params
+    });
+    return { success: true, data: res };
+  }
+
+  /**
+   * 8.9 Enable / Disable Vendor Price
+   * POST https://5sim.net/v1/vendor/prices/disable
+   */
+  public async toggleVendorPrice(params: ToggleVendorPriceParams): Promise<{ success: boolean; data?: any }> {
+    const res = await this.request<any>('/vendor/prices/disable', {
+      method: 'POST',
+      body: params
+    });
+    return { success: true, data: res };
   }
 }
 

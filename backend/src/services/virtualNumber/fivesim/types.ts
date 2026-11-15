@@ -219,4 +219,133 @@ export interface FiveSimHostingInboxResponse {
   Total: number;
 }
 
+// =========================================================================
+// PART 7: NOTIFICATIONS, FLASH MESSAGES & ORDER STATUSES
+// =========================================================================
+
+export interface FiveSimFlashNotification {
+  text: string;
+}
+
+export const FIVESIM_ORDER_STATUS_DESCRIPTIONS: Record<FiveSimOrderStatus, { label: string; description: string; color: string }> = {
+  PENDING: {
+    label: 'Preparation / Waiting',
+    description: 'Number allocated. Waiting for incoming SMS message from service.',
+    color: 'amber'
+  },
+  RECEIVED: {
+    label: 'SMS Received',
+    description: 'Incoming SMS verification code received successfully.',
+    color: 'emerald'
+  },
+  CANCELED: {
+    label: 'Canceled',
+    description: 'Order canceled by user before SMS arrived. Funds refunded.',
+    color: 'slate'
+  },
+  TIMEOUT: {
+    label: 'Expired / Timeout',
+    description: '15-minute timeout elapsed without receiving SMS.',
+    color: 'rose'
+  },
+  FINISHED: {
+    label: 'Completed',
+    description: 'Order confirmed and finished. +0.5 rating points awarded.',
+    color: 'teal'
+  },
+  BANNED: {
+    label: 'Banned / Reported',
+    description: 'Number reported as already registered or blocked by service.',
+    color: 'red'
+  }
+};
+
+// =========================================================================
+// PART 8: VENDOR API (PARTNER & RESELLER SUITE)
+// =========================================================================
+
+export interface FiveSimVendorWallets {
+  fkwallet?: number;
+  payeer?: number;
+  unitpay?: number;
+  [wallet: string]: number | undefined;
+}
+
+export interface FiveSimVendorStats extends FiveSimProfile {}
+
+export interface FiveSimVendorWithdrawParams {
+  receiver: string;
+  method: string;
+  amount: string | number;
+  fee: 'fkwallet' | 'payeer' | 'unitpay' | string;
+}
+
+export interface FiveSimVendorPriceItem {
+  ID: number;
+  CountryName: string;
+  ProductName: string;
+  OperatorName: string;
+  Price: number;
+  Count?: number;
+  Rate?: number;
+  Hours?: number;
+  Enabled?: boolean;
+  AutoDisabled?: boolean;
+  DeletedAt?: string;
+  NewPrice?: number;
+  NewPriceUpdatedAt?: string;
+}
+
+export interface FiveSimVendorPricesResponse {
+  Prices: FiveSimVendorPriceItem[];
+  Products: string[];
+  Country: string[];
+  Operators: string[];
+  Total: number;
+}
+
+export interface FiveSimVendorPricesFilter {
+  ID?: string | number;
+  CountryName?: string;
+  ProductName?: string;
+  OperatorName?: string;
+  Count?: number;
+  Rate?: number;
+  Price?: number;
+  Hours?: number;
+  Enabled?: boolean;
+  AutoDisabled?: boolean;
+  DeletedAt?: string;
+  NewPrice?: number;
+  NewPriceUpdatedAt?: string;
+}
+
+export interface FiveSimVendorPricesQueryParams {
+  filters?: FiveSimVendorPricesFilter;
+  sortDir?: 'ASC' | 'DESC';
+  sortField?: string;
+  page?: number;
+  perPage?: number;
+}
+
+export interface CreateVendorPriceParams {
+  Price: number;
+  ProductName: string;
+  CountryName: string;
+  OperatorName: string;
+}
+
+export interface UpdateVendorPriceParams {
+  Price: number;
+  Product: string;
+  Country: string;
+  Operator: string;
+}
+
+export interface ToggleVendorPriceParams {
+  Disable: boolean;
+  List?: number[];
+}
+
+
 

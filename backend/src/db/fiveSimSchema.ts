@@ -72,6 +72,38 @@ CREATE TABLE IF NOT EXISTS fivesim_max_prices (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fivesim_max_prices_product ON fivesim_max_prices(product);
+
+-- 5SIM Vendor Prices & Payouts (Part 8)
+CREATE TABLE IF NOT EXISTS fivesim_vendor_prices (
+  id INTEGER PRIMARY KEY,
+  country_name TEXT NOT NULL,
+  product_name TEXT NOT NULL,
+  operator_name TEXT NOT NULL,
+  price REAL NOT NULL,
+  count INTEGER DEFAULT 0,
+  rate REAL DEFAULT 0,
+  hours INTEGER DEFAULT 0,
+  enabled INTEGER DEFAULT 1,
+  auto_disabled INTEGER DEFAULT 0,
+  raw_data TEXT,
+  created_at TEXT,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_fivesim_vendor_prices_product ON fivesim_vendor_prices(product_name);
+CREATE INDEX IF NOT EXISTS idx_fivesim_vendor_prices_country ON fivesim_vendor_prices(country_name);
+CREATE INDEX IF NOT EXISTS idx_fivesim_vendor_prices_operator ON fivesim_vendor_prices(operator_name);
+
+CREATE TABLE IF NOT EXISTS fivesim_vendor_payouts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  receiver TEXT NOT NULL,
+  method TEXT NOT NULL,
+  amount REAL NOT NULL,
+  fee TEXT NOT NULL,
+  status TEXT DEFAULT 'PENDING',
+  tx_id TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 export function initFiveSimDatabase(db: Database.Database): void {

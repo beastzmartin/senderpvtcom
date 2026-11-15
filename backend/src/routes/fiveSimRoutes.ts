@@ -38,6 +38,20 @@ router.post('/orders/:id/cancel', requireAuth, controller.cancelOrder);
 router.post('/orders/:id/ban', requireAuth, controller.banOrder);
 router.get('/orders/:id/inbox', requireAuth, controller.getHostingInbox);
 
+// --- Part 7: System Notifications & Flash Broadcasts ---
+router.get('/flash/:lang?', controller.getFlash);
+
+// --- Part 8: Vendor API (Partner & Reseller Suite) ---
+router.get('/vendor/stats', requireAuth, requireAdmin, controller.getVendorStats);
+router.get('/vendor/wallets', requireAuth, requireAdmin, controller.getVendorWallets);
+router.get('/vendor/orders', requireAuth, requireAdmin, controller.getVendorOrders);
+router.get('/vendor/payments', requireAuth, requireAdmin, controller.getVendorPayments);
+router.post('/vendor/withdraw', requireAuth, requireAdmin, controller.requestVendorWithdraw);
+router.get('/vendor/prices', requireAuth, requireAdmin, controller.getVendorPrices);
+router.put('/vendor/prices', requireAuth, requireAdmin, controller.createVendorPrice);
+router.post('/vendor/prices', requireAuth, requireAdmin, controller.updateVendorPrice);
+router.post('/vendor/prices/disable', requireAuth, requireAdmin, controller.toggleVendorPrice);
+
 // --- Full Sync Action ---
 router.post('/sync', requireAuth, requireAdmin, controller.syncAll);
 
