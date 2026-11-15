@@ -60,7 +60,11 @@ import {
   FiveSimOrderItem,
   FiveSimPaymentItem,
   FiveSimMaxPriceItem,
-  FiveSimConfig
+  FiveSimConfig,
+  FiveSimProductsMap,
+  BestOperatorRecommendation,
+  BuyActivationParams,
+  FiveSimHostingSmsItem
 } from '../types';
 
 const getApiBase = (): string => {
@@ -1606,6 +1610,74 @@ export const api = {
           maxPricesCount: number;
           syncedAt: string;
         };
-      }>('/fivesim/sync', { method: 'POST' })
+      }>('/fivesim/sync', { method: 'POST' }),
+
+    // --- Part 4: Guest Products & Prices ---
+    getGuestCountries: (refresh?: boolean) => {
+      const qs = refresh ? '?refresh=true' : '';
+      return request<{ success: boolean; countries: Record<string, any> }>(`/fivesim/guest/countries${qs}`);
+    },
+
+    getGuestProducts: (country = 'any', operator = 'any') =>
+      request<{ success: boolean; products: FiveSimProductsMap }>(`/fivesim/guest/products/${encodeURIComponent(country)}/${encodeURIComponent(operator)}`),
+
+    getGuestPrices: (params?: { country?: string; product?: string }) => {
+      const query = new URLSearchParams();
+      if (params?.country) query.set('country', params.country);
+      if (params?.product) query.set('product', params.product);
+      return request<{ success: boolean; prices: any }>(`/fivesim/guest/prices?${query.toString()}`);
+    },
+
+    getBestOperator: (country = 'any', product = 'whatsapp') => {
+      const query = new URLSearchParams();
+      query.set('country', country);
+      query.set('product', product);
+      return request<{
+        success: boolean;
+        operators: BestOperatorRecommendation[];
+        recommended: BestOperatorRecommendation | null;
+      }>(`/fivesim/guest/best-operator?${query.toString()}`);
+    },
+
+    // --- Part 5: Purchase Flows ---
+    buyActivation: (data: BuyActivationParams) =>
+      request<{ success: boolean; message: string; order: FiveSimOrderItem }>('/fivesim/buy/activation', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    buyHosting: (data: { country?: string; operator?: string; product?: string }) =>
+      request<{ success: boolean; message: string; order: FiveSimOrderItem }>('/fivesim/buy/hosting', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    reuseNumber: (data: { product: string; number: string }) =>
+      request<{ success: boolean; message: string; order: FiveSimOrderItem }>('/fivesim/buy/reuse', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    // --- Part 6: Order Management & SMS ---
+    checkOrder: (id: number | string) =>
+      request<{ success: boolean; order: FiveSimOrderItem }>(`/fivesim/orders/${id}/check`),
+
+    finishOrder: (id: number | string) =>
+      request<{ success: boolean; message: string; order: FiveSimOrderItem }>(`/fivesim/orders/${id}/finish`, {
+        method: 'POST'
+      }),
+
+    cancelOrder: (id: number | string) =>
+      request<{ success: boolean; message: string; order: FiveSimOrderItem }>(`/fivesim/orders/${id}/cancel`, {
+        method: 'POST'
+      }),
+
+    banOrder: (id: number | string) =>
+      request<{ success: boolean; message: string; order: FiveSimOrderItem }>(`/fivesim/orders/${id}/ban`, {
+        method: 'POST'
+      }),
+
+    getHostingInbox: (id: number | string) =>
+      request<{ success: boolean; total: number; messages: FiveSimHostingSmsItem[] }>(`/fivesim/orders/${id}/inbox`)
   }
 };

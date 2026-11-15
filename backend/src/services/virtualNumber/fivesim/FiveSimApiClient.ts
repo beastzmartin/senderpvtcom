@@ -2,7 +2,14 @@ import {
   FiveSimProfile,
   FiveSimOrdersResponse,
   FiveSimPaymentsResponse,
-  FiveSimMaxPriceItem
+  FiveSimMaxPriceItem,
+  FiveSimProductsMap,
+  FiveSimCountriesResponse,
+  FiveSimOrderItem,
+  BuyActivationParams,
+  BuyHostingParams,
+  ReuseNumberParams,
+  FiveSimHostingInboxResponse
 } from './types.js';
 
 export interface FiveSimClientOptions {
@@ -281,6 +288,208 @@ export class FiveSimApiClient {
     });
 
     return { success: true, data: res };
+  }
+
+  // =========================================================================
+  // PART 4: PRODUCTS & PRICES (GUEST ENDPOINTS)
+  // =========================================================================
+
+  /**
+   * 9.1 / Guest Countries List (Returns countries and available operators)
+   * GET https://5sim.net/v1/guest/countries
+   */
+  public async getGuestCountries(): Promise<FiveSimCountriesResponse> {
+    return this.request<FiveSimCountriesResponse>('/guest/countries', {
+      method: 'GET',
+      isGuest: true
+    });
+  }
+
+  /**
+   * 4.1 Products Request
+   * GET https://5sim.net/v1/guest/products/$country/$operator
+   */
+  public async getGuestProducts(country = 'any', operator = 'any'): Promise<FiveSimProductsMap> {
+    const cleanCountry = encodeURIComponent(country.toLowerCase().trim());
+    const cleanOperator = encodeURIComponent(operator.toLowerCase().trim());
+    return this.request<FiveSimProductsMap>(`/guest/products/${cleanCountry}/${cleanOperator}`, {
+      method: 'GET',
+      isGuest: true
+    });
+  }
+
+  /**
+   * 4.2 - 4.5 Prices Request (all, by country, by product, or by both)
+   * GET https://5sim.net/v1/guest/prices
+   */
+  public async getGuestPrices(params?: { country?: string; product?: string }): Promise<any> {
+    return this.request<any>('/guest/prices', {
+      method: 'GET',
+      isGuest: true,
+      params: params
+        ? {
+            country: params.country?.toLowerCase().trim(),
+            product: params.product?.toLowerCase().trim()
+          }
+        : undefined
+    });
+  }
+
+  // =========================================================================
+  // PART 5: PURCHASE (ACTIVATION, HOSTING, RE-BUY)
+  // =========================================================================
+
+  /**
+   * 5.1 Buy Activation Number
+   * GET https://5sim.net/v1/user/buy/activation/$country/$operator/$product
+   */
+  public async buyActivation(params: BuyActivationParams): Promise<FiveSimOrderItem> {
+    const cleanCountry = encodeURIComponent((params.country || 'any').toLowerCase().trim());
+    const cleanOperator = encodeURIComponent((params.operator || 'any').toLowerCase().trim());
+    const cleanProduct = encodeURIComponent((params.product || '').toLowerCase().trim());
+
+    if (!cleanProduct) {
+      throw new Error('Product name is required to buy activation number.');
+    }
+
+    const endpoint = `/user/buy/activation/${cleanCountry}/${cleanOperator}/${cleanProduct}`;
+    const queryParams: Record<string, any> = {};
+
+    if (params.forwarding !== undefined) queryParams.forwarding = params.forwarding ? '1' : '0';
+    if (params.number) queryParams.number = params.number.replace(/\D/g, '');
+    if (params.reuse !== undefined) queryParams.reuse = params.reuse;
+    if (params.voice !== undefined) queryParams.voice = params.voice;
+    if (params.ref) queryParams.ref = params.ref;
+    if (params.maxPrice !== undefined) queryParams.maxPrice = params.maxPrice;
+
+    const res = await this.request<any>(endpoint, {
+      method: 'GET',
+      params: queryParams
+    });
+
+    if (typeof res === 'string') {
+      if (res.includes('no free phones') || res.includes('NO_FREE_PHONES')) {
+        throw new Error('NO_FREE_PHONES: No phone numbers currently available for this service/country.');
+      }
+      try {
+        return JSON.parse(res);
+      } catch {
+        throw new Error(`5SIM returned unexpected text response: ${res}`);
+      }
+    }
+
+    return res as FiveSimOrderItem;
+  }
+
+  /**
+   * 5.2 Buy Hosting Number (Rental)
+   * GET https://5sim.net/v1/user/buy/hosting/$country/$operator/$product
+   */
+  public async buyHosting(params: BuyHostingParams): Promise<FiveSimOrderItem> {
+    const cleanCountry = encodeURIComponent((params.country || 'any').toLowerCase().trim());
+    const cleanOperator = encodeURIComponent((params.operator || 'any').toLowerCase().trim());
+    const cleanProduct = encodeURIComponent((params.product || '3hours').toLowerCase().trim());
+
+    const endpoint = `/user/buy/hosting/${cleanCountry}/${cleanOperator}/${cleanProduct}`;
+
+    const res = await this.request<any>(endpoint, {
+      method: 'GET'
+    });
+
+    if (typeof res === 'string') {
+      if (res.includes('no free phones')) {
+        throw new Error('NO_FREE_PHONES: No hosting phone numbers currently available.');
+      }
+      try {
+        return JSON.parse(res);
+      } catch {
+        throw new Error(`5SIM returned unexpected text: ${res}`);
+      }
+    }
+
+    return res as FiveSimOrderItem;
+  }
+
+  /**
+   * 5.3 Re-buy Number (Reuse)
+   * GET https://5sim.net/v1/user/reuse/$product/$number
+   */
+  public async reuseNumber(params: ReuseNumberParams): Promise<FiveSimOrderItem> {
+    const cleanProduct = encodeURIComponent(params.product.toLowerCase().trim());
+    const cleanNumber = params.number.replace(/\D/g, '');
+
+    const endpoint = `/user/reuse/${cleanProduct}/${cleanNumber}`;
+
+    const res = await this.request<any>(endpoint, {
+      method: 'GET'
+    });
+
+    if (typeof res === 'string') {
+      if (res.includes('no free phones')) {
+        throw new Error('NO_FREE_PHONES');
+      }
+      try {
+        return JSON.parse(res);
+      } catch {
+        throw new Error(`5SIM returned unexpected text: ${res}`);
+      }
+    }
+
+    return res as FiveSimOrderItem;
+  }
+
+  // =========================================================================
+  // PART 6: ORDER MANAGEMENT & SMS INBOX
+  // =========================================================================
+
+  /**
+   * 6.1 Check Order (Poll for SMS)
+   * GET https://5sim.net/v1/user/check/$id
+   */
+  public async checkOrder(id: number | string): Promise<FiveSimOrderItem> {
+    return this.request<FiveSimOrderItem>(`/user/check/${id}`, {
+      method: 'GET'
+    });
+  }
+
+  /**
+   * 6.2 Finish Order (Mark as Complete)
+   * GET https://5sim.net/v1/user/finish/$id
+   */
+  public async finishOrder(id: number | string): Promise<FiveSimOrderItem> {
+    return this.request<FiveSimOrderItem>(`/user/finish/${id}`, {
+      method: 'GET'
+    });
+  }
+
+  /**
+   * 6.3 Cancel Order (Before SMS arrives)
+   * GET https://5sim.net/v1/user/cancel/$id
+   */
+  public async cancelOrder(id: number | string): Promise<FiveSimOrderItem> {
+    return this.request<FiveSimOrderItem>(`/user/cancel/${id}`, {
+      method: 'GET'
+    });
+  }
+
+  /**
+   * 6.4 Ban Order (When number is already used)
+   * GET https://5sim.net/v1/user/ban/$id
+   */
+  public async banOrder(id: number | string): Promise<FiveSimOrderItem> {
+    return this.request<FiveSimOrderItem>(`/user/ban/${id}`, {
+      method: 'GET'
+    });
+  }
+
+  /**
+   * 6.5 SMS Inbox List (For Hosting / Rented numbers only)
+   * GET https://5sim.net/v1/user/sms/inbox/$id
+   */
+  public async getHostingInbox(id: number | string): Promise<FiveSimHostingInboxResponse> {
+    return this.request<FiveSimHostingInboxResponse>(`/user/sms/inbox/${id}`, {
+      method: 'GET'
+    });
   }
 }
 

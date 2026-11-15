@@ -1107,6 +1107,51 @@ export interface FiveSimConfig {
   lastErrorAt?: string;
 }
 
+// Parts 4 - 6 Types
+export interface FiveSimProductInfo {
+  Category: 'activation' | 'hosting';
+  Qty: number;
+  Price: number;
+}
+
+export type FiveSimProductsMap = Record<string, FiveSimProductInfo>;
+
+export interface FiveSimOperatorPrice {
+  cost: number;
+  count: number;
+  rate?: number;
+}
+
+export interface BestOperatorRecommendation {
+  operator: string;
+  cost: number;
+  count: number;
+  rate?: number;
+  recommended: boolean;
+}
+
+export interface BuyActivationParams {
+  country: string;
+  operator: string;
+  product: string;
+  forwarding?: boolean;
+  number?: string;
+  reuse?: number;
+  voice?: number;
+  ref?: string;
+  maxPrice?: number;
+}
+
+export interface FiveSimHostingSmsItem {
+  ID: number;
+  created_at: string;
+  date: string;
+  sender: string;
+  text: string;
+  code: string;
+}
+
+
 
 
 

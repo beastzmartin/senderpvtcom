@@ -137,3 +137,86 @@ export const FIVESIM_LIMITS = {
   TIMEOUT_NO_SMS_MINUTES: 5
 } as const;
 
+// =========================================================================
+// PART 4: PRODUCTS & PRICES (GUEST ENDPOINTS)
+// =========================================================================
+
+export interface FiveSimProductInfo {
+  Category: 'activation' | 'hosting';
+  Qty: number;
+  Price: number;
+}
+
+export type FiveSimProductsMap = Record<string, FiveSimProductInfo>;
+
+export interface FiveSimOperatorPrice {
+  cost: number;
+  count: number;
+  rate?: number;
+}
+
+export type FiveSimOperatorPricesMap = Record<string, FiveSimOperatorPrice>;
+
+// By country & product: { [country]: { [product]: { [operator]: FiveSimOperatorPrice } } }
+export type FiveSimCountryProductPricesMap = Record<string, Record<string, FiveSimOperatorPricesMap>>;
+
+// By product: { [product]: { [country]: { [operator]: FiveSimOperatorPrice } } }
+export type FiveSimProductPricesMap = Record<string, Record<string, FiveSimOperatorPricesMap>>;
+
+export interface FiveSimCountryMetadata {
+  iso: Record<string, number>;
+  prefix: Record<string, number>;
+  text_en: string;
+  [key: string]: any;
+}
+
+export type FiveSimCountriesResponse = Record<string, FiveSimCountryMetadata>;
+
+// =========================================================================
+// PART 5: PURCHASE (ACTIVATION, HOSTING, RE-BUY)
+// =========================================================================
+
+export interface BuyActivationParams {
+  country: string;
+  operator: string;
+  product: string;
+  forwarding?: boolean;
+  number?: string;
+  reuse?: number;
+  voice?: number;
+  ref?: string;
+  maxPrice?: number;
+}
+
+export interface BuyHostingParams {
+  country: string;
+  operator: string;
+  product: string;
+}
+
+export interface ReuseNumberParams {
+  product: string;
+  number: string;
+}
+
+// =========================================================================
+// PART 6: ORDER MANAGEMENT & SMS INBOX
+// =========================================================================
+
+export interface FiveSimHostingSmsItem {
+  ID: number;
+  created_at: string;
+  date: string;
+  sender: string;
+  text: string;
+  code: string;
+  is_wave?: boolean;
+  wave_uuid?: string;
+}
+
+export interface FiveSimHostingInboxResponse {
+  Data: FiveSimHostingSmsItem[];
+  Total: number;
+}
+
+

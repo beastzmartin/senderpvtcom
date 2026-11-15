@@ -133,13 +133,17 @@ export class FiveSimUserService {
       const conditions: string[] = [];
       const queryParams: any[] = [];
 
-      if (params.category) {
+      if (params.category && (params.category as string) !== 'all') {
         conditions.push('category = ?');
         queryParams.push(params.category);
       }
       if (params.status) {
-        conditions.push('status = ?');
-        queryParams.push(params.status);
+        if (params.status === 'active') {
+          conditions.push("status IN ('PENDING', 'RECEIVED')");
+        } else {
+          conditions.push('status = ?');
+          queryParams.push(params.status);
+        }
       }
       if (params.product) {
         conditions.push('product = ?');

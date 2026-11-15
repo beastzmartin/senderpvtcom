@@ -12,6 +12,8 @@ import {
   CallRecordItem
 } from '../types.js';
 import { FiveSimConfigService } from './FiveSimConfigService.js';
+import { FiveSimCatalogService } from './FiveSimCatalogService.js';
+import { FiveSimOrderService } from './FiveSimOrderService.js';
 import { FiveSimApiClient } from './FiveSimApiClient.js';
 
 export class FiveSimProviderAdapter implements IVirtualNumberProvider {
@@ -20,10 +22,14 @@ export class FiveSimProviderAdapter implements IVirtualNumberProvider {
   public readonly isMock: boolean = false;
 
   private configService: FiveSimConfigService;
+  private catalogService: FiveSimCatalogService;
+  private orderService: FiveSimOrderService;
   private client: FiveSimApiClient;
 
   constructor() {
     this.configService = FiveSimConfigService.getInstance();
+    this.catalogService = new FiveSimCatalogService();
+    this.orderService = FiveSimOrderService.getInstance();
     this.client = this.configService.getClient();
   }
 
@@ -37,9 +43,6 @@ export class FiveSimProviderAdapter implements IVirtualNumberProvider {
     return true;
   }
 
-  /**
-   * Health check validates 5SIM token by requesting user profile
-   */
   public async healthCheck(): Promise<{ healthy: boolean; latencyMs?: number; message?: string }> {
     const test = await this.configService.testConnection();
     return {
@@ -49,9 +52,6 @@ export class FiveSimProviderAdapter implements IVirtualNumberProvider {
     };
   }
 
-  /**
-   * Provider balance check in standard format
-   */
   public async checkProviderBalance(): Promise<{ balance: number; currency: string } | null> {
     try {
       const profile = await this.client.getProfile();
@@ -74,7 +74,31 @@ export class FiveSimProviderAdapter implements IVirtualNumberProvider {
   }
 
   public async listCountries(): Promise<ProviderCountry[]> {
-    // Initial standard countries list mapped to 5SIM slugs
+    try {
+      const rawCountries = await this.catalogService.getCountries();
+      const list: ProviderCountry[] = [];
+
+      for (const [slug, data] of Object.entries(rawCountries)) {
+        if (!data) continue;
+        const iso = data.iso ? Object.keys(data.iso)[0]?.toUpperCase() : slug.slice(0, 2).toUpperCase();
+        const prefix = data.prefix ? Object.keys(data.prefix)[0] : '';
+        const name = data.text_en || slug;
+
+        list.push({
+          isoCode: iso || slug.toUpperCase(),
+          name: name.charAt(0).toUpperCase() + name.slice(1),
+          dialCode: prefix || '+',
+          flagEmoji: '🌐',
+          supportedCapabilities: ['sms', 'hosting']
+        });
+      }
+
+      if (list.length > 0) {
+        return list;
+      }
+    } catch {}
+
+    // Fallback standard list
     return [
       { isoCode: 'GB', name: 'England / United Kingdom', dialCode: '+44', flagEmoji: '🇬🇧', supportedCapabilities: ['sms', 'hosting'] },
       { isoCode: 'US', name: 'United States', dialCode: '+1', flagEmoji: '🇺🇸', supportedCapabilities: ['sms', 'hosting'] },
@@ -97,24 +121,47 @@ export class FiveSimProviderAdapter implements IVirtualNumberProvider {
   }
 
   public async allocateNumber(request: NumberAllocationRequest): Promise<NumberAllocationResult> {
-    return {
-      success: false,
-      error: '5SIM Number purchasing will be enabled in Phase 5.'
-    };
+    try {
+      const order = await this.orderService.buyActivation({
+        country: request.countryCode || 'any',
+        operator: 'any',
+        product: 'whatsapp'
+      }, request.userId);
+
+      return {
+        success: true,
+        allocatedNumber: order.phone,
+        providerNumberRef: String(order.id),
+        activationDate: order.created_at,
+        expirationDate: order.expires,
+        metadata: {
+          operator: order.operator,
+          product: order.product,
+          priceRub: order.price
+        }
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Failed to allocate 5SIM number'
+      };
+    }
   }
 
   public async renewNumber(request: NumberRenewalRequest): Promise<NumberRenewalResult> {
     return {
       success: false,
-      error: '5SIM Number renewal will be enabled in Phase 5.'
+      error: '5SIM numbers are temporary activations or fixed hosting rentals.'
     };
   }
 
   public async releaseNumber(request: NumberReleaseRequest): Promise<NumberReleaseResult> {
-    return {
-      success: false,
-      error: '5SIM Number release will be enabled in Phase 6.'
-    };
+    try {
+      await this.orderService.cancelOrder(request.providerNumberRef);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   }
 
   public async getInboundMessages(phoneNumber: string, limit?: number): Promise<IncomingMessageItem[]> {
@@ -125,4 +172,3 @@ export class FiveSimProviderAdapter implements IVirtualNumberProvider {
     return [];
   }
 }
-

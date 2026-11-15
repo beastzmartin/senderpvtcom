@@ -2,16 +2,22 @@ import { Request, Response } from 'express';
 import { FiveSimConfigService } from '../services/virtualNumber/fivesim/FiveSimConfigService.js';
 import { FiveSimUserService } from '../services/virtualNumber/fivesim/FiveSimUserService.js';
 import { FiveSimPriceLimitsService } from '../services/virtualNumber/fivesim/FiveSimPriceLimitsService.js';
+import { FiveSimCatalogService } from '../services/virtualNumber/fivesim/FiveSimCatalogService.js';
+import { FiveSimOrderService } from '../services/virtualNumber/fivesim/FiveSimOrderService.js';
 
 export class FiveSimController {
   private configService: FiveSimConfigService;
   private userService: FiveSimUserService;
   private priceLimitsService: FiveSimPriceLimitsService;
+  private catalogService: FiveSimCatalogService;
+  private orderService: FiveSimOrderService;
 
   constructor() {
     this.configService = FiveSimConfigService.getInstance();
     this.userService = new FiveSimUserService();
     this.priceLimitsService = new FiveSimPriceLimitsService();
+    this.catalogService = new FiveSimCatalogService();
+    this.orderService = FiveSimOrderService.getInstance();
   }
 
   // =========================================================================
@@ -77,7 +83,9 @@ export class FiveSimController {
 
   public getOrders = async (req: Request, res: Response): Promise<void> => {
     try {
-      const category = (req.query.category as string) === 'hosting' ? 'hosting' : 'activation';
+      const categoryParam = req.query.category as string;
+      const category: 'activation' | 'hosting' = categoryParam === 'hosting' ? 'hosting' : 'activation';
+      const cachedCategory = categoryParam === 'all' || !categoryParam ? undefined : category;
       const source = (req.query.source as string) || 'cached'; // 'live' or 'cached'
       const limit = parseInt(req.query.limit as string, 10) || 50;
       const offset = parseInt(req.query.offset as string, 10) || 0;
@@ -106,7 +114,7 @@ export class FiveSimController {
 
       // Default: cached with rich query filtering
       const cached = this.userService.getCachedOrders({
-        category,
+        category: cachedCategory,
         limit,
         offset,
         search,
@@ -210,6 +218,179 @@ export class FiveSimController {
   };
 
   // =========================================================================
+  // PART 4: PRODUCTS & PRICES (GUEST ENDPOINTS)
+  // =========================================================================
+
+  public getGuestCountries = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const countries = await this.catalogService.getCountries(req.query.refresh === 'true');
+      res.json({ success: true, countries });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public getGuestProducts = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const country = String(req.params.country || 'any');
+      const operator = String(req.params.operator || 'any');
+      const products = await this.catalogService.getProducts(country, operator);
+      res.json({ success: true, products });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public getGuestPrices = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const country = req.query.country as string | undefined;
+      const product = req.query.product as string | undefined;
+      const prices = await this.catalogService.getPrices({ country, product });
+      res.json({ success: true, prices });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public getBestOperator = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const country = (req.query.country as string) || 'any';
+      const product = (req.query.product as string) || 'whatsapp';
+      const analysis = await this.catalogService.getBestOperator(country, product);
+      res.json({ success: true, ...analysis });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  // =========================================================================
+  // PART 5: PURCHASE (ACTIVATION, HOSTING, RE-BUY)
+  // =========================================================================
+
+  public buyActivation = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = (req as any).user?.id;
+      const { country = 'any', operator = 'any', product, forwarding, number, reuse, voice, ref, maxPrice } = req.body;
+
+      if (!product) {
+        res.status(400).json({ success: false, error: 'Product name is required (e.g. whatsapp, telegram).' });
+        return;
+      }
+
+      const order = await this.orderService.buyActivation(
+        {
+          country,
+          operator,
+          product,
+          forwarding,
+          number,
+          reuse,
+          voice,
+          ref,
+          maxPrice
+        },
+        userId
+      );
+
+      res.json({
+        success: true,
+        message: 'Virtual number successfully purchased from 5SIM!',
+        order
+      });
+    } catch (err: any) {
+      const status = err.message?.includes('NO_FREE_PHONES') ? 409 : 500;
+      res.status(status).json({ success: false, error: err.message });
+    }
+  };
+
+  public buyHosting = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = (req as any).user?.id;
+      const { country = 'any', operator = 'any', product = '3hours' } = req.body;
+
+      const order = await this.orderService.buyHosting({ country, operator, product }, userId);
+      res.json({ success: true, message: 'Hosting rental allocated successfully.', order });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public reuseNumber = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = (req as any).user?.id;
+      const { product, number } = req.body;
+
+      if (!product || !number) {
+        res.status(400).json({ success: false, error: 'Product name and phone number are required.' });
+        return;
+      }
+
+      const order = await this.orderService.reuseNumber({ product, number }, userId);
+      res.json({ success: true, message: 'Number successfully re-acquired for reuse.', order });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  // =========================================================================
+  // PART 6: ORDER MANAGEMENT & SMS INBOX
+  // =========================================================================
+
+  public checkOrder = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = (req as any).user?.id;
+      const id = String(req.params.id);
+      const order = await this.orderService.checkOrder(id, userId);
+      res.json({ success: true, order });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public finishOrder = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = (req as any).user?.id;
+      const id = String(req.params.id);
+      const order = await this.orderService.finishOrder(id, userId);
+      res.json({ success: true, message: 'Order successfully finished and marked complete (+0.5 rating points).', order });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public cancelOrder = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = (req as any).user?.id;
+      const id = String(req.params.id);
+      const order = await this.orderService.cancelOrder(id, userId);
+      res.json({ success: true, message: 'Order canceled successfully.', order });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public banOrder = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = (req as any).user?.id;
+      const id = String(req.params.id);
+      const order = await this.orderService.banOrder(id, userId);
+      res.json({ success: true, message: 'Number marked as banned.', order });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  public getHostingInbox = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const id = String(req.params.id);
+      const inbox = await this.orderService.getHostingInbox(id);
+      res.json({ success: true, total: inbox.Total, messages: inbox.Data || [] });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  // =========================================================================
   // Full Synchronization Trigger
   // =========================================================================
 
@@ -248,4 +429,3 @@ export class FiveSimController {
     }
   };
 }
-
