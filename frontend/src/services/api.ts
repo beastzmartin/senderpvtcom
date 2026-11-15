@@ -72,7 +72,15 @@ import {
   FiveSimVendorWithdrawParams,
   FiveSimSpecialCountryMapping,
   FiveSimSpecialProductMapping,
-  FiveSimDiagnosticsReport
+  FiveSimDiagnosticsReport,
+  NumberCountry,
+  NumberProduct,
+  NumberOperatorRate,
+  NumberOrder,
+  MarginRule,
+  PricingSettings,
+  ProfitReport,
+  HiddenItem
 } from '../types';
 
 const getApiBase = (): string => {
@@ -1810,5 +1818,158 @@ export const api = {
     // --- Part 10: 10-Point System Diagnostics ---
     getDiagnostics: () =>
       request<{ success: boolean; report: FiveSimDiagnosticsReport }>('/fivesim/diagnostics')
+  },
+
+  // =========================================================================
+  // USER: LIVE VIRTUAL NUMBER PURCHASE & OTP (5SIM + MARGIN ENGINE)
+  // =========================================================================
+  numbers: {
+    getCountries: () =>
+      request<{ success: boolean; count: number; countries: NumberCountry[] }>('/numbers/countries'),
+
+    getProducts: (country = 'any') => {
+      const q = new URLSearchParams({ country });
+      return request<{ success: boolean; count: number; products: NumberProduct[] }>(`/numbers/products?${q.toString()}`);
+    },
+
+    getPrices: (country: string, product: string) => {
+      const q = new URLSearchParams({ country, product });
+      return request<{
+        success: boolean;
+        country: string;
+        product: string;
+        currency: string;
+        operators: NumberOperatorRate[];
+        bestOperator: NumberOperatorRate | null;
+      }>(`/numbers/prices?${q.toString()}`);
+    },
+
+    buyNumber: (data: { country: string; operator?: string; product: string; idempotencyKey?: string }) =>
+      request<{ success: boolean; message: string; order: NumberOrder }>('/numbers/buy', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getOrder: (orderId: string) =>
+      request<{ success: boolean; order: NumberOrder }>(`/numbers/orders/${orderId}`),
+
+    cancelOrder: (orderId: string) =>
+      request<{ success: boolean; message: string; order: NumberOrder }>(`/numbers/orders/${orderId}/cancel`, {
+        method: 'POST'
+      }),
+
+    finishOrder: (orderId: string) =>
+      request<{ success: boolean; message: string; order: NumberOrder }>(`/numbers/orders/${orderId}/finish`, {
+        method: 'POST'
+      }),
+
+    banOrder: (orderId: string) =>
+      request<{ success: boolean; message: string; order: NumberOrder }>(`/numbers/orders/${orderId}/ban`, {
+        method: 'POST'
+      }),
+
+    getUserOrders: (params?: { limit?: number; offset?: number; status?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.offset) q.set('offset', String(params.offset));
+      if (params?.status) q.set('status', params.status);
+      return request<{ success: boolean; total: number; orders: NumberOrder[] }>(`/numbers/orders?${q.toString()}`);
+    }
+  },
+
+  // =========================================================================
+  // ADMIN: MARGIN RULES, PRICING SETTINGS & PROFIT ANALYTICS
+  // =========================================================================
+  margin: {
+    getRules: (params?: { scope?: string; enabled?: boolean }) => {
+      const q = new URLSearchParams();
+      if (params?.scope) q.set('scope', params.scope);
+      if (params?.enabled !== undefined) q.set('enabled', String(params.enabled));
+      return request<{ success: boolean; count: number; rules: MarginRule[] }>(`/admin/margin/rules?${q.toString()}`);
+    },
+
+    createRule: (data: {
+      scope: 'global' | 'country' | 'product' | 'country_product' | 'country_product_operator';
+      country?: string | null;
+      product?: string | null;
+      operator?: string | null;
+      type: 'percent' | 'fixed' | 'percent_plus_fixed';
+      percent_value?: number;
+      fixed_value?: number;
+      enabled?: boolean;
+    }) =>
+      request<{ success: boolean; rule: MarginRule }>('/admin/margin/rules', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    updateRule: (
+      id: string,
+      data: {
+        scope?: 'global' | 'country' | 'product' | 'country_product' | 'country_product_operator';
+        country?: string | null;
+        product?: string | null;
+        operator?: string | null;
+        type?: 'percent' | 'fixed' | 'percent_plus_fixed';
+        percent_value?: number;
+        fixed_value?: number;
+        enabled?: boolean;
+      }
+    ) =>
+      request<{ success: boolean; rule: MarginRule }>(`/admin/margin/rules/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    deleteRule: (id: string) =>
+      request<{ success: boolean; message: string }>(`/admin/margin/rules/${id}`, {
+        method: 'DELETE'
+      }),
+
+    getSettings: () =>
+      request<{ success: boolean; settings: PricingSettings }>('/admin/margin/settings'),
+
+    updateSettings: (data: Partial<PricingSettings>) =>
+      request<{ success: boolean; settings: PricingSettings }>('/admin/margin/settings', {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    pricePreview: (data: { cost: number; country?: string; product?: string; operator?: string }) =>
+      request<{ success: boolean; preview: any }>('/admin/margin/price-preview', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    getOrders: (params?: { limit?: number; offset?: number; status?: string; country?: string; product?: string; userId?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.offset) q.set('offset', String(params.offset));
+      if (params?.status) q.set('status', params.status);
+      if (params?.country) q.set('country', params.country);
+      if (params?.product) q.set('product', params.product);
+      if (params?.userId) q.set('userId', params.userId);
+      return request<{ success: boolean; total: number; orders: NumberOrder[] }>(`/admin/margin/orders?${q.toString()}`);
+    },
+
+    getProfitReport: (period: 'daily' | 'weekly' | 'monthly' = 'daily') =>
+      request<{ success: boolean; report: ProfitReport }>(`/admin/margin/profit-report?period=${period}`),
+
+    getFiveSimBalance: () =>
+      request<{ success: boolean; profile: FiveSimProfile; isLowBalance: boolean; lowBalanceThreshold: number }>('/admin/margin/fivesim-balance'),
+
+    getHiddenItems: () =>
+      request<{ success: boolean; count: number; items: HiddenItem[] }>('/admin/margin/hidden-items'),
+
+    addHiddenItem: (type: 'country' | 'product', value: string) =>
+      request<{ success: boolean; item: HiddenItem }>('/admin/margin/hidden-items', {
+        method: 'POST',
+        body: JSON.stringify({ type, value })
+      }),
+
+    removeHiddenItem: (id: string) =>
+      request<{ success: boolean; message: string }>(`/admin/margin/hidden-items/${id}`, {
+        method: 'DELETE'
+      })
   }
 };

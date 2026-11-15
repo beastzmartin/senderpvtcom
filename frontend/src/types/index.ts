@@ -1236,6 +1236,115 @@ export interface FiveSimDiagnosticsReport {
   };
 }
 
+// --- 5SIM Margin & Live Virtual Number Purchase System Types ---
+export interface NumberCountry {
+  slug: string;
+  name: string;
+  prefix: string;
+  iso: string;
+}
+
+export interface NumberProduct {
+  slug: string;
+  name: string;
+  category: string;
+  quantity: number;
+  price: number;
+}
+
+export interface NumberOperatorRate {
+  operator: string;
+  sell_price: number;
+  raw_cost_rub?: number;
+  count: number;
+  rate: number;
+  is_available: boolean;
+}
+
+export interface NumberOrder {
+  id: string;
+  user_id: string;
+  fivesim_order_id: number | null;
+  country: string;
+  operator: string;
+  product: string;
+  phone: string | null;
+  status: 'PENDING_PURCHASE' | 'PENDING' | 'RECEIVED' | 'CANCELED' | 'TIMEOUT' | 'FINISHED' | 'BANNED';
+  cost_price?: number;
+  sell_price: number;
+  profit?: number;
+  currency: string;
+  otp_code: string | null;
+  sms_text: string | null;
+  expires_at: string | null;
+  created_at: string;
+  finished_at: string | null;
+  refunded: boolean;
+  refund_at: string | null;
+  user_email?: string;
+  user_name?: string;
+}
+
+export interface MarginRule {
+  id: string;
+  scope: 'global' | 'country' | 'product' | 'country_product' | 'country_product_operator';
+  country?: string | null;
+  product?: string | null;
+  operator?: string | null;
+  type: 'percent' | 'fixed' | 'percent_plus_fixed';
+  percent_value: number;
+  fixed_value: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PricingSettings {
+  id: string;
+  fx_rate: number;
+  min_margin: number;
+  min_sell_price: number;
+  rounding_mode: 'none' | '2_decimals' | 'nearest_1' | '99_cents';
+  low_balance_threshold: number;
+  display_currency: string;
+  updated_at: string;
+}
+
+export interface ProfitReport {
+  summary: {
+    totalRevenue: number;
+    totalCost: number;
+    netProfit: number;
+    ordersCount: number;
+    refundCount: number;
+    successRatePercent: number;
+  };
+  breakdown: Array<{
+    date_bucket: string;
+    orders_count: number;
+    revenue: number;
+    cost: number;
+    profit: number;
+  }>;
+  topProducts: Array<{
+    product: string;
+    orders_count: number;
+    total_profit: number;
+  }>;
+  topCountries: Array<{
+    country: string;
+    orders_count: number;
+    total_profit: number;
+  }>;
+}
+
+export interface HiddenItem {
+  id: string;
+  type: 'country' | 'product';
+  value: string;
+  created_at: string;
+}
+
 
 
 

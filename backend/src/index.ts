@@ -25,6 +25,8 @@ import walletRoutes from './routes/walletRoutes.js';
 import marketplaceRoutes from './routes/marketplaceRoutes.js';
 import virtualNumberRoutes from './routes/virtualNumberRoutes.js';
 import fiveSimRoutes from './routes/fiveSimRoutes.js';
+import numberRoutes from './routes/numberRoutes.js';
+import marginAdminRoutes from './routes/marginAdminRoutes.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
@@ -75,6 +77,8 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/virtual-numbers', virtualNumberRoutes);
 app.use('/api/fivesim', fiveSimRoutes);
+app.use('/api/numbers', numberRoutes);
+app.use('/api/admin/margin', marginAdminRoutes);
 
 // Dashboard stats endpoint
 const messageController = new MessageController();

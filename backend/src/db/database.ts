@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { SCHEMA_SQL } from './schema.js';
 import { initVirtualNumberDatabase } from './virtualNumberSeeder.js';
 import { initFiveSimDatabase } from './fiveSimSchema.js';
+import { initMarginSchema } from './marginSchema.js';
 
 let dbInstance: Database.Database | null = null;
 
@@ -1068,6 +1069,9 @@ export function initDatabase(): Database.Database {
 
     // Initialize 5SIM.NET Telecom Protocol Schema and Defaults (Parts 0 - 3)
     initFiveSimDatabase(db);
+
+    // Initialize Virtual Number Margin & Markup Engine Schema (Parts A & C)
+    initMarginSchema(db);
   } catch (err) {
     console.error('[DB] Error configuring wallet and marketplace tables:', err);
   }

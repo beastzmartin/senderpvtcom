@@ -5,6 +5,7 @@ import {
   VirtualNumberPricingRule
 } from '../../types';
 import { FiveSimAdminConsole } from './fivesim/FiveSimAdminConsole';
+import { MarginAdminPanel } from './fivesim/MarginAdminPanel';
 import {
   Phone,
   Radio,
@@ -354,7 +355,7 @@ export const AdminVirtualNumbersTab: React.FC = () => {
             }`}
           >
             <Coins className="w-4 h-4" />
-            Pricing & Markups ({pricingRules.length})
+            Margin & Markup Engine
           </button>
 
           <button
@@ -391,15 +392,7 @@ export const AdminVirtualNumbersTab: React.FC = () => {
             </button>
           )}
 
-          {activeSubTab === 'pricing' && (
-            <button
-              onClick={() => setIsAddPricingOpen(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1.5 shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Create Pricing Rule
-            </button>
-          )}
+
 
           <button
             onClick={loadAll}
@@ -607,64 +600,7 @@ export const AdminVirtualNumbersTab: React.FC = () => {
 
       {/* SUB-TAB: PRICING & MARKUP RULES */}
       {activeSubTab === 'pricing' && (
-        <div className="space-y-4">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-xs text-emerald-900 flex items-start gap-3">
-            <Coins className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <div>
-              <strong className="font-bold text-emerald-950">Dynamic Pricing & Markup Engine</strong>
-              <p className="mt-0.5 text-emerald-800">
-                Configure markup models (cost-plus percentage or fixed administrative pricing), activation fees, and minimum wallet balances required before purchasing.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-600">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
-                  <tr>
-                    <th className="px-4 py-3">Rule Name</th>
-                    <th className="px-4 py-3">Markup Model</th>
-                    <th className="px-4 py-3">Activation Fee</th>
-                    <th className="px-4 py-3">Weekly Fee</th>
-                    <th className="px-4 py-3">Monthly Fee</th>
-                    <th className="px-4 py-3">Min Wallet Bal</th>
-                    <th className="px-4 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {pricingRules.map((rule) => (
-                    <tr key={rule.id} className="hover:bg-slate-50 transition">
-                      <td className="px-4 py-3 font-bold text-slate-900">{rule.rule_name || rule.country_name || rule.pricing_model || 'Global Markup'}</td>
-                      <td className="px-4 py-3 capitalize">
-                        <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-800 font-medium">
-                          {rule.markup_type || (rule.markup_percentage ? 'percentage' : 'fixed')} ({rule.markup_value ?? rule.markup_percentage ?? rule.markup_amount ?? 20}{(rule.markup_type === 'percentage' || rule.markup_percentage) ? '%' : '$'})
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono font-semibold text-slate-800">
-                        ${Number(rule.fixed_activation_fee ?? rule.activation_fee ?? 0.5).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-700">
-                        ${Number(rule.fixed_weekly_fee ?? 1.5).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-emerald-700 font-bold">
-                        ${Number(rule.fixed_monthly_fee ?? rule.monthly_rental_price ?? 3.5).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-blue-700 font-semibold">
-                        ${Number(rule.minimum_wallet_balance ?? 5.0).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          ACTIVE
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <MarginAdminPanel />
       )}
 
       {/* SUB-TAB: CUSTOMER RENTALS & REFUNDS */}
