@@ -180,3 +180,4 @@ export class MockProviderAdapter implements ProviderAdapter {
     return true;
   }
 }
+

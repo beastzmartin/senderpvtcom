@@ -700,3 +700,4 @@ export const DataMarketplaceView: React.FC = () => {
     </div>
   );
 };
+

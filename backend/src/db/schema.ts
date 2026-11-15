@@ -454,6 +454,8 @@ CREATE TABLE IF NOT EXISTS user_wallets (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   balance REAL NOT NULL DEFAULT 0.0,
   currency TEXT DEFAULT 'INR',
+  base_balance REAL DEFAULT 0.0,
+  base_currency TEXT DEFAULT 'INR',
   reserved_balance REAL NOT NULL DEFAULT 0.0,
   total_spent REAL NOT NULL DEFAULT 0.0,
   total_topped_up REAL NOT NULL DEFAULT 0.0,

@@ -141,6 +141,22 @@ async function runMarginTests() {
   assert('Identifies non-hidden country correctly', marginService.isItemHidden('country', 'england') === false);
   assert('Identifies hidden product correctly', marginService.isItemHidden('product', 'banned_service') === true);
 
+  // Clean up test rules & restore production defaults
+  db.prepare("DELETE FROM margin_rules WHERE id != 'default_global_margin'").run();
+  marginService.updateMarginRule('default_global_margin', {
+    type: 'percent',
+    percent_value: 25,
+    enabled: true
+  });
+  marginService.updatePricingSettings({
+    fx_rate: 1.0,
+    min_margin: 0.0,
+    min_sell_price: 0.0,
+    rounding_mode: '2_decimals',
+    display_currency: 'INR'
+  });
+  db.prepare("DELETE FROM hidden_items WHERE value IN ('banned_country', 'banned_service')").run();
+
   console.log('\n====================================================');
   console.log(`SUMMARY: ${passed} PASSED, ${failed} FAILED`);
   console.log('====================================================\n');

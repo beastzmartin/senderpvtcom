@@ -18,6 +18,7 @@ export interface UserRecord {
   daily_message_limit: number;
   daily_extraction_limit?: number;
   days_remaining?: number | null;
+  preferred_currency?: string | null;
   is_active?: boolean;
   created_at: string;
 }
@@ -67,6 +68,7 @@ export class AuthService {
       daily_message_limit: row.daily_message_limit || 100,
       daily_extraction_limit: row.daily_extraction_limit || 500,
       days_remaining: daysRemaining,
+      preferred_currency: row.preferred_currency || 'INR',
       is_active: row.is_active !== 0,
       created_at: row.created_at
     };

@@ -287,6 +287,14 @@ export class CurrencyService {
 
     const wallet = this.walletService.getOrCreateWallet(userId);
     const oldCurrency = (wallet.currency || 'INR').toUpperCase();
+    const defaultCurr = this.getDefaultCurrency();
+    const baseCurrency = (wallet.base_currency || defaultCurr.code).toUpperCase();
+
+    // Ensure base balance is accurately initialized
+    let baseBalance = Number(wallet.base_balance ?? wallet.balance);
+    if (baseBalance <= 0 && wallet.balance > 0) {
+      baseBalance = this.convertBetween(wallet.balance, oldCurrency, baseCurrency);
+    }
 
     if (oldCurrency === targetCode) {
       return {
@@ -299,22 +307,27 @@ export class CurrencyService {
       };
     }
 
-    const oldCurr = this.getCurrency(oldCurrency) || this.getDefaultCurrency();
-    const rate = targetCurr.rate_from_5sim_base / oldCurr.rate_from_5sim_base;
+    // High-precision conversion:
+    // If switching to base currency (INR), exactly restore the sovereign base balance! Zero degradation!
+    let newBalance: number;
+    if (targetCode === baseCurrency) {
+      newBalance = Number(baseBalance.toFixed(2));
+    } else {
+      newBalance = this.convertBetween(baseBalance, baseCurrency, targetCode);
+    }
 
-    const oldBalance = wallet.balance;
-    const newBalance = Number((oldBalance * rate).toFixed(2));
-    const newReserved = Number((wallet.reserved_balance * rate).toFixed(2));
-    const newSpent = Number((wallet.total_spent * rate).toFixed(2));
-    const newToppedUp = Number((wallet.total_topped_up * rate).toFixed(2));
+    const directRate = this.convertBetween(1.0, oldCurrency, targetCode);
+    const newReserved = this.convertBetween(wallet.reserved_balance, oldCurrency, targetCode);
+    const newSpent = this.convertBetween(wallet.total_spent, oldCurrency, targetCode);
+    const newToppedUp = this.convertBetween(wallet.total_topped_up, oldCurrency, targetCode);
 
     const switchTx = this.db.transaction(() => {
       // 1. Update wallet table
       this.db.prepare(`
         UPDATE user_wallets
-        SET balance = ?, reserved_balance = ?, total_spent = ?, total_topped_up = ?, currency = ?, updated_at = datetime('now')
+        SET balance = ?, base_balance = ?, base_currency = ?, reserved_balance = ?, total_spent = ?, total_topped_up = ?, currency = ?, updated_at = datetime('now')
         WHERE user_id = ?
-      `).run(newBalance, newReserved, newSpent, newToppedUp, targetCode, userId);
+      `).run(newBalance, baseBalance, baseCurrency, newReserved, newSpent, newToppedUp, targetCode, userId);
 
       // 2. Update user profile preference
       this.db.prepare(`
@@ -333,17 +346,18 @@ export class CurrencyService {
       `).run(
         crypto.randomUUID(),
         userId,
-        newBalance - oldBalance,
+        newBalance - wallet.balance,
         targetCode,
-        oldBalance,
+        wallet.balance,
         newBalance,
-        `Switched currency from ${oldCurrency} to ${targetCode}`,
+        `Switched currency from ${oldCurrency} to ${targetCode} (Base: ${baseCurrency} ${baseBalance.toFixed(2)})`,
         JSON.stringify({
           oldCurrency,
           newCurrency: targetCode,
-          conversionRate: rate,
-          oldBalance,
-          newBalance
+          baseCurrency,
+          baseBalance,
+          newBalance,
+          conversionRate: directRate
         })
       );
     });
@@ -354,9 +368,9 @@ export class CurrencyService {
       success: true,
       oldCurrency,
       newCurrency: targetCode,
-      oldBalance,
+      oldBalance: wallet.balance,
       newBalance,
-      rate
+      rate: directRate
     };
   }
 }

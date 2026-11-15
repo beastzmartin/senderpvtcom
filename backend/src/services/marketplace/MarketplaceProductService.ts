@@ -323,3 +323,4 @@ export class MarketplaceProductService {
     db.prepare('DELETE FROM extraction_marketplace_products WHERE slug = ?').run(slug);
   }
 }
+

@@ -55,7 +55,7 @@ export function initCommissionSchema(db: Database.Database): void {
         type: 'percent',
         percent_value: 25.0,
         fixed_value: 0.0,
-        min_commission: 2.0,
+        min_commission: 0.20,
         description: '25% markup on 5SIM virtual phone number activations',
         enabled: 1
       },

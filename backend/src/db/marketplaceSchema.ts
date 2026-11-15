@@ -280,3 +280,4 @@ export function initMarketplaceSchema(db: Database.Database): void {
     );
   }
 }
+

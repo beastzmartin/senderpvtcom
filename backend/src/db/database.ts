@@ -701,6 +701,8 @@ export function initDatabase(): Database.Database {
         user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         balance REAL NOT NULL DEFAULT 0.0,
         currency TEXT DEFAULT 'INR',
+        base_balance REAL DEFAULT 0.0,
+        base_currency TEXT DEFAULT 'INR',
         reserved_balance REAL NOT NULL DEFAULT 0.0,
         total_spent REAL NOT NULL DEFAULT 0.0,
         total_topped_up REAL NOT NULL DEFAULT 0.0,
@@ -864,6 +866,29 @@ export function initDatabase(): Database.Database {
 
       CREATE INDEX IF NOT EXISTS idx_ext_audit_date ON extension_audit_logs(created_at);
     `);
+
+    // Safe migrations for base_balance and base_currency
+    try {
+      db.exec("ALTER TABLE user_wallets ADD COLUMN base_balance REAL DEFAULT 0.0;");
+    } catch {}
+    try {
+      db.exec("ALTER TABLE user_wallets ADD COLUMN base_currency TEXT DEFAULT 'INR';");
+    } catch {}
+
+    // Initialize base_balance for any existing wallets without it
+    try {
+      db.exec(`
+        UPDATE user_wallets 
+        SET base_balance = balance, base_currency = 'INR' 
+        WHERE (base_balance IS NULL OR base_balance = 0) AND UPPER(COALESCE(currency, 'INR')) = 'INR' AND balance > 0;
+      `);
+      // If wallet was in USD, restore base balance (1 USD = ~87.5 INR)
+      db.exec(`
+        UPDATE user_wallets
+        SET base_balance = ROUND(balance / 0.012 * 1.05, 2), base_currency = 'INR'
+        WHERE (base_balance IS NULL OR base_balance = 0) AND UPPER(currency) = 'USD' AND balance > 0;
+      `);
+    } catch {}
 
     // Ensure all existing users have a wallet initialized with initial promotional balance if new
     const allUsers = db.prepare('SELECT id FROM users').all() as Array<{ id: string }>;

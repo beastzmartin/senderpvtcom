@@ -69,8 +69,8 @@ export class MarginService {
       return {
         id: 'default',
         fx_rate: 1.0,
-        min_margin: 2.0,
-        min_sell_price: 5.0,
+        min_margin: 0.0,
+        min_sell_price: 0.0,
         rounding_mode: '2_decimals',
         low_balance_threshold: 50.0,
         display_currency: 'INR',
@@ -356,25 +356,25 @@ export class MarginService {
     const settings = this.getPricingSettings();
     const rawCost = Math.max(0, Number(costIn5SimCurrency || 0));
 
-    // Determine target currency and FX rate
+    // Determine target currency and FX rate dynamically
+    const currencyService = CurrencyService.getInstance();
+    let chosenCurrency = (targetCurrency || settings.display_currency || 'INR').toUpperCase();
     let fxRate = settings.fx_rate || 1.0;
-    let chosenCurrency = settings.display_currency || 'INR';
-    let scaledMinMargin = settings.min_margin;
-    let scaledMinSellPrice = settings.min_sell_price;
 
-    if (targetCurrency && targetCurrency.toUpperCase() !== (settings.display_currency || 'INR').toUpperCase()) {
-      const currencyService = CurrencyService.getInstance();
+    if (targetCurrency) {
       const currRecord = currencyService.getCurrency(targetCurrency);
       if (currRecord) {
         chosenCurrency = currRecord.code;
         fxRate = currRecord.rate_from_5sim_base;
-
-        const baseCurr = currencyService.getCurrency(settings.display_currency) || { rate_from_5sim_base: settings.fx_rate || 1.0 };
-        const ratio = fxRate / (baseCurr.rate_from_5sim_base || 1.0);
-        scaledMinMargin = Number((settings.min_margin * ratio).toFixed(2));
-        scaledMinSellPrice = Number((settings.min_sell_price * ratio).toFixed(2));
       }
     }
+
+    // Scale min_margin and min_sell_price relative to default base currency (INR)
+    const baseCurr = currencyService.getDefaultCurrency();
+    const baseRate = baseCurr?.rate_from_5sim_base || 1.0;
+    const ratio = targetCurrency ? (fxRate / baseRate) : 1.0;
+    const scaledMinMargin = settings.min_margin > 0 ? Number((settings.min_margin * ratio).toFixed(2)) : 0;
+    const scaledMinSellPrice = settings.min_sell_price > 0 ? Number((settings.min_sell_price * ratio).toFixed(2)) : 0;
 
     // 1. Convert cost via exchange rate multiplier
     const convertedCost = Number((rawCost * fxRate).toFixed(4));
@@ -393,14 +393,14 @@ export class MarginService {
         : `cost * (1 + ${rule.percent_value}%) + ${rule.fixed_value}`
       : 'cost (no rule applied)';
 
-    // 4. Floor: minimum profit margin
-    if (sell < convertedCost + scaledMinMargin) {
+    // 4. Floor: minimum profit margin (only applied if configured > 0)
+    if (scaledMinMargin > 0 && sell < convertedCost + scaledMinMargin) {
       sell = convertedCost + scaledMinMargin;
       formulaDesc += ` → floor min_margin (+${scaledMinMargin})`;
     }
 
-    // 5. Floor: absolute minimum sell price
-    if (sell < scaledMinSellPrice) {
+    // 5. Floor: absolute minimum sell price (only applied if configured > 0)
+    if (scaledMinSellPrice > 0 && sell < scaledMinSellPrice) {
       sell = scaledMinSellPrice;
       formulaDesc += ` → floor min_sell_price (${scaledMinSellPrice})`;
     }

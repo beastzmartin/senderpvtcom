@@ -176,3 +176,4 @@ export interface MarketplaceJobResultItem {
   data: Record<string, any>;
   created_at: string;
 }
+

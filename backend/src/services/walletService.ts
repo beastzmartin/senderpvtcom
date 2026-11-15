@@ -18,6 +18,8 @@ export interface WalletRecord {
   user_id: string;
   balance: number;
   currency: string;
+  base_balance?: number;
+  base_currency?: string;
   reserved_balance: number;
   total_spent: number;
   total_topped_up: number;
@@ -53,6 +55,22 @@ export class WalletService {
   }
 
   /**
+   * Safe currency conversion helper using currency_rates table
+   */
+  public convertAmount(amount: number, fromCurrency: string, toCurrency: string): number {
+    if (!amount || fromCurrency.toUpperCase() === toCurrency.toUpperCase()) {
+      return amount;
+    }
+    const db = getDatabase();
+    const fromRow = db.prepare('SELECT rate_from_5sim_base FROM currency_rates WHERE UPPER(code) = ?').get(fromCurrency.toUpperCase()) as any;
+    const toRow = db.prepare('SELECT rate_from_5sim_base FROM currency_rates WHERE UPPER(code) = ?').get(toCurrency.toUpperCase()) as any;
+    const fromRate = Number(fromRow?.rate_from_5sim_base || 1.0);
+    const toRate = Number(toRow?.rate_from_5sim_base || 1.0);
+    const inBase = amount / fromRate;
+    return Number((inBase * toRate).toFixed(4));
+  }
+
+  /**
    * Get wallet for user or initialize with welcome credits
    */
   public getOrCreateWallet(userId: string): WalletRecord {
@@ -62,9 +80,9 @@ export class WalletService {
     if (!row) {
       const welcomeBonus = 250.0; // ₹250 free starter balance
       db.prepare(`
-        INSERT INTO user_wallets (user_id, balance, currency, total_topped_up, updated_at)
-        VALUES (?, ?, 'INR', ?, datetime('now'))
-      `).run(userId, welcomeBonus, welcomeBonus);
+        INSERT INTO user_wallets (user_id, balance, currency, base_balance, base_currency, total_topped_up, updated_at)
+        VALUES (?, ?, 'INR', ?, 'INR', ?, datetime('now'))
+      `).run(userId, welcomeBonus, welcomeBonus, welcomeBonus);
 
       db.prepare(`
         INSERT INTO wallet_transactions (
@@ -77,10 +95,23 @@ export class WalletService {
       row = db.prepare('SELECT * FROM user_wallets WHERE user_id = ?').get(userId);
     }
 
+    const baseCurrency = (row.base_currency || 'INR').toUpperCase();
+    let baseBalance = row.base_balance !== null && row.base_balance !== undefined ? Number(row.base_balance) : 0;
+    if (baseBalance <= 0 && Number(row.balance || 0) > 0) {
+      baseBalance = this.convertAmount(Number(row.balance), row.currency || 'INR', baseCurrency);
+      db.prepare('UPDATE user_wallets SET base_balance = ?, base_currency = ? WHERE user_id = ?').run(
+        baseBalance,
+        baseCurrency,
+        userId
+      );
+    }
+
     return {
       user_id: row.user_id,
       balance: Number(row.balance || 0),
       currency: row.currency || 'INR',
+      base_balance: baseBalance,
+      base_currency: baseCurrency,
       reserved_balance: Number(row.reserved_balance || 0),
       total_spent: Number(row.total_spent || 0),
       total_topped_up: Number(row.total_topped_up || 0),
@@ -103,6 +134,10 @@ export class WalletService {
 
     const db = getDatabase();
     const current = this.getOrCreateWallet(userId);
+    const baseCurrency = current.base_currency || 'INR';
+    const topUpInBase = this.convertAmount(amount, current.currency, baseCurrency);
+
+    const newBaseBalance = Number(((current.base_balance || current.balance) + topUpInBase).toFixed(2));
     const newBalance = Number((current.balance + amount).toFixed(2));
     const newToppedUp = Number((current.total_topped_up + amount).toFixed(2));
     const txId = crypto.randomUUID();
@@ -110,22 +145,23 @@ export class WalletService {
     const topUpTx = db.transaction(() => {
       db.prepare(`
         UPDATE user_wallets
-        SET balance = ?, total_topped_up = ?, updated_at = datetime('now')
+        SET balance = ?, base_balance = ?, total_topped_up = ?, updated_at = datetime('now')
         WHERE user_id = ?
-      `).run(newBalance, newToppedUp, userId);
+      `).run(newBalance, newBaseBalance, newToppedUp, userId);
 
       db.prepare(`
         INSERT INTO wallet_transactions (
           id, user_id, transaction_type, amount, currency,
           previous_balance, new_balance, reference_id, description, status
         ) VALUES (
-          ?, ?, 'wallet_topup', ?, 'INR',
+          ?, ?, 'wallet_topup', ?, ?,
           ?, ?, ?, ?, 'completed'
         )
       `).run(
         txId,
         userId,
         amount,
+        current.currency,
         current.balance,
         newBalance,
         referenceId || null,
@@ -172,11 +208,16 @@ export class WalletService {
     const current = this.getOrCreateWallet(userId);
 
     if (current.balance < amount) {
+      const sym = current.currency === 'INR' ? '₹' : current.currency === 'USD' ? '$' : current.currency;
       throw new Error(
-        `Insufficient wallet balance. Required: ₹${amount.toFixed(2)}, Available: ₹${current.balance.toFixed(2)}. Please top up your wallet to continue.`
+        `Insufficient wallet balance. Required: ${sym}${amount.toFixed(2)}, Available: ${sym}${current.balance.toFixed(2)}. Please top up your wallet to continue.`
       );
     }
 
+    const baseCurrency = current.base_currency || 'INR';
+    const deductInBase = this.convertAmount(amount, current.currency, baseCurrency);
+
+    const newBaseBalance = Math.max(0, Number(((current.base_balance || current.balance) - deductInBase).toFixed(4)));
     const newBalance = Number((current.balance - amount).toFixed(2));
     const newSpent = Number((current.total_spent + amount).toFixed(2));
     const txId = crypto.randomUUID();
@@ -184,9 +225,9 @@ export class WalletService {
     const deductTx = db.transaction(() => {
       db.prepare(`
         UPDATE user_wallets
-        SET balance = ?, total_spent = ?, updated_at = datetime('now')
+        SET balance = ?, base_balance = ?, total_spent = ?, updated_at = datetime('now')
         WHERE user_id = ?
-      `).run(newBalance, newSpent, userId);
+      `).run(newBalance, newBaseBalance, newSpent, userId);
 
       db.prepare(`
         INSERT INTO wallet_transactions (
@@ -195,7 +236,7 @@ export class WalletService {
           reference_id, description, metadata, status
         ) VALUES (
           ?, ?, ?, ?, ?,
-          ?, 'INR', ?, ?,
+          ?, ?, ?, ?,
           ?, ?, ?, 'completed'
         )
       `).run(
@@ -205,6 +246,7 @@ export class WalletService {
         meta?.moduleId || null,
         type,
         amount,
+        current.currency,
         current.balance,
         newBalance,
         meta?.referenceId || null,
@@ -320,6 +362,10 @@ export class WalletService {
 
     const db = getDatabase();
     const current = this.getOrCreateWallet(userId);
+    const baseCurrency = current.base_currency || 'INR';
+    const deductInBase = this.convertAmount(amount, current.currency, baseCurrency);
+
+    const newBaseBalance = Math.max(0, Number(((current.base_balance || current.balance) - deductInBase).toFixed(4)));
     const newBalance = Number((current.balance - amount).toFixed(2));
     const newReserved = Number(Math.max(0, current.reserved_balance - amount).toFixed(2));
     const newSpent = Number((current.total_spent + amount).toFixed(2));
@@ -327,9 +373,9 @@ export class WalletService {
     const commitTx = db.transaction(() => {
       db.prepare(`
         UPDATE user_wallets
-        SET balance = ?, reserved_balance = ?, total_spent = ?, updated_at = datetime('now')
+        SET balance = ?, base_balance = ?, reserved_balance = ?, total_spent = ?, updated_at = datetime('now')
         WHERE user_id = ?
-      `).run(newBalance, newReserved, newSpent, userId);
+      `).run(newBalance, newBaseBalance, newReserved, newSpent, userId);
 
       db.prepare(`
         UPDATE wallet_transactions
@@ -420,24 +466,28 @@ export class WalletService {
 
     const db = getDatabase();
     const current = this.getOrCreateWallet(userId);
+    const baseCurrency = current.base_currency || 'INR';
+    const refundInBase = this.convertAmount(amount, current.currency, baseCurrency);
+
+    const newBaseBalance = Number(((current.base_balance || current.balance) + refundInBase).toFixed(4));
     const newBalance = Number((current.balance + amount).toFixed(2));
     const txId = crypto.randomUUID();
 
     db.prepare(`
       UPDATE user_wallets
-      SET balance = ?, updated_at = datetime('now')
+      SET balance = ?, base_balance = ?, updated_at = datetime('now')
       WHERE user_id = ?
-    `).run(newBalance, userId);
+    `).run(newBalance, newBaseBalance, userId);
 
     db.prepare(`
       INSERT INTO wallet_transactions (
         id, user_id, transaction_type, amount, currency,
         previous_balance, new_balance, reference_id, description, status
       ) VALUES (
-        ?, ?, 'usage_refund', ?, 'INR',
+        ?, ?, 'usage_refund', ?, ?,
         ?, ?, ?, ?, 'completed'
       )
-    `).run(txId, userId, amount, current.balance, newBalance, originalTxId || null, `Refund: ${reason}`);
+    `).run(txId, userId, amount, current.currency, current.balance, newBalance, originalTxId || null, `Refund: ${reason}`);
 
     try {
       getSocketIO()?.to(`user:${userId}`).emit('wallet:updated', {
@@ -470,28 +520,33 @@ export class WalletService {
     const current = this.getOrCreateWallet(targetUserId);
     const newBalance = Number((current.balance + amount).toFixed(2));
     if (newBalance < 0) {
-      throw new Error(`Cannot adjust balance below zero. Resulting balance would be ₹${newBalance}.`);
+      throw new Error(`Cannot adjust balance below zero. Resulting balance would be ${current.currency} ${newBalance}.`);
     }
+
+    const baseCurrency = current.base_currency || 'INR';
+    const adjustInBase = this.convertAmount(amount, current.currency, baseCurrency);
+    const newBaseBalance = Math.max(0, Number(((current.base_balance || current.balance) + adjustInBase).toFixed(4)));
 
     const txId = crypto.randomUUID();
     db.prepare(`
       UPDATE user_wallets
-      SET balance = ?, updated_at = datetime('now')
+      SET balance = ?, base_balance = ?, updated_at = datetime('now')
       WHERE user_id = ?
-    `).run(newBalance, targetUserId);
+    `).run(newBalance, newBaseBalance, targetUserId);
 
     db.prepare(`
       INSERT INTO wallet_transactions (
         id, user_id, transaction_type, amount, currency,
         previous_balance, new_balance, description, status
       ) VALUES (
-        ?, ?, 'admin_adjustment', ?, 'INR',
+        ?, ?, 'admin_adjustment', ?, ?,
         ?, ?, ?, 'completed'
       )
     `).run(
       txId,
       targetUserId,
       amount,
+      current.currency,
       current.balance,
       newBalance,
       `Admin Adjustment by @${admin.username}: ${reason}`

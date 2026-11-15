@@ -23,8 +23,8 @@ CREATE INDEX IF NOT EXISTS idx_margin_rules_lookup ON margin_rules(country, prod
 CREATE TABLE IF NOT EXISTS pricing_settings (
   id TEXT PRIMARY KEY DEFAULT 'default',
   fx_rate REAL NOT NULL DEFAULT 1.0,
-  min_margin REAL NOT NULL DEFAULT 2.0,
-  min_sell_price REAL NOT NULL DEFAULT 5.0,
+  min_margin REAL NOT NULL DEFAULT 0.0,
+  min_sell_price REAL NOT NULL DEFAULT 0.0,
   rounding_mode TEXT NOT NULL DEFAULT '2_decimals' CHECK(rounding_mode IN ('none', '2_decimals', 'nearest_1', '99_cents')),
   low_balance_threshold REAL NOT NULL DEFAULT 50.0,
   display_currency TEXT NOT NULL DEFAULT 'INR',
@@ -101,7 +101,7 @@ export function initMarginSchema(db: Database.Database): void {
   if (!existingSettings) {
     db.prepare(`
       INSERT INTO pricing_settings (id, fx_rate, min_margin, min_sell_price, rounding_mode, low_balance_threshold, display_currency)
-      VALUES ('default', 1.0, 2.0, 5.0, '2_decimals', 50.0, 'INR')
+      VALUES ('default', 1.0, 0.0, 0.0, '2_decimals', 50.0, 'INR')
     `).run();
   }
 

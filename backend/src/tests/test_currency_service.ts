@@ -72,6 +72,19 @@ async function runCurrencyTests() {
   assert.strictEqual(verifyWallet.balance, switchRes.newBalance);
   console.log(`  ✅ [PASS] Wallet record reflects new currency 'USD' with converted balance`);
 
+  // Test 5: Round-trip switching back to INR restores exact base balance with zero loss!
+  console.log('\n--- Test Group 5: Zero Loss Round-Trip Currency Switching ---');
+  const switchBackRes = currencyService.switchUserCurrency(testUserId, 'INR');
+  assert.strictEqual(switchBackRes.success, true);
+  assert.strictEqual(switchBackRes.newCurrency, 'INR');
+  assert.strictEqual(switchBackRes.newBalance, oldBalance);
+  console.log(`  ✅ [PASS] User wallet switched back from USD to INR: exactly ${switchBackRes.newBalance} INR restored with ZERO loss!`);
+
+  // Cleanup test user
+  db.prepare('DELETE FROM wallet_transactions WHERE user_id = ?').run(testUserId);
+  db.prepare('DELETE FROM user_wallets WHERE user_id = ?').run(testUserId);
+  db.prepare('DELETE FROM users WHERE id = ?').run(testUserId);
+
   console.log('\n====================================================');
   console.log('SUMMARY: ALL CURRENCY CONVERSION TESTS PASSED');
   console.log('====================================================\n');

@@ -225,3 +225,4 @@ npm --prefix backend run test:marketplace
 
 - **Customer View**: Click **Data Hub** in the left sidebar to access the Extraction Marketplace catalog, dynamic configuration modal, live price slider, running jobs, and dataset downloads.
 - **Admin Hub**: Navigate to **Admin Control Center** -> **Data Extraction Hub** tab to manage products, import from provider IDs, test runs, view jobs & financial margins, and configure provider credentials.
+

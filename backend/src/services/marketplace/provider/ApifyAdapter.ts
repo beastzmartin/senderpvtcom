@@ -290,3 +290,4 @@ export class ApifyAdapter implements ProviderAdapter {
     }
   }
 }
+

@@ -326,8 +326,8 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
     const desc = opts.onlyFailed
       ? 'all FAILED messages'
       : opts.olderThanDays === 0
-      ? 'ALL messages across the entire website'
-      : `messages older than ${opts.olderThanDays} days`;
+        ? 'ALL messages across the entire website'
+        : `messages older than ${opts.olderThanDays} days`;
     if (!window.confirm(`Are you sure you want to purge ${desc}?`)) return;
 
     setActionLoading(true);
@@ -612,11 +612,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
         <button
           onClick={() => setSubTab('users')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            subTab === 'users'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${subTab === 'users'
+            ? 'bg-slate-900 text-white shadow-sm'
+            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
         >
           <Users className="w-4 h-4" />
           Users & Data Eraser ({customers.length})
@@ -624,11 +623,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
         <button
           onClick={() => setSubTab('sessions')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            subTab === 'sessions'
-              ? 'bg-rose-600 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${subTab === 'sessions'
+            ? 'bg-rose-600 text-white shadow-sm'
+            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
         >
           <Smartphone className="w-4 h-4" />
           Session & Device Terminator ({sessions.length})
@@ -636,11 +634,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
         <button
           onClick={() => setSubTab('storage')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            subTab === 'storage'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${subTab === 'storage'
+            ? 'bg-indigo-600 text-white shadow-sm'
+            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
         >
           <HardDrive className="w-4 h-4" />
           Storage & Data Manager
@@ -648,11 +645,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
         <button
           onClick={() => setSubTab('vault')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            subTab === 'vault'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${subTab === 'vault'
+            ? 'bg-emerald-600 text-white shadow-sm'
+            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
         >
           <Database className="w-4 h-4" />
           Extracted Leads Vault ({vaultLogs.length})
@@ -660,11 +656,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
         <button
           onClick={() => setSubTab('live')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            subTab === 'live'
-              ? 'bg-amber-600 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${subTab === 'live'
+            ? 'bg-amber-600 text-white shadow-sm'
+            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
         >
           <Activity className="w-4 h-4" />
           Live Campaigns ({liveCampaigns.length})
@@ -672,11 +667,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
         <button
           onClick={() => setSubTab('capacity')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            subTab === 'capacity'
-              ? 'bg-slate-700 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${subTab === 'capacity'
+            ? 'bg-slate-700 text-white shadow-sm'
+            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
         >
           <Server className="w-4 h-4" />
           Server Capacity Guide
@@ -684,11 +678,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
         <button
           onClick={() => setSubTab('virtual-numbers')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            subTab === 'virtual-numbers'
-              ? 'bg-purple-600 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${subTab === 'virtual-numbers'
+            ? 'bg-purple-600 text-white shadow-sm'
+            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
         >
           <Phone className="w-4 h-4" />
           Virtual Numbers
@@ -696,11 +689,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
         <button
           onClick={() => setSubTab('commission')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            subTab === 'commission'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${subTab === 'commission'
+            ? 'bg-indigo-600 text-white shadow-sm'
+            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
         >
           <Percent className="w-4 h-4" />
           Custom Commission Setter
@@ -708,11 +700,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
         <button
           onClick={() => setSubTab('data-marketplace')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            subTab === 'data-marketplace'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${subTab === 'data-marketplace'
+            ? 'bg-blue-600 text-white shadow-sm'
+            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
         >
           <Layers className="w-4 h-4" />
           Data Extraction Hub
@@ -855,11 +846,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
                             <button
                               onClick={() => handleToggleStatus(c)}
                               title={c.is_active === 0 ? 'Activate Account' : 'Disable Account'}
-                              className={`p-1.5 rounded-lg transition ${
-                                c.is_active === 0
-                                  ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
-                                  : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
-                              }`}
+                              className={`p-1.5 rounded-lg transition ${c.is_active === 0
+                                ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                                : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
+                                }`}
                             >
                               {c.is_active === 0 ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                             </button>
@@ -937,18 +927,16 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
                       <td className="py-3 px-4">
                         <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
-                            s.status === 'connected'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : s.status === 'connecting' || s.status === 'reconnecting'
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase ${s.status === 'connected'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : s.status === 'connecting' || s.status === 'reconnecting'
                               ? 'bg-amber-100 text-amber-800 animate-pulse'
                               : 'bg-slate-100 text-slate-600'
-                          }`}
+                            }`}
                         >
                           <span
-                            className={`w-2 h-2 rounded-full ${
-                              s.status === 'connected' ? 'bg-emerald-500' : s.status === 'disconnected' ? 'bg-slate-400' : 'bg-amber-500'
-                            }`}
+                            className={`w-2 h-2 rounded-full ${s.status === 'connected' ? 'bg-emerald-500' : s.status === 'disconnected' ? 'bg-slate-400' : 'bg-amber-500'
+                              }`}
                           />
                           {s.status}
                         </span>

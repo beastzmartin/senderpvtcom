@@ -96,9 +96,11 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (user) {
         await api.currency.switch(target.code);
       }
+      window.dispatchEvent(new CustomEvent('currency:switched', { detail: { code: target.code } }));
       return true;
     } catch (err) {
       console.warn('[CurrencyContext] Failed to sync currency switch with backend:', err);
+      window.dispatchEvent(new CustomEvent('currency:switched', { detail: { code: target.code } }));
       return true; // Still update client state
     }
   };

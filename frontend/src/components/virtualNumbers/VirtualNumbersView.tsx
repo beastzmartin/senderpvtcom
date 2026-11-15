@@ -153,12 +153,23 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
     loadUserOrders();
   }, []);
 
-  // When selected country, product, or universal currency changes, reload prices
+  // When selected country, product, or universal currency changes, reload prices and wallet
   useEffect(() => {
+    setCurrency(currencyCode);
+    loadWallet();
     if (selectedCountry && selectedProduct) {
       loadPrices(selectedCountry, selectedProduct, currencyCode);
     }
   }, [selectedCountry, selectedProduct, currencyCode]);
+
+  // Listen to currency switched events globally
+  useEffect(() => {
+    const onCurrencySwitched = () => {
+      loadWallet();
+    };
+    window.addEventListener('currency:switched', onCurrencySwitched);
+    return () => window.removeEventListener('currency:switched', onCurrencySwitched);
+  }, []);
 
   // Socket.IO real-time event listeners
   useEffect(() => {
@@ -221,19 +232,16 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
   };
 
   const handleSwitchCurrency = async (newCode: string) => {
-    if (newCode === currency || isCurrencySwitching) return;
+    if (isCurrencySwitching) return;
     setIsCurrencySwitching(true);
     try {
       await switchCurrency(newCode);
-      const res = await api.currency.switch(newCode);
-      if (res.success) {
-        showToast(`Switched currency to ${res.newCurrency}! Converted balance: ${res.newCurrency} ${res.newBalance.toFixed(2)}`, 'success');
-        setCurrency(res.newCurrency);
-        await loadWallet();
-        if (selectedCountry && selectedProduct) {
-          await loadPrices(selectedCountry, selectedProduct, res.newCurrency);
-        }
+      setCurrency(newCode);
+      await loadWallet();
+      if (selectedCountry && selectedProduct) {
+        await loadPrices(selectedCountry, selectedProduct, newCode);
       }
+      showToast(`Switched currency to ${newCode}!`, 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to switch currency', 'error');
     } finally {

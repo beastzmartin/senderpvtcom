@@ -102,3 +102,4 @@ export interface ProviderAdapter {
    */
   verifyWebhook(secretOrSignature: string, rawPayload: string): boolean;
 }
+

@@ -66,6 +66,14 @@ export const WalletView: React.FC<WalletViewProps> = ({
 
   useEffect(() => {
     fetchData();
+  }, [currencyCode]);
+
+  useEffect(() => {
+    const handleCurrencySwitched = () => {
+      fetchData();
+    };
+    window.addEventListener('currency:switched', handleCurrencySwitched);
+    return () => window.removeEventListener('currency:switched', handleCurrencySwitched);
   }, []);
 
   const handleAdminAdjust = async (e: React.FormEvent) => {
@@ -181,7 +189,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
                 Total Deposited
               </span>
               <div className="text-xl font-bold text-slate-900 mt-0.5">
-                ₹{(wallet?.total_topped_up || 0).toFixed(2)}
+                {currencySymbol}{(wallet?.total_topped_up || 0).toFixed(2)}
               </div>
               <div className="text-[11px] text-slate-500">Includes welcome promo credits</div>
             </div>
@@ -196,7 +204,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
                 Total Consumed
               </span>
               <div className="text-xl font-bold text-slate-900 mt-0.5">
-                ₹{(wallet?.total_spent || 0).toFixed(2)}
+                {currencySymbol}{(wallet?.total_spent || 0).toFixed(2)}
               </div>
               <div className="text-[11px] text-slate-500">Module activations & lead extractions</div>
             </div>
