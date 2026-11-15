@@ -40,8 +40,7 @@ import {
   ShoppingBag,
   Boxes,
   Wallet,
-  Globe,
-  Database
+  Globe
 } from 'lucide-react';
 
 export type AppTab =
@@ -52,7 +51,6 @@ export type AppTab =
   | 'templates'
   | 'leads'
   | 'extractors'
-  | 'data-marketplace'
   | 'marketplace'
   | 'my-extensions'
   | 'wallet'
@@ -113,12 +111,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       items: [
         { id: 'extractors' as AppTab, label: 'Google Maps Extractor', icon: MapPin, badge: 'Live Scraper' },
         { id: 'leads' as AppTab, label: 'Extracted Leads CRM', icon: Building2, badge: 'Prospects' }
-      ]
-    },
-    {
-      title: 'DATA EXTRACTION MARKETPLACE',
-      items: [
-        { id: 'data-marketplace' as AppTab, label: 'Data Marketplace', icon: Database, badge: 'Intelligence' }
       ]
     },
     {

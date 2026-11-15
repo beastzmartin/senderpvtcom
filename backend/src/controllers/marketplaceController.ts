@@ -5,6 +5,7 @@ import { MarketplaceProductService } from '../services/marketplace/MarketplacePr
 import { MarketplaceJobService } from '../services/marketplace/MarketplaceJobService.js';
 import { MarketplacePricingService } from '../services/marketplace/MarketplacePricingService.js';
 import { ProviderRegistry } from '../services/marketplace/provider/ProviderRegistry.js';
+import { ApifyAdapter } from '../services/marketplace/provider/ApifyAdapter.js';
 import { MarketplaceService } from '../services/marketplaceService.js';
 import { getDatabase } from '../db/database.js';
 
@@ -637,6 +638,20 @@ export class MarketplaceController {
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to update settings' });
+    }
+  };
+
+  /**
+   * POST /api/marketplace/admin/test-provider-auth
+   */
+  public adminTestProviderAuth = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const { token } = req.body;
+      const adapter = ProviderRegistry.getInstance().getAdapter('apify') as ApifyAdapter;
+      const result = await adapter.testConnection(token);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || 'Failed to test provider authentication' });
     }
   };
 }

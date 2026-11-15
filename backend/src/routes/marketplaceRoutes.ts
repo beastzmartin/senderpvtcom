@@ -54,5 +54,6 @@ router.get('/admin/finance', requireAuth, requireAdmin, controller.adminFinanceS
 router.get('/admin/provider-health', requireAuth, requireAdmin, controller.adminProviderHealth);
 router.get('/admin/settings', requireAuth, requireAdmin, controller.adminGetSettings);
 router.post('/admin/settings', requireAuth, requireAdmin, controller.adminUpdateSettings);
+router.post('/admin/test-provider-auth', requireAuth, requireAdmin, controller.adminTestProviderAuth);
 
 export default router;

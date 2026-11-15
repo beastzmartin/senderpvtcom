@@ -19,7 +19,10 @@ import {
   Search,
   ExternalLink,
   ShieldAlert,
-  ArrowRight
+  ArrowRight,
+  Key,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export const AdminDataMarketplaceTab: React.FC = () => {
@@ -37,6 +40,25 @@ export const AdminDataMarketplaceTab: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [jsonText, setJsonText] = useState('');
+
+  // Apify Provider Settings & Live Test State
+  const [showToken, setShowToken] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const [testAuthLoading, setTestAuthLoading] = useState(false);
+  const [testAuthResult, setTestAuthResult] = useState<{ success: boolean; username?: string; email?: string; error?: string } | null>(null);
+
+  const handleTestApifyAuth = async () => {
+    setTestAuthLoading(true);
+    setTestAuthResult(null);
+    try {
+      const res = await api.dataMarketplace.adminTestProviderAuth(settings.apify_api_token);
+      setTestAuthResult(res);
+    } catch (err: any) {
+      setTestAuthResult({ success: false, error: err.message || 'Connection failed' });
+    } finally {
+      setTestAuthLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -528,60 +550,173 @@ export const AdminDataMarketplaceTab: React.FC = () => {
           SUB-TAB 5: SETTINGS
          ===================================================================== */}
       {subTab === 'settings' && (
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4 max-w-xl">
-          <h3 className="font-bold text-sm text-slate-900">Marketplace Global Policies</h3>
-
-          <div className="space-y-3 text-xs">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Result Retention Policy (Days):</label>
-              <input
-                type="number"
-                value={settings.retention_days || '30'}
-                onChange={(e) => setSettings({ ...settings, retention_days: e.target.value })}
-                className="w-full p-2 border border-slate-200 rounded-lg"
-              />
+        <div className="space-y-6 max-w-2xl">
+          {/* Apify Provider API Credentials */}
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Key className="w-5 h-5 text-blue-600" />
+              <div>
+                <h3 className="font-bold text-sm text-slate-900">Upstream Provider API (Apify Engine)</h3>
+                <p className="text-xs text-slate-500">
+                  Configure your primary upstream actor engine. Customer UI and exports remain 100% white-labeled.
+                </p>
+              </div>
             </div>
 
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Charge on Zero Results:</label>
-              <select
-                value={settings.charge_on_zero_results || '0'}
-                onChange={(e) => setSettings({ ...settings, charge_on_zero_results: e.target.value })}
-                className="w-full p-2 border border-slate-200 rounded-lg"
-              >
-                <option value="0">No (Release full reserve if 0 results)</option>
-                <option value="1">Yes (Charge minimum flat run fee)</option>
-              </select>
-            </div>
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Apify API Token:
+                </label>
+                <div className="relative">
+                  <input
+                    type={showToken ? 'text' : 'password'}
+                    value={settings.apify_api_token || ''}
+                    onChange={(e) => setSettings({ ...settings, apify_api_token: e.target.value })}
+                    placeholder="apify_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full p-2.5 pr-20 border border-slate-200 rounded-lg font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                  <div className="absolute right-2 top-2 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowToken(!showToken)}
+                      className="p-1 text-slate-400 hover:text-slate-600 rounded"
+                    >
+                      {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Obtained from Apify Console → Settings → Integrations → API Tokens.
+                </p>
+              </div>
 
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Refund Full Reserve on Job Failure:</label>
-              <select
-                value={settings.refund_on_failure || '1'}
-                onChange={(e) => setSettings({ ...settings, refund_on_failure: e.target.value })}
-                className="w-full p-2 border border-slate-200 rounded-lg"
-              >
-                <option value="1">Yes (Automatic Full Refund)</option>
-                <option value="0">No (Manual Review)</option>
-              </select>
-            </div>
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Apify Webhook Signing Secret (Optional):
+                </label>
+                <div className="relative">
+                  <input
+                    type={showSecret ? 'text' : 'password'}
+                    value={settings.apify_webhook_secret || ''}
+                    onChange={(e) => setSettings({ ...settings, apify_webhook_secret: e.target.value })}
+                    placeholder="Your webhook shared secret or HMAC key"
+                    className="w-full p-2.5 pr-10 border border-slate-200 rounded-lg font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecret(!showSecret)}
+                    className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-600 rounded"
+                  >
+                    {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
 
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Global Default Markup / Margin (%):</label>
-              <input
-                type="number"
-                value={settings.global_default_margin_pct || '35'}
-                onChange={(e) => setSettings({ ...settings, global_default_margin_pct: e.target.value })}
-                className="w-full p-2 border border-slate-200 rounded-lg"
-              />
-            </div>
+              <div className="pt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleTestApifyAuth}
+                  disabled={testAuthLoading || !settings.apify_api_token}
+                  className="px-3.5 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold rounded-lg border border-blue-200 flex items-center gap-1.5 transition disabled:opacity-50"
+                >
+                  {testAuthLoading ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Activity className="w-3.5 h-3.5" />
+                  )}
+                  {testAuthLoading ? 'Verifying Token...' : 'Test Apify Connection'}
+                </button>
+              </div>
 
-            <button
-              onClick={handleSaveSettings}
-              className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm"
-            >
-              Save Policies
-            </button>
+              {testAuthResult && (
+                <div
+                  className={`p-3 rounded-lg border text-xs flex items-start gap-2.5 ${
+                    testAuthResult.success
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}
+                >
+                  {testAuthResult.success ? (
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <div className="font-bold">
+                      {testAuthResult.success ? 'Apify Connection Successful' : 'Connection Failed'}
+                    </div>
+                    <div className="text-[11px] mt-0.5 opacity-90">
+                      {testAuthResult.success
+                        ? `Authenticated as @${testAuthResult.username}${testAuthResult.email ? ` (${testAuthResult.email})` : ''}. Upstream actor executions are ready.`
+                        : testAuthResult.error}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Marketplace Global Policies */}
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="font-bold text-sm text-slate-900 border-b border-slate-100 pb-3">
+              Marketplace Global Policies
+            </h3>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Result Retention Policy (Days):</label>
+                <input
+                  type="number"
+                  value={settings.retention_days || '30'}
+                  onChange={(e) => setSettings({ ...settings, retention_days: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Charge on Zero Results:</label>
+                <select
+                  value={settings.charge_on_zero_results || '0'}
+                  onChange={(e) => setSettings({ ...settings, charge_on_zero_results: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg"
+                >
+                  <option value="0">No (Release full reserve if 0 results)</option>
+                  <option value="1">Yes (Charge minimum flat run fee)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Refund Full Reserve on Job Failure:</label>
+                <select
+                  value={settings.refund_on_failure || '1'}
+                  onChange={(e) => setSettings({ ...settings, refund_on_failure: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg"
+                >
+                  <option value="1">Yes (Automatic Full Refund)</option>
+                  <option value="0">No (Manual Review)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Global Default Markup / Margin (%):</label>
+                <input
+                  type="number"
+                  value={settings.global_default_margin_pct || '35'}
+                  onChange={(e) => setSettings({ ...settings, global_default_margin_pct: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div className="pt-3">
+                <button
+                  onClick={handleSaveSettings}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition"
+                >
+                  Save API Credentials & Policies
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

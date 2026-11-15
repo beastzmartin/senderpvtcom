@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { getDatabase } from '../../../db/database.js';
 import {
   ProviderAdapter,
   ProviderActorInfo,
@@ -14,15 +15,69 @@ export class ApifyAdapter implements ProviderAdapter {
   private apiToken: string;
 
   constructor(token?: string) {
-    this.apiToken = token || process.env.APIFY_API_TOKEN || '';
+    this.apiToken = token || '';
   }
 
-  private getToken(): string {
-    const token = this.apiToken || process.env.APIFY_API_TOKEN || '';
-    if (!token) {
-      throw new Error('PROVIDER_AUTH_MISSING: Upstream data provider token is not configured in backend environment.');
+  public getToken(tokenOverride?: string): string {
+    if (tokenOverride && tokenOverride.trim()) {
+      return tokenOverride.trim();
     }
-    return token;
+    if (this.apiToken && this.apiToken.trim()) {
+      return this.apiToken.trim();
+    }
+    try {
+      const db = getDatabase();
+      const row = db.prepare("SELECT value FROM marketplace_settings WHERE key = 'apify_api_token'").get() as any;
+      if (row?.value && row.value.trim()) {
+        return row.value.trim();
+      }
+    } catch {}
+    const envToken = process.env.APIFY_API_TOKEN || '';
+    if (!envToken) {
+      throw new Error('PROVIDER_AUTH_MISSING: Upstream data provider token is not configured. Please add your Apify API Token in Admin Settings.');
+    }
+    return envToken.trim();
+  }
+
+  public getWebhookSecret(): string {
+    try {
+      const db = getDatabase();
+      const row = db.prepare("SELECT value FROM marketplace_settings WHERE key = 'apify_webhook_secret'").get() as any;
+      if (row?.value && row.value.trim()) {
+        return row.value.trim();
+      }
+    } catch {}
+    return process.env.APIFY_WEBHOOK_SECRET || process.env.MARKETPLACE_WEBHOOK_SECRET || '';
+  }
+
+  /**
+   * Test live Apify API token validity by fetching user profile
+   */
+  public async testConnection(tokenOverride?: string): Promise<{ success: boolean; username?: string; email?: string; error?: string }> {
+    try {
+      const token = this.getToken(tokenOverride);
+      const res = await fetch(`${this.baseUrl}/users/me?token=${token}`, {
+        headers: { Accept: 'application/json' }
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as any;
+        return {
+          success: false,
+          error: body?.error?.message || `HTTP ${res.status}: Invalid Apify API Token`
+        };
+      }
+      const data = (await res.json()) as any;
+      return {
+        success: true,
+        username: data?.data?.username || 'Verified User',
+        email: data?.data?.email
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Network connection failed'
+      };
+    }
   }
 
   /**
@@ -274,7 +329,7 @@ export class ApifyAdapter implements ProviderAdapter {
    * Verify inbound webhook secret or signature
    */
   public verifyWebhook(secretOrSignature: string, rawPayload: string): boolean {
-    const configuredSecret = process.env.APIFY_WEBHOOK_SECRET || process.env.MARKETPLACE_WEBHOOK_SECRET;
+    const configuredSecret = this.getWebhookSecret();
     if (!configuredSecret) return true; // If no secret configured, accept in development
 
     if (secretOrSignature === configuredSecret) {

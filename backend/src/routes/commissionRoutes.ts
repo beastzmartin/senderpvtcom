@@ -16,3 +16,4 @@ router.put('/:id', requireAuth, requireAdmin, controller.updateCommission);
 router.delete('/:id', requireAuth, requireAdmin, controller.deleteCommission);
 
 export default router;
+

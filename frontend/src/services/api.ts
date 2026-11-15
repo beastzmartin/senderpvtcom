@@ -2080,101 +2080,98 @@ export const api = {
       })
   },
 
+  // =========================================================================
+  // DATA EXTRACTION MARKETPLACE
+  // =========================================================================
   dataMarketplace: {
-    listProducts: (category?: string) =>
-      request<{ success: boolean; products: any[] }>(`/marketplace/products${category && category !== 'all' ? `?category=${encodeURIComponent(category)}` : ''}`),
+    listProducts: (category?: string) => {
+      const qs = category && category !== 'All' ? `?category=${encodeURIComponent(category)}` : '';
+      return request<{ success: boolean; products: any[] }>(`/marketplace/products${qs}`);
+    },
 
     getProduct: (slug: string) =>
-      request<{ success: boolean; product: any }>(`/marketplace/products/${encodeURIComponent(slug)}`),
+      request<{ success: boolean; product: any }>(`/marketplace/products/${slug}`),
 
     estimatePrice: (slug: string, items: number) =>
-      request<{
-        success: boolean;
-        sellPrice: number;
-        currency: string;
-        minChargeApplied: boolean;
-        requestedItems: number;
-      }>('/marketplace/estimate', {
+      request<{ success: boolean; sellPrice: number; currency: string; minChargeApplied: boolean; requestedItems: number }>('/marketplace/estimate', {
         method: 'POST',
         body: JSON.stringify({ slug, items })
       }),
 
-    createJob: (slug: string, input: any, requestedItems?: number) =>
+    createJob: (productSlug: string, inputValues: Record<string, any>, requestedItems: number) =>
       request<{ success: boolean; job: any }>('/marketplace/jobs', {
         method: 'POST',
-        body: JSON.stringify({ slug, input, requestedItems })
+        body: JSON.stringify({ productSlug, inputValues, requestedItems })
       }),
 
-    listUserJobs: (params?: { page?: number; limit?: number; status?: string }) => {
-      const q = new URLSearchParams();
-      if (params?.page) q.set('page', String(params.page));
-      if (params?.limit) q.set('limit', String(params.limit));
-      if (params?.status) q.set('status', params.status);
-      return request<{ success: boolean; jobs: any[]; total: number; page: number; limit: number }>(`/marketplace/jobs?${q.toString()}`);
+    listUserJobs: (params?: { status?: string; limit?: number; offset?: number }) => {
+      const query = new URLSearchParams();
+      if (params?.status) query.set('status', params.status);
+      if (params?.limit) query.set('limit', String(params.limit));
+      if (params?.offset) query.set('offset', String(params.offset));
+      return request<{ success: boolean; jobs: any[]; total: number }>(`/marketplace/jobs?${query.toString()}`);
     },
 
     getJob: (id: string) =>
-      request<{ success: boolean; job: any }>(`/marketplace/jobs/${encodeURIComponent(id)}`),
+      request<{ success: boolean; job: any }>(`/marketplace/jobs/${id}`),
 
     getJobResults: (id: string, params?: { page?: number; limit?: number }) => {
-      const q = new URLSearchParams();
-      if (params?.page) q.set('page', String(params.page));
-      if (params?.limit) q.set('limit', String(params.limit));
-      return request<{ success: boolean; items: any[]; total: number; page: number; limit: number }>(`/marketplace/jobs/${encodeURIComponent(id)}/results?${q.toString()}`);
+      const query = new URLSearchParams();
+      if (params?.page) query.set('page', String(params.page));
+      if (params?.limit) query.set('limit', String(params.limit));
+      return request<{ success: boolean; items: any[]; total: number; page: number; limit: number }>(
+        `/marketplace/jobs/${id}/results?${query.toString()}`
+      );
     },
 
-    abortJob: (id: string) =>
-      request<{ success: boolean }>(`/marketplace/jobs/${encodeURIComponent(id)}/abort`, {
+    getExportUrl: (jobId: string, format: string) => {
+      const token = getAuthToken() || '';
+      return `${API_BASE}/marketplace/jobs/${jobId}/export?format=${format}&token=${encodeURIComponent(token)}`;
+    },
+
+    abortJob: (jobId: string) =>
+      request<{ success: boolean; message: string }>(`/marketplace/jobs/${jobId}/abort`, {
         method: 'POST'
       }),
 
-    getExportUrl: (id: string, format: 'csv' | 'xlsx' | 'json') => {
-      const token = getAuthToken();
-      return `${API_BASE}/marketplace/jobs/${encodeURIComponent(id)}/export?format=${format}&token=${token || ''}`;
-    },
-
-    // Admin Tools
     adminListProducts: () =>
       request<{ success: boolean; products: any[] }>('/marketplace/admin/products'),
 
-    adminSaveProduct: (product: any, reason?: string) =>
-      request<{ success: boolean; product: any }>('/marketplace/admin/products', {
+    adminSaveProduct: (product: any, changelog?: string) =>
+      request<{ success: boolean; message: string; product: any }>('/marketplace/admin/products', {
         method: 'POST',
-        body: JSON.stringify({ product, reason })
+        body: JSON.stringify({ product, changelog })
       }),
 
-    adminImportProvider: (providerType: string, actorIdOrUrl: string) =>
+    adminImportProvider: (providerType: string, actorId: string) =>
       request<{ success: boolean; product: any }>('/marketplace/admin/import-provider', {
         method: 'POST',
-        body: JSON.stringify({ providerType, actorIdOrUrl })
+        body: JSON.stringify({ providerType, actorId })
       }),
 
     adminDuplicateProduct: (slug: string) =>
-      request<{ success: boolean; product: any }>(`/marketplace/admin/products/${encodeURIComponent(slug)}/duplicate`, {
+      request<{ success: boolean; product: any }>(`/marketplace/admin/products/${slug}/duplicate`, {
         method: 'POST'
       }),
 
     adminDeleteProduct: (slug: string) =>
-      request<{ success: boolean }>(`/marketplace/admin/products/${encodeURIComponent(slug)}`, {
+      request<{ success: boolean }>(`/marketplace/admin/products/${slug}`, {
         method: 'DELETE'
       }),
 
-    adminTestRun: (slug: string, input?: any) =>
-      request<{ success: boolean; job: any }>(`/marketplace/admin/products/${encodeURIComponent(slug)}/test-run`, {
+    adminTestRun: (slug: string, inputValues?: any) =>
+      request<{ success: boolean; job: any; message?: string }>(`/marketplace/admin/products/${slug}/test-run`, {
         method: 'POST',
-        body: JSON.stringify({ input: input || {} })
+        body: JSON.stringify({ input: inputValues })
       }),
 
-    adminListJobs: (params?: { page?: number; limit?: number; status?: string }) => {
-      const q = new URLSearchParams();
-      if (params?.page) q.set('page', String(params.page));
-      if (params?.limit) q.set('limit', String(params.limit));
-      if (params?.status) q.set('status', params.status);
-      return request<{ success: boolean; jobs: any[]; total: number; page: number; limit: number }>(`/marketplace/admin/jobs?${q.toString()}`);
+    adminListJobs: (params?: any) => {
+      const query = new URLSearchParams(params || {});
+      return request<{ success: boolean; jobs: any[]; total: number }>(`/marketplace/admin/jobs?${query.toString()}`);
     },
 
     adminFinanceStats: () =>
-      request<{ success: boolean; stats: any; byProduct: any[] }>('/marketplace/admin/finance'),
+      request<{ success: boolean; stats: any }>('/marketplace/admin/finance'),
 
     adminProviderHealth: () =>
       request<{ success: boolean; health: any }>('/marketplace/admin/provider-health'),
@@ -2186,6 +2183,12 @@ export const api = {
       request<{ success: boolean }>('/marketplace/admin/settings', {
         method: 'POST',
         body: JSON.stringify({ settings })
+      }),
+
+    adminTestProviderAuth: (token?: string) =>
+      request<{ success: boolean; username?: string; email?: string; error?: string }>('/marketplace/admin/test-provider-auth', {
+        method: 'POST',
+        body: JSON.stringify({ token })
       })
   }
 };
