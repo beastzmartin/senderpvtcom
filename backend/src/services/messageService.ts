@@ -93,21 +93,8 @@ export class MessageService {
   }
 
   private setupListeners(): void {
-    this.whatsappManager.on('message', async (incoming: IncomingMessageEvent, sessionId?: string, userId?: string) => {
-      try {
-        await this.handleIncomingMessage(incoming, sessionId, userId);
-      } catch (err) {
-        console.error('[Message Service] Error processing incoming message:', err);
-      }
-    });
-
-    this.whatsappManager.on('message_update', async (update: MessageContentUpdateEvent, sessionId?: string, userId?: string) => {
-      try {
-        await this.handleMessageContentUpdate(update, sessionId, userId);
-      } catch (err) {
-        console.error('[Message Service] Error processing message content update:', err);
-      }
-    });
+    // Live chat receiving & storage disabled completely per user configuration.
+    // Incoming messages are not received, saved, or stored into conversations/messages tables.
 
     this.whatsappManager.on('message_status', async (update: MessageStatusUpdateEvent, sessionId?: string, userId?: string) => {
       try {
@@ -589,105 +576,23 @@ export class MessageService {
 
   /**
    * Handle incoming message from real WhatsApp connection
+   * (Live chat receiving and storage disabled: no messages are received or stored)
    */
   public async handleIncomingMessage(incoming: IncomingMessageEvent, sessionId?: string, userId?: string): Promise<MessageRecord> {
-    const db = getDatabase();
-    const effectiveUserId = userId || (sessionId ? this.whatsappManager.getSessionUserId(sessionId) : null);
-    const conversation = this.getOrCreateConversation(
-      incoming.senderIdentifier,
-      incoming.identifierType,
-      incoming.pushName,
-      effectiveUserId || undefined
-    );
-
-    const messageId = incoming.providerMessageId || crypto.randomUUID();
-    const now = incoming.timestamp || new Date().toISOString();
-
-    // Check if message already exists
-    const existing = db.prepare('SELECT * FROM messages WHERE id = ? OR provider_message_id = ?').get(
-      messageId,
-      incoming.providerMessageId
-    ) as MessageRecord | undefined;
-
-    if (existing) {
-      // If existing message was stuck in undecrypted/placeholder state, update with decrypted content
-      if (existing.body.startsWith('Waiting for this message') && !incoming.body.startsWith('Waiting for this message')) {
-        console.log(`[Message Service Diagnostic] Updating previously undecrypted message ${existing.id} with incoming text: "${incoming.body.slice(0, 35)}..."`);
-        const updateStmt = db.prepare(`
-          UPDATE messages
-          SET body = ?, status = 'delivered', provider_response = ?, timestamp = ?
-          WHERE id = ?
-        `);
-        const responseJson = incoming.rawMessage ? JSON.stringify({ message: incoming.rawMessage }) : existing.provider_response;
-        updateStmt.run(incoming.body, responseJson, now, existing.id);
-
-        const updateConvStmt = db.prepare(`
-          UPDATE conversations
-          SET last_message_text = ?, updated_at = ?
-          WHERE id = ?
-        `);
-        updateConvStmt.run(incoming.body, now, conversation.id);
-
-        this.logMessageStatus(
-          existing.id,
-          'delivered',
-          `Message decrypted and content updated from ${incoming.senderIdentifier}`
-        );
-
-        return db.prepare('SELECT * FROM messages WHERE id = ?').get(existing.id) as MessageRecord;
-      }
-      return existing;
-    }
-
-    const insertStmt = db.prepare(`
-      INSERT INTO messages (
-        id, user_id, conversation_id, sender_identifier, recipient_identifier,
-        identifier_type, body, direction, status, provider_message_id,
-        provider_response, timestamp, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'delivered', ?, ?, ?, ?)
-    `);
-
-    const direction = incoming.fromMe ? 'outgoing' : 'incoming';
-    const myPhone = this.whatsappManager.getAccountInfo(sessionId, effectiveUserId || undefined)?.phone || 'me';
-    const senderId = incoming.fromMe ? myPhone : incoming.senderIdentifier;
-    const recipientId = incoming.fromMe ? incoming.senderIdentifier : (conversation.raw_identifier || myPhone);
-    const providerResponseStr = incoming.rawMessage ? JSON.stringify({ message: incoming.rawMessage }) : null;
-
-    insertStmt.run(
-      messageId,
-      effectiveUserId || null,
-      conversation.id,
-      senderId,
-      recipientId,
-      incoming.identifierType,
-      incoming.body,
-      direction,
-      incoming.providerMessageId,
-      providerResponseStr,
-      now,
-      now
-    );
-
-    // Update conversation metadata
-    const updateConvStmt = db.prepare(`
-      UPDATE conversations
-      SET
-        last_message_at = ?,
-        last_message_text = ?,
-        unread_count = CASE WHEN ? = 'incoming' THEN unread_count + 1 ELSE unread_count END,
-        updated_at = ?
-      WHERE id = ?
-    `);
-
-    updateConvStmt.run(now, incoming.body, direction, now, conversation.id);
-
-    this.logMessageStatus(
-      messageId,
-      'delivered',
-      `Message received from ${incoming.senderIdentifier} (${incoming.identifierType})`
-    );
-
-    return db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as MessageRecord;
+    // Live chat receiving & storage disabled: do NOT save or store any message
+    return {
+      id: incoming.providerMessageId || 'noop',
+      user_id: userId || null,
+      conversation_id: 'none',
+      sender_identifier: incoming.senderIdentifier,
+      recipient_identifier: incoming.from,
+      identifier_type: incoming.identifierType,
+      body: '',
+      direction: 'incoming',
+      status: 'delivered',
+      timestamp: incoming.timestamp,
+      created_at: incoming.timestamp
+    };
   }
 
   /**

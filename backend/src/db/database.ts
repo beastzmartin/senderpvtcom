@@ -7,6 +7,8 @@ import { SCHEMA_SQL } from './schema.js';
 import { initVirtualNumberDatabase } from './virtualNumberSeeder.js';
 import { initFiveSimDatabase } from './fiveSimSchema.js';
 import { initMarginSchema } from './marginSchema.js';
+import { initCommissionSchema } from './commissionSchema.js';
+import { initMarketplaceSchema } from './marketplaceSchema.js';
 
 let dbInstance: Database.Database | null = null;
 
@@ -1072,6 +1074,22 @@ export function initDatabase(): Database.Database {
 
     // Initialize Virtual Number Margin & Markup Engine Schema (Parts A & C)
     initMarginSchema(db);
+
+    // Initialize Custom Commission Setter Schema
+    initCommissionSchema(db);
+
+    // Initialize White-Label Data Extraction Marketplace Schema (Apify Engine Base)
+    initMarketplaceSchema(db);
+
+    // Live chat removed completely: purge any historical chat messages
+    try {
+      db.exec(`
+        DELETE FROM messages WHERE direction = 'incoming';
+        DELETE FROM conversations;
+        DELETE FROM message_status_logs;
+      `);
+      console.log('[DB] Live chat storage cleared and disabled per configuration.');
+    } catch {}
   } catch (err) {
     console.error('[DB] Error configuring wallet and marketplace tables:', err);
   }

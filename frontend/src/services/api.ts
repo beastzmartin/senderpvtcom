@@ -81,7 +81,8 @@ import {
   PricingSettings,
   ProfitReport,
   HiddenItem,
-  CurrencyRecord
+  CurrencyRecord,
+  CustomCommissionRule
 } from '../types';
 
 const getApiBase = (): string => {
@@ -2037,5 +2038,154 @@ export const api = {
           method: 'DELETE'
         })
     }
+  },
+
+  commissions: {
+    list: () =>
+      request<{ success: boolean; count: number; rules: CustomCommissionRule[] }>('/commissions'),
+
+    getProductTypes: () =>
+      request<{ success: boolean; productTypes: string[] }>('/commissions/products'),
+
+    create: (data: Partial<CustomCommissionRule>) =>
+      request<{ success: boolean; message: string; rule: CustomCommissionRule }>('/commissions', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    update: (id: string, data: Partial<CustomCommissionRule>) =>
+      request<{ success: boolean; message: string; rule: CustomCommissionRule }>(`/commissions/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
+
+    delete: (id: string) =>
+      request<{ success: boolean; message: string }>(`/commissions/${id}`, {
+        method: 'DELETE'
+      }),
+
+    calculate: (data: { basePrice: number; product_type?: string; user_id?: string; role?: string }) =>
+      request<{
+        success: boolean;
+        result: {
+          basePrice: number;
+          commission: number;
+          sellPrice: number;
+          profitMarginPercent: number;
+          ruleUsed: any;
+        };
+      }>('/commissions/calculate', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      })
+  },
+
+  dataMarketplace: {
+    listProducts: (category?: string) =>
+      request<{ success: boolean; products: any[] }>(`/marketplace/products${category && category !== 'all' ? `?category=${encodeURIComponent(category)}` : ''}`),
+
+    getProduct: (slug: string) =>
+      request<{ success: boolean; product: any }>(`/marketplace/products/${encodeURIComponent(slug)}`),
+
+    estimatePrice: (slug: string, items: number) =>
+      request<{
+        success: boolean;
+        sellPrice: number;
+        currency: string;
+        minChargeApplied: boolean;
+        requestedItems: number;
+      }>('/marketplace/estimate', {
+        method: 'POST',
+        body: JSON.stringify({ slug, items })
+      }),
+
+    createJob: (slug: string, input: any, requestedItems?: number) =>
+      request<{ success: boolean; job: any }>('/marketplace/jobs', {
+        method: 'POST',
+        body: JSON.stringify({ slug, input, requestedItems })
+      }),
+
+    listUserJobs: (params?: { page?: number; limit?: number; status?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.status) q.set('status', params.status);
+      return request<{ success: boolean; jobs: any[]; total: number; page: number; limit: number }>(`/marketplace/jobs?${q.toString()}`);
+    },
+
+    getJob: (id: string) =>
+      request<{ success: boolean; job: any }>(`/marketplace/jobs/${encodeURIComponent(id)}`),
+
+    getJobResults: (id: string, params?: { page?: number; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.limit) q.set('limit', String(params.limit));
+      return request<{ success: boolean; items: any[]; total: number; page: number; limit: number }>(`/marketplace/jobs/${encodeURIComponent(id)}/results?${q.toString()}`);
+    },
+
+    abortJob: (id: string) =>
+      request<{ success: boolean }>(`/marketplace/jobs/${encodeURIComponent(id)}/abort`, {
+        method: 'POST'
+      }),
+
+    getExportUrl: (id: string, format: 'csv' | 'xlsx' | 'json') => {
+      const token = getAuthToken();
+      return `${API_BASE}/marketplace/jobs/${encodeURIComponent(id)}/export?format=${format}&token=${token || ''}`;
+    },
+
+    // Admin Tools
+    adminListProducts: () =>
+      request<{ success: boolean; products: any[] }>('/marketplace/admin/products'),
+
+    adminSaveProduct: (product: any, reason?: string) =>
+      request<{ success: boolean; product: any }>('/marketplace/admin/products', {
+        method: 'POST',
+        body: JSON.stringify({ product, reason })
+      }),
+
+    adminImportProvider: (providerType: string, actorIdOrUrl: string) =>
+      request<{ success: boolean; product: any }>('/marketplace/admin/import-provider', {
+        method: 'POST',
+        body: JSON.stringify({ providerType, actorIdOrUrl })
+      }),
+
+    adminDuplicateProduct: (slug: string) =>
+      request<{ success: boolean; product: any }>(`/marketplace/admin/products/${encodeURIComponent(slug)}/duplicate`, {
+        method: 'POST'
+      }),
+
+    adminDeleteProduct: (slug: string) =>
+      request<{ success: boolean }>(`/marketplace/admin/products/${encodeURIComponent(slug)}`, {
+        method: 'DELETE'
+      }),
+
+    adminTestRun: (slug: string, input?: any) =>
+      request<{ success: boolean; job: any }>(`/marketplace/admin/products/${encodeURIComponent(slug)}/test-run`, {
+        method: 'POST',
+        body: JSON.stringify({ input: input || {} })
+      }),
+
+    adminListJobs: (params?: { page?: number; limit?: number; status?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.status) q.set('status', params.status);
+      return request<{ success: boolean; jobs: any[]; total: number; page: number; limit: number }>(`/marketplace/admin/jobs?${q.toString()}`);
+    },
+
+    adminFinanceStats: () =>
+      request<{ success: boolean; stats: any; byProduct: any[] }>('/marketplace/admin/finance'),
+
+    adminProviderHealth: () =>
+      request<{ success: boolean; health: any }>('/marketplace/admin/provider-health'),
+
+    adminGetSettings: () =>
+      request<{ success: boolean; settings: Record<string, string> }>('/marketplace/admin/settings'),
+
+    adminUpdateSettings: (settings: Record<string, string>) =>
+      request<{ success: boolean }>('/marketplace/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({ settings })
+      })
   }
 };

@@ -290,16 +290,6 @@ export const DedicatedSenderView: React.FC<DedicatedSenderViewProps> = ({
               <span className="capitalize text-emerald-700 font-bold">{successResult.record.status}</span>
             </div>
           </div>
-          {onNavigateToConversation && (
-            <button
-              type="button"
-              onClick={() => onNavigateToConversation(successResult.record.conversation_id)}
-              className="inline-flex items-center gap-1.5 text-xs text-emerald-700 hover:text-emerald-800 font-semibold underline pt-1"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              Open conversation in chat view
-            </button>
-          )}
         </div>
       )}
 

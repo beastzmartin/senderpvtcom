@@ -43,15 +43,17 @@ import {
   FolderX,
   Eraser,
   StopCircle,
-  Phone
+  Phone,
+  Percent
 } from 'lucide-react';
 import { AdminVirtualNumbersTab } from './AdminVirtualNumbersTab';
+import { CommissionSetterPanel } from './CommissionSetterPanel';
 
 interface AdminControlCenterProps {
   onImpersonated?: () => void;
 }
 
-type AdminSubTab = 'users' | 'sessions' | 'storage' | 'vault' | 'live' | 'capacity' | 'virtual-numbers';
+type AdminSubTab = 'users' | 'sessions' | 'storage' | 'vault' | 'live' | 'capacity' | 'virtual-numbers' | 'commission';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 B';
@@ -688,6 +690,18 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
         >
           <Phone className="w-4 h-4" />
           Virtual Numbers
+        </button>
+
+        <button
+          onClick={() => setSubTab('commission')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+            subTab === 'commission'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Percent className="w-4 h-4" />
+          Custom Commission Setter
         </button>
       </div>
 
@@ -1434,6 +1448,11 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
       {/* TAB 7: VIRTUAL NUMBERS TELEPHONY */}
       {subTab === 'virtual-numbers' && (
         <AdminVirtualNumbersTab />
+      )}
+
+      {/* TAB 8: CUSTOM COMMISSION SETTER */}
+      {subTab === 'commission' && (
+        <CommissionSetterPanel />
       )}
 
       {/* MODAL: PARTICULAR USER DATA & MESSAGE HISTORY ERASER */}

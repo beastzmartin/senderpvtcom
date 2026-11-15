@@ -108,6 +108,7 @@ export interface User {
   reseller_license_quota?: number;
   days_remaining?: number | null;
   is_active?: boolean;
+  preferred_currency?: string | null;
   total_messages_sent?: number;
   total_extracted_contacts?: number;
   connected_devices?: number;
@@ -1354,6 +1355,24 @@ export interface CurrencyRecord {
   is_active: number;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface CustomCommissionRule {
+  id: string;
+  name: string;
+  product_type: string;
+  target_role: string;
+  target_user_id: string | null;
+  target_username?: string | null;
+  type: 'percent' | 'fixed' | 'percent_plus_fixed';
+  percent_value: number;
+  fixed_value: number;
+  min_commission: number;
+  max_commission: number | null;
+  description: string | null;
+  enabled: number | boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 

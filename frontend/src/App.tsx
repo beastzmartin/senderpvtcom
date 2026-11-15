@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WhatsAppProvider } from './context/WhatsAppContext';
 import { ContactProvider } from './context/ContactContext';
+import { CurrencyProvider } from './context/CurrencyContext';
 import { Sidebar, AppTab } from './components/common/Sidebar';
 import { QrModal } from './components/connection/QrModal';
 import { DeviceManagerModal } from './components/devices/DeviceManagerModal';
 import { DashboardView } from './components/dashboard/DashboardView';
-import { ConversationsView } from './components/conversations/ConversationsView';
 import { DedicatedSenderView } from './components/sender/DedicatedSenderView';
 import { BulkLidSenderView } from './components/sender/BulkLidSenderView';
 import { GroupExtractorView } from './components/extractor/GroupExtractorView';
@@ -15,6 +15,7 @@ import { ContactsView } from './components/contacts/ContactsView';
 import { TemplatesView } from './components/templates/TemplatesView';
 import { LeadsDashboardView } from './components/leads/LeadsDashboardView';
 import { ExtractionHubView } from './components/leads/ExtractionHubView';
+import { DataMarketplaceView } from './components/marketplace/DataMarketplaceView';
 import { MarketplaceView } from './components/marketplace/MarketplaceView';
 import { MyExtensionsView } from './components/marketplace/MyExtensionsView';
 import { WalletView } from './components/marketplace/WalletView';
@@ -50,9 +51,8 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
     return <LoginView />;
   }
 
-  const handleNavigateToConversation = (conversationId: string) => {
-    setTargetConversationId(conversationId);
-    setActiveTab('conversations');
+  const handleNavigateToConversation = (_conversationId: string) => {
+    setActiveTab('sender');
   };
 
   const handleStartChatWithContact = (contact: Contact) => {
@@ -117,13 +117,6 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
           <DashboardView onNavigateToConversation={handleNavigateToConversation} />
         )}
 
-        {activeTab === 'conversations' && (
-          <ConversationsView
-            initialConversationId={targetConversationId}
-            onNavigateToSender={() => setActiveTab('sender')}
-          />
-        )}
-
         {activeTab === 'sender' && (
           <DedicatedSenderView onNavigateToConversation={handleNavigateToConversation} />
         )}
@@ -170,6 +163,10 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
           <ExtractionHubView
             onNavigateToLeads={() => setActiveTab('leads')}
           />
+        )}
+
+        {activeTab === 'data-marketplace' && (
+          <DataMarketplaceView />
         )}
 
         {activeTab === 'marketplace' && (
@@ -242,7 +239,9 @@ const AuthenticatedProviders: React.FC = () => {
   return (
     <ContactProvider key={`contacts_${user?.id || 'guest'}`}>
       <WhatsAppProvider key={`wa_${user?.id || 'guest'}`}>
-        <MainLayout activeTab={activeTab} setActiveTab={setActiveTab} />
+        <CurrencyProvider>
+          <MainLayout activeTab={activeTab} setActiveTab={setActiveTab} />
+        </CurrencyProvider>
       </WhatsAppProvider>
     </ContactProvider>
   );

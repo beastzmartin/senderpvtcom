@@ -9,7 +9,7 @@ import { RecentMessages } from './RecentMessages';
 import { RefreshCw, QrCode, MessageCircle, Phone, Edit2 } from 'lucide-react';
 
 interface DashboardViewProps {
-  onNavigateToConversation: (conversationId: string) => void;
+  onNavigateToConversation?: (conversationId: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToConversation }) => {

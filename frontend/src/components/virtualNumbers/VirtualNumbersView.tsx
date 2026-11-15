@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { useCurrency } from '../../context/CurrencyContext';
 import {
   NumberCountry,
   NumberProduct,
@@ -59,6 +60,7 @@ interface VirtualNumbersViewProps {
 
 export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNavigateToWallet }) => {
   const { socket } = useWhatsApp();
+  const { currencyCode, currencySymbol, currencies: globalCurrencies, switchCurrency } = useCurrency();
 
   // Wallet & User state
   const [wallet, setWallet] = useState<UserWallet | null>(null);
@@ -151,12 +153,12 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
     loadUserOrders();
   }, []);
 
-  // When selected country or product changes, reload prices
+  // When selected country, product, or universal currency changes, reload prices
   useEffect(() => {
     if (selectedCountry && selectedProduct) {
-      loadPrices(selectedCountry, selectedProduct, currency);
+      loadPrices(selectedCountry, selectedProduct, currencyCode);
     }
-  }, [selectedCountry, selectedProduct]);
+  }, [selectedCountry, selectedProduct, currencyCode]);
 
   // Socket.IO real-time event listeners
   useEffect(() => {
@@ -222,6 +224,7 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
     if (newCode === currency || isCurrencySwitching) return;
     setIsCurrencySwitching(true);
     try {
+      await switchCurrency(newCode);
       const res = await api.currency.switch(newCode);
       if (res.success) {
         showToast(`Switched currency to ${res.newCurrency}! Converted balance: ${res.newCurrency} ${res.newBalance.toFixed(2)}`, 'success');

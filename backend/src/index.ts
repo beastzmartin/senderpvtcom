@@ -29,6 +29,7 @@ import numberRoutes from './routes/numberRoutes.js';
 import marginAdminRoutes from './routes/marginAdminRoutes.js';
 import currencyRoutes from './routes/currencyRoutes.js';
 import currencyAdminRoutes from './routes/currencyAdminRoutes.js';
+import commissionRoutes from './routes/commissionRoutes.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
@@ -83,6 +84,7 @@ app.use('/api/numbers', numberRoutes);
 app.use('/api/admin/margin', marginAdminRoutes);
 app.use('/api/currency', currencyRoutes);
 app.use('/api/admin/currency', currencyAdminRoutes);
+app.use('/api/commissions', commissionRoutes);
 
 // Dashboard stats endpoint
 const messageController = new MessageController();

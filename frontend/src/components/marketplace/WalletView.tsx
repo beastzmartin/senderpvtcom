@@ -20,6 +20,7 @@ import {
 import { api } from '../../services/api';
 import { UserWallet, WalletTransaction } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useCurrency } from '../../context/CurrencyContext';
 import { WalletTopUpModal } from './WalletTopUpModal';
 
 interface WalletViewProps {
@@ -32,6 +33,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
   onNavigateToMyExtensions
 }) => {
   const { user } = useAuth();
+  const { currencySymbol, currencyCode } = useCurrency();
   const [wallet, setWallet] = useState<UserWallet | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,7 +134,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
               Available Credits Balance
             </div>
             <div className="text-4xl sm:text-5xl font-black text-white mt-1">
-              ₹{(wallet?.balance || 0).toFixed(2)}
+              {currencySymbol}{(wallet?.balance || 0).toFixed(2)}
             </div>
             <div className="text-xs text-emerald-100 mt-2">
               Automated deduction for lead syncing, verified searches & module activations.
@@ -378,11 +380,11 @@ export const WalletView: React.FC<WalletViewProps> = ({
                           isCredit ? 'text-emerald-600' : 'text-slate-800'
                         }`}
                       >
-                        {isCredit ? `+₹${Math.abs(tx.amount).toFixed(2)}` : `-₹${Math.abs(tx.amount).toFixed(2)}`}
+                        {isCredit ? `+${currencySymbol}${Math.abs(tx.amount).toFixed(2)}` : `-${currencySymbol}${Math.abs(tx.amount).toFixed(2)}`}
                       </td>
 
                       <td className="py-3 px-5 text-right font-semibold text-slate-700 whitespace-nowrap">
-                        ₹{tx.new_balance.toFixed(2)}
+                        {currencySymbol}{tx.new_balance.toFixed(2)}
                       </td>
 
                       <td className="py-3 px-5 text-center whitespace-nowrap">

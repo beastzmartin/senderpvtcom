@@ -393,20 +393,11 @@ export class BaileysWhatsAppProvider extends EventEmitter implements IWhatsAppPr
         }
       });
 
-      // Handle history synchronization
+      // Handle history synchronization - Do NOT cache or store chat history messages
       sock.ev.on('messaging-history.set', async ({ chats, contacts, messages, isLatest }) => {
-        console.log(`[WhatsApp Provider Diagnostic] History sync received: ${chats?.length || 0} chats, ${contacts?.length || 0} contacts, ${messages?.length || 0} messages (isLatest: ${isLatest})`);
+        console.log(`[WhatsApp Provider Diagnostic] History sync received: ${chats?.length || 0} chats, ${contacts?.length || 0} contacts (chat message storage disabled)`);
 
-        // 1. Cache historical messages for retry resolution
-        if (Array.isArray(messages)) {
-          for (const msg of messages) {
-            if (msg.key?.id && msg.message) {
-              this.cacheMessage(msg.key.id, msg.key.remoteJid || '', msg.message);
-            }
-          }
-        }
-
-        // 2. Synchronize contacts and LID mappings
+        // Synchronize contacts and LID mappings only (no chat message storing)
         if (Array.isArray(contacts)) {
           const contactService = ContactService.getInstance();
           for (const c of contacts) {
@@ -457,27 +448,17 @@ export class BaileysWhatsAppProvider extends EventEmitter implements IWhatsAppPr
         }
       });
 
-      // Handle incoming messages
+      // Handle incoming messages - LIVE CHAT MESSAGE RECEIVING & STORAGE DISABLED
       sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (!messages || messages.length === 0) return;
 
-        console.log(`[WhatsApp Provider Diagnostic] messages.upsert received ${messages.length} message(s) (type: ${type})`);
-
+        // Process only contact/LID mapping metadata (no chat message body or storage)
         for (const msg of messages) {
           try {
             const remoteJid = msg.key.remoteJid;
             if (!remoteJid || remoteJid === 'status@broadcast') continue;
 
-            const fromMe = Boolean(msg.key.fromMe);
-            const isLid = isLidUser(remoteJid);
-            const identifierType = isLid ? 'lid' : 'phone';
-
-            // Cache raw message if present
-            if (msg.message && msg.key.id) {
-              this.cacheMessage(msg.key.id, remoteJid, msg.message);
-            }
-
-            // Extract and save any LID <-> Phone mappings from message key attributes
+            // Extract and save any LID <-> Phone mappings from message key attributes only
             try {
               const keyAny = msg.key as any;
               const contactService = ContactService.getInstance();
@@ -491,44 +472,9 @@ export class BaileysWhatsAppProvider extends EventEmitter implements IWhatsAppPr
               // Ignore mapping extraction errors
             }
 
-            const isCiphertext = msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT;
-            let body = this.extractMessageText(msg.message);
-
-            if (isCiphertext && !body) {
-              console.warn(`[WhatsApp Provider Diagnostic] Message ${msg.key.id} from ${remoteJid} arrived as CIPHERTEXT (undecrypted). Waiting for retry/resend.`);
-              body = 'Waiting for this message. This may take a while. Learn More';
-            }
-
-            if (!body) {
-              // Non-content protocol message (e.g. app state sync keys)
-              continue;
-            }
-
-            // Normalization of remote identifier
-            const cleanRemote = isLid ? remoteJid : remoteJid.replace('@s.whatsapp.net', '');
-            const normalizedRemote = isLid
-              ? cleanRemote
-              : (cleanRemote.startsWith('+') ? cleanRemote : `+${cleanRemote}`);
-
-            const timestamp = msg.messageTimestamp
-              ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
-              : new Date().toISOString();
-
-            const incomingEvent: IncomingMessageEvent = {
-              providerMessageId: msg.key.id || `msg_${Date.now()}`,
-              from: remoteJid,
-              senderIdentifier: normalizedRemote,
-              identifierType,
-              body,
-              timestamp,
-              pushName: msg.pushName || undefined,
-              fromMe,
-              rawMessage: msg.message || undefined
-            };
-
-            this.emit('message', incomingEvent, this.sessionId);
+            // Chat message receiving & storage disabled: do NOT emit message, do NOT cache
           } catch (err) {
-            console.error('[WhatsApp Provider Diagnostic] Error handling incoming upsert message:', err);
+            console.error('[WhatsApp Provider Diagnostic] Error handling message mapping:', err);
           }
         }
       });

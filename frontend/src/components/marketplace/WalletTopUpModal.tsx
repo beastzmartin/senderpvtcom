@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CreditCard, Sparkles, CheckCircle2, AlertCircle, ArrowUpRight } from 'lucide-react';
 import { api } from '../../services/api';
+import { useCurrency } from '../../context/CurrencyContext';
 
 interface WalletTopUpModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const WalletTopUpModal: React.FC<WalletTopUpModalProps> = ({
   onSuccess,
   currentBalance = 0
 }) => {
+  const { currencySymbol, currencyCode } = useCurrency();
   const [amount, setAmount] = useState<number>(250);
   const [customAmount, setCustomAmount] = useState<string>('250');
   const [loading, setLoading] = useState(false);
@@ -38,7 +40,7 @@ export const WalletTopUpModal: React.FC<WalletTopUpModalProps> = ({
 
   const handleTopUp = async () => {
     if (amount <= 0) {
-      setError('Please enter a valid top-up amount greater than ₹0.');
+      setError(`Please enter a valid top-up amount greater than ${currencySymbol}0.`);
       return;
     }
 
@@ -47,10 +49,10 @@ export const WalletTopUpModal: React.FC<WalletTopUpModalProps> = ({
       setError(null);
       const res = await api.wallet.topUp(
         amount,
-        `Instant Wallet Recharge (+₹${amount})`,
+        `Instant Wallet Recharge (+${currencySymbol}${amount})`,
         `TXN_${Date.now()}`
       );
-      setSuccessMsg(`Successfully credited ₹${amount.toFixed(2)} to your wallet!`);
+      setSuccessMsg(`Successfully credited ${currencySymbol}${amount.toFixed(2)} to your wallet!`);
       setTimeout(() => {
         onSuccess(res.newBalance);
         onClose();
@@ -85,7 +87,7 @@ export const WalletTopUpModal: React.FC<WalletTopUpModalProps> = ({
           </div>
           <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-xs text-emerald-100">
             <span>Current Available Balance:</span>
-            <span className="text-sm font-semibold text-white">₹{currentBalance.toFixed(2)}</span>
+            <span className="text-sm font-semibold text-white">{currencySymbol}{currentBalance.toFixed(2)}</span>
           </div>
         </div>
 
@@ -121,7 +123,7 @@ export const WalletTopUpModal: React.FC<WalletTopUpModalProps> = ({
                       : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                   }`}
                 >
-                  ₹{val}
+                  {currencySymbol}{val}
                 </button>
               ))}
             </div>
@@ -129,11 +131,11 @@ export const WalletTopUpModal: React.FC<WalletTopUpModalProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-              Custom Amount (₹ INR)
+              Custom Amount ({currencySymbol} {currencyCode})
             </label>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-semibold text-lg">
-                ₹
+                {currencySymbol}
               </span>
               <input
                 type="text"
