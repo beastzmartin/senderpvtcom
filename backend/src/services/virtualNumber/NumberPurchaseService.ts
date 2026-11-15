@@ -5,6 +5,7 @@ import { WalletService } from '../walletService.js';
 import { FiveSimConfigService } from './fivesim/FiveSimConfigService.js';
 import { FiveSimOrderService } from './fivesim/FiveSimOrderService.js';
 import { MarginService, CalculatedPrice } from './MarginService.js';
+import { CurrencyService } from './CurrencyService.js';
 
 export interface NumberOrderRecord {
   id: string;
@@ -175,11 +176,13 @@ export class NumberPurchaseService {
   public async getPrices(
     country: string,
     product: string,
-    isAdmin = false
+    isAdmin = false,
+    requestedCurrency?: string
   ): Promise<{
     country: string;
     product: string;
     currency: string;
+    currency_symbol: string;
     operators: OperatorRateItem[];
     bestOperator: OperatorRateItem | null;
   }> {
@@ -216,6 +219,9 @@ export class NumberPurchaseService {
 
     const operators: OperatorRateItem[] = [];
     const settings = this.marginService.getPricingSettings();
+    const currencyService = CurrencyService.getInstance();
+    const chosenCurrency = (requestedCurrency || settings.display_currency || 'INR').toUpperCase();
+    const currRecord = currencyService.getCurrency(chosenCurrency) || currencyService.getDefaultCurrency();
 
     if (productData && typeof productData === 'object') {
       for (const [operatorName, opDetails] of Object.entries(productData)) {
@@ -225,8 +231,8 @@ export class NumberPurchaseService {
         const count = Number(op.count || 0);
         const rate = Number(op.rate || 0);
 
-        // Apply central margin formula
-        const calc: CalculatedPrice = this.marginService.calculateSellPrice(costRub, c, p, operatorName);
+        // Apply central margin formula with user's selected currency
+        const calc: CalculatedPrice = this.marginService.calculateSellPrice(costRub, c, p, operatorName, currRecord.code);
 
         const item: OperatorRateItem = {
           operator: operatorName,
@@ -257,7 +263,8 @@ export class NumberPurchaseService {
     return {
       country: c,
       product: p,
-      currency: settings.display_currency,
+      currency: currRecord.code,
+      currency_symbol: currRecord.symbol,
       operators,
       bestOperator
     };
@@ -317,17 +324,21 @@ export class NumberPurchaseService {
       chosenOperator = found;
     }
 
-    // 3. Calculate sell price & cost price
-    const rawCostRub = chosenOperator.raw_cost_rub || 0;
-    const calc = this.marginService.calculateSellPrice(rawCostRub, c, p, chosenOperator.operator);
-    const sellPrice = calc.sellPrice;
-    const settings = this.marginService.getPricingSettings();
-
-    // 4. Check user wallet balance
+    // 3. Determine user's currency from wallet and calculate sell price & cost price
     const wallet = this.walletService.getOrCreateWallet(userId);
+    const userCurrency = (wallet.currency || 'INR').toUpperCase();
+    const currencyService = CurrencyService.getInstance();
+    const currRecord = currencyService.getCurrency(userCurrency) || currencyService.getDefaultCurrency();
+
+    const rawCostRub = chosenOperator.raw_cost_rub || 0;
+    const calc = this.marginService.calculateSellPrice(rawCostRub, c, p, chosenOperator.operator, currRecord.code);
+    const sellPrice = calc.sellPrice;
+    const orderCurrency = currRecord.code;
+
+    // 4. Check user wallet balance in user's active currency
     if (wallet.balance < sellPrice) {
       throw new Error(
-        `Insufficient wallet balance. Required: ${settings.display_currency} ${sellPrice.toFixed(2)}, Available: ${settings.display_currency} ${wallet.balance.toFixed(2)}. Please add funds to your wallet to continue.`
+        `Insufficient wallet balance. Required: ${currRecord.symbol}${sellPrice.toFixed(2)}, Available: ${currRecord.symbol}${wallet.balance.toFixed(2)}. Please add funds to your wallet to continue.`
       );
     }
 
@@ -341,7 +352,7 @@ export class NumberPurchaseService {
         sellPrice,
         'usage_deduction',
         `Virtual Number Purchase: ${p.toUpperCase()} (${c})`,
-        { referenceId: orderId, customData: { country: c, product: p, operator: chosenOperator.operator } }
+        { referenceId: orderId, customData: { country: c, product: p, operator: chosenOperator.operator, currency: orderCurrency } }
       );
       deductTxId = deductRes.transactionId;
     } catch (err: any) {
@@ -365,7 +376,7 @@ export class NumberPurchaseService {
       calc.costPrice,
       sellPrice,
       calc.profit,
-      settings.display_currency,
+      orderCurrency,
       deductTxId
     );
 
@@ -402,7 +413,9 @@ export class NumberPurchaseService {
     }
 
     // 8. Update local order record with active 5SIM order details
-    const actualCostConverted = Number((Number(fiveSimOrder.price || rawCostRub) * settings.fx_rate).toFixed(2));
+    const actualCostRub = Number(fiveSimOrder.price || rawCostRub);
+    const actualCalc = this.marginService.calculateSellPrice(actualCostRub, c, p, chosenOperator.operator, orderCurrency);
+    const actualCostConverted = actualCalc.costPrice;
     const finalProfit = Number((sellPrice - actualCostConverted).toFixed(2));
 
     db.prepare(`

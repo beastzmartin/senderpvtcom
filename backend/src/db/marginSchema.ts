@@ -69,13 +69,32 @@ CREATE TABLE IF NOT EXISTS number_orders (
 CREATE INDEX IF NOT EXISTS idx_number_orders_user_created ON number_orders(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_number_orders_fivesim_id ON number_orders(fivesim_order_id);
 CREATE INDEX IF NOT EXISTS idx_number_orders_status ON number_orders(status);
+
+-- Multi-Currency Exchange Rates System (Admin Managed)
+CREATE TABLE IF NOT EXISTS currency_rates (
+  code TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  rate_from_5sim_base REAL NOT NULL DEFAULT 1.0,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_currency_rates_active ON currency_rates(is_active);
 `;
 
 /**
- * Initializes margin, pricing settings, and number orders tables in SQLite database.
+ * Initializes margin, pricing settings, currency rates, and number orders tables in SQLite database.
  */
 export function initMarginSchema(db: Database.Database): void {
   db.exec(MARGIN_SCHEMA_SQL);
+
+  // Ensure preferred_currency exists on users table
+  try {
+    db.prepare("ALTER TABLE users ADD COLUMN preferred_currency TEXT DEFAULT 'INR'").run();
+  } catch {}
 
   // Seed default pricing settings if not existing
   const existingSettings = db.prepare("SELECT id FROM pricing_settings WHERE id = 'default'").get();
@@ -93,6 +112,33 @@ export function initMarginSchema(db: Database.Database): void {
       INSERT INTO margin_rules (id, scope, country, product, operator, type, percent_value, fixed_value, enabled)
       VALUES ('default_global_margin', 'global', NULL, NULL, NULL, 'percent', 25.0, 0.0, 1)
     `).run();
+  }
+
+  // Seed default currency rates if none exist
+  const existingCurrencies = (db.prepare('SELECT COUNT(*) as count FROM currency_rates').get() as any)?.count || 0;
+  if (existingCurrencies === 0) {
+    const seedCurrencies = [
+      { code: 'INR', name: 'Indian Rupee', symbol: '₹', rate_from_5sim_base: 1.05, is_default: 1, is_active: 1 },
+      { code: 'USD', name: 'US Dollar', symbol: '$', rate_from_5sim_base: 0.012, is_default: 0, is_active: 1 },
+      { code: 'EUR', name: 'Euro', symbol: '€', rate_from_5sim_base: 0.011, is_default: 0, is_active: 1 },
+      { code: 'GBP', name: 'British Pound', symbol: '£', rate_from_5sim_base: 0.0095, is_default: 0, is_active: 1 },
+      { code: 'AED', name: 'UAE Dirham', symbol: 'AED', rate_from_5sim_base: 0.044, is_default: 0, is_active: 1 },
+      { code: 'CAD', name: 'Canadian Dollar', symbol: 'CA$', rate_from_5sim_base: 0.016, is_default: 0, is_active: 1 },
+      { code: 'RUB', name: 'Russian Ruble', symbol: '₽', rate_from_5sim_base: 1.0, is_default: 0, is_active: 1 },
+      { code: 'PKR', name: 'Pakistani Rupee', symbol: 'Rs', rate_from_5sim_base: 3.3, is_default: 0, is_active: 1 },
+      { code: 'BDT', name: 'Bangladeshi Taka', symbol: '৳', rate_from_5sim_base: 1.4, is_default: 0, is_active: 1 },
+      { code: 'BRL', name: 'Brazilian Real', symbol: 'R$', rate_from_5sim_base: 0.068, is_default: 0, is_active: 1 },
+      { code: 'NGN', name: 'Nigerian Naira', symbol: '₦', rate_from_5sim_base: 18.5, is_default: 0, is_active: 1 }
+    ];
+
+    const insertStmt = db.prepare(`
+      INSERT INTO currency_rates (code, name, symbol, rate_from_5sim_base, is_default, is_active)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const c of seedCurrencies) {
+      insertStmt.run(c.code, c.name, c.symbol, c.rate_from_5sim_base, c.is_default, c.is_active);
+    }
   }
 }
 

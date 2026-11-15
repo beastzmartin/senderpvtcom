@@ -80,7 +80,8 @@ import {
   MarginRule,
   PricingSettings,
   ProfitReport,
-  HiddenItem
+  HiddenItem,
+  CurrencyRecord
 } from '../types';
 
 const getApiBase = (): string => {
@@ -1832,13 +1833,15 @@ export const api = {
       return request<{ success: boolean; count: number; products: NumberProduct[] }>(`/numbers/products?${q.toString()}`);
     },
 
-    getPrices: (country: string, product: string) => {
+    getPrices: (country: string, product: string, currency?: string) => {
       const q = new URLSearchParams({ country, product });
+      if (currency) q.set('currency', currency);
       return request<{
         success: boolean;
         country: string;
         product: string;
         currency: string;
+        currency_symbol?: string;
         operators: NumberOperatorRate[];
         bestOperator: NumberOperatorRate | null;
       }>(`/numbers/prices?${q.toString()}`);
@@ -1971,5 +1974,68 @@ export const api = {
       request<{ success: boolean; message: string }>(`/admin/margin/hidden-items/${id}`, {
         method: 'DELETE'
       })
+  },
+
+  // =========================================================================
+  // MULTI-CURRENCY CONVERSION SYSTEM (USER & ADMIN)
+  // =========================================================================
+  currency: {
+    list: () =>
+      request<{ success: boolean; count: number; currencies: CurrencyRecord[] }>('/currency/list'),
+
+    getUserCurrency: () =>
+      request<{ success: boolean; currency: string; symbol: string; balance: number }>('/currency/user'),
+
+    switch: (currency: string) =>
+      request<{
+        success: boolean;
+        message: string;
+        oldCurrency: string;
+        newCurrency: string;
+        oldBalance: number;
+        newBalance: number;
+        rate: number;
+      }>('/currency/switch', {
+        method: 'POST',
+        body: JSON.stringify({ currency })
+      }),
+
+    admin: {
+      getAll: () =>
+        request<{ success: boolean; count: number; currencies: CurrencyRecord[] }>('/admin/currency'),
+
+      add: (data: {
+        code: string;
+        name: string;
+        symbol: string;
+        rate_from_5sim_base: number;
+        is_default?: boolean;
+        is_active?: boolean;
+      }) =>
+        request<{ success: boolean; message: string; currency: CurrencyRecord }>('/admin/currency', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      update: (
+        code: string,
+        data: Partial<{
+          name: string;
+          symbol: string;
+          rate_from_5sim_base: number;
+          is_default: boolean;
+          is_active: boolean;
+        }>
+      ) =>
+        request<{ success: boolean; message: string; currency: CurrencyRecord }>(`/admin/currency/${code}`, {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        }),
+
+      delete: (code: string) =>
+        request<{ success: boolean; message: string }>(`/admin/currency/${code}`, {
+          method: 'DELETE'
+        })
+    }
   }
 };

@@ -1345,6 +1345,17 @@ export interface HiddenItem {
   created_at: string;
 }
 
+export interface CurrencyRecord {
+  code: string;
+  name: string;
+  symbol: string;
+  rate_from_5sim_base: number;
+  is_default: number;
+  is_active: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 
 
 

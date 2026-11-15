@@ -6,7 +6,8 @@ import {
   NumberProduct,
   NumberOperatorRate,
   NumberOrder,
-  UserWallet
+  UserWallet,
+  CurrencyRecord
 } from '../../types';
 import {
   Phone,
@@ -24,6 +25,7 @@ import {
   CheckCheck,
   ShieldCheck,
   Wallet,
+  Coins,
   Plus,
   RefreshCw,
   ExternalLink,
@@ -81,6 +83,9 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
   const [operatorRates, setOperatorRates] = useState<NumberOperatorRate[]>([]);
   const [bestOperator, setBestOperator] = useState<NumberOperatorRate | null>(null);
   const [currency, setCurrency] = useState<string>('INR');
+  const [currencies, setCurrencies] = useState<CurrencyRecord[]>([]);
+  const [isCurrencySwitching, setIsCurrencySwitching] = useState<boolean>(false);
+  const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState<boolean>(false);
   const [loadingRates, setLoadingRates] = useState<boolean>(false);
 
   // Orders
@@ -140,6 +145,7 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
   // Initial load
   useEffect(() => {
     loadWallet();
+    loadCurrencies();
     loadCountries();
     loadProducts();
     loadUserOrders();
@@ -148,7 +154,7 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
   // When selected country or product changes, reload prices
   useEffect(() => {
     if (selectedCountry && selectedProduct) {
-      loadPrices(selectedCountry, selectedProduct);
+      loadPrices(selectedCountry, selectedProduct, currency);
     }
   }, [selectedCountry, selectedProduct]);
 
@@ -184,17 +190,52 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
   }, [socket]);
 
   // --- Data Fetching ---
+  const loadCurrencies = async () => {
+    try {
+      const res = await api.currency.list();
+      if (res.success && res.currencies) {
+        setCurrencies(res.currencies);
+      }
+    } catch (err) {
+      console.warn('Failed to load active currencies list:', err);
+    }
+  };
+
   const loadWallet = async () => {
     try {
       setLoadingWallet(true);
       const w = await api.wallet.get();
       if (w) {
         setWallet(w);
+        if (w.currency) {
+          setCurrency(w.currency);
+        }
       }
     } catch (err: any) {
       console.warn('Failed to load wallet:', err);
     } finally {
       setLoadingWallet(false);
+    }
+  };
+
+  const handleSwitchCurrency = async (newCode: string) => {
+    if (newCode === currency || isCurrencySwitching) return;
+    setIsCurrencySwitching(true);
+    try {
+      const res = await api.currency.switch(newCode);
+      if (res.success) {
+        showToast(`Switched currency to ${res.newCurrency}! Converted balance: ${res.newCurrency} ${res.newBalance.toFixed(2)}`, 'success');
+        setCurrency(res.newCurrency);
+        await loadWallet();
+        if (selectedCountry && selectedProduct) {
+          await loadPrices(selectedCountry, selectedProduct, res.newCurrency);
+        }
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to switch currency', 'error');
+    } finally {
+      setIsCurrencySwitching(false);
+      setIsCurrencyDropdownOpen(false);
     }
   };
 
@@ -220,14 +261,15 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
     }
   };
 
-  const loadPrices = async (c: string, p: string) => {
+  const loadPrices = async (c: string, p: string, currOverride?: string) => {
     try {
       setLoadingRates(true);
-      const res = await api.numbers.getPrices(c, p);
+      const targetCurr = currOverride || currency;
+      const res = await api.numbers.getPrices(c, p, targetCurr);
       if (res.success) {
         setOperatorRates(res.operators || []);
         setBestOperator(res.bestOperator);
-        setCurrency(res.currency || 'INR');
+        setCurrency(res.currency || targetCurr || 'INR');
         setSelectedOperator('any');
       }
     } catch (err: any) {
@@ -364,6 +406,8 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
   const isBalanceSufficient = (wallet?.balance || 0) >= currentSellPrice && currentSellPrice > 0;
 
   // Active selection metadata
+  const activeCurrencyRecord = currencies.find((c) => c.code.toUpperCase() === (currency || '').toUpperCase());
+  const activeCurrencySymbol = activeCurrencyRecord?.symbol || (currency === 'INR' ? '₹' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency);
   const activeServiceMeta = getServiceMetadata(selectedProduct);
   const activeCountryObj = countries.find((c) => c.slug === selectedCountry);
   const activeCountryIso = resolveCountryIso(selectedCountry, activeCountryObj?.iso);
@@ -467,13 +511,63 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
           </p>
         </div>
 
-        {/* User Wallet Balance Widget */}
-        <div className="flex items-center gap-3">
-          <div className="px-4 py-2.5 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3.5">
+        {/* User Currency Selector & Wallet Balance Widget */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Currency Switcher Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              disabled={isCurrencySwitching}
+              onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+              className="px-3 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 text-white flex items-center gap-2 text-xs font-bold transition shadow-xs"
+              title="Click to switch your currency"
+            >
+              <Coins className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-mono text-amber-300 font-black">{activeCurrencySymbol}</span>
+              <span>{currency}</span>
+              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isCurrencyDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Currency Dropdown Menu */}
+            {isCurrencyDropdownOpen && (
+              <div className="absolute right-0 top-full mt-2 w-56 bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-100 max-h-64 overflow-y-auto scrollbar-thin">
+                <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800 mb-1">
+                  Choose Currency
+                </div>
+                {currencies.map((c) => {
+                  const isCurrent = c.code === currency;
+                  return (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => handleSwitchCurrency(c.code)}
+                      className={`w-full px-3 py-2 rounded-xl text-xs font-bold text-left transition flex items-center justify-between ${
+                        isCurrent
+                          ? 'bg-sky-600 text-white'
+                          : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 text-center font-mono font-bold text-amber-300">{c.symbol}</span>
+                        <div>
+                          <div className="text-xs font-bold">{c.code}</div>
+                          <div className="text-[10px] text-slate-400 font-normal">{c.name}</div>
+                        </div>
+                      </div>
+                      {isCurrent && <Check className="w-3.5 h-3.5 shrink-0 stroke-[3]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* User Wallet Balance Widget */}
+          <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3.5">
             <div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Your Balance</div>
               <div className="text-base font-black font-mono text-emerald-400">
-                {wallet ? `${wallet.currency === 'INR' ? '₹' : wallet.currency} ${wallet.balance.toFixed(2)}` : 'Loading...'}
+                {wallet ? `${activeCurrencySymbol} ${wallet.balance.toFixed(2)}` : 'Loading...'}
               </div>
             </div>
             {onNavigateToWallet && (
@@ -731,7 +825,7 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                 <div className="mt-2 flex items-baseline justify-between">
                   <span className="text-[11px] text-slate-500">Highest rate</span>
                   <span className="text-xs font-mono font-black text-sky-700">
-                    {currency === 'INR' ? '₹' : currency} {bestOperator?.sell_price.toFixed(2) || '---'}
+                    {activeCurrencySymbol} {bestOperator?.sell_price.toFixed(2) || '---'}
                   </span>
                 </div>
               </button>
@@ -764,7 +858,7 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                   <div className="mt-2 flex items-baseline justify-between">
                     <span className="text-[10px] text-slate-400 font-semibold">{op.rate}% success</span>
                     <span className="text-xs font-mono font-black text-slate-900">
-                      {currency === 'INR' ? '₹' : currency} {op.sell_price.toFixed(2)}
+                      {activeCurrencySymbol} {op.sell_price.toFixed(2)}
                     </span>
                   </div>
                 </button>
@@ -812,13 +906,13 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Price</span>
                 <div className="text-xl font-black font-mono text-emerald-400">
-                  {currency === 'INR' ? '₹' : currency} {currentSellPrice.toFixed(2)}
+                  {activeCurrencySymbol} {currentSellPrice.toFixed(2)}
                 </div>
               </div>
               <div className="text-right">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Your Balance</span>
                 <div className={`text-xs font-mono font-bold ${isBalanceSufficient ? 'text-slate-200' : 'text-rose-400'}`}>
-                  {wallet ? `${wallet.currency === 'INR' ? '₹' : wallet.currency} ${wallet.balance.toFixed(2)}` : '---'}
+                  {wallet ? `${activeCurrencySymbol} ${wallet.balance.toFixed(2)}` : '---'}
                 </div>
               </div>
             </div>
@@ -1223,7 +1317,7 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
               <div className="flex items-center justify-between pt-2 border-t border-slate-200">
                 <span className="text-slate-700 font-bold">Amount to Deduct:</span>
                 <span className="text-base font-black font-mono text-emerald-600">
-                  {currency === 'INR' ? '₹' : currency} {currentSellPrice.toFixed(2)}
+                  {activeCurrencySymbol} {currentSellPrice.toFixed(2)}
                 </span>
               </div>
             </div>

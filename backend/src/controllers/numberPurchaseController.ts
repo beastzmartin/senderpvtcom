@@ -39,7 +39,8 @@ export class NumberPurchaseController {
       }
 
       const isAdmin = req.user?.role === 'admin';
-      const data = await this.service.getPrices(country, product, isAdmin);
+      const requestedCurrency = req.query.currency as string | undefined;
+      const data = await this.service.getPrices(country, product, isAdmin, requestedCurrency);
       res.json({ success: true, ...data });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || 'Failed to fetch prices' });

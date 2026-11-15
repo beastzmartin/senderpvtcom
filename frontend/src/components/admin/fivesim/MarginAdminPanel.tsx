@@ -6,7 +6,8 @@ import {
   ProfitReport,
   NumberOrder,
   HiddenItem,
-  FiveSimProfile
+  FiveSimProfile,
+  CurrencyRecord
 } from '../../../types';
 import {
   Coins,
@@ -33,11 +34,15 @@ import {
   Calculator,
   EyeOff,
   Eye,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Edit2,
+  Save,
+  Globe,
+  Star
 } from 'lucide-react';
 
 export const MarginAdminPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'rules' | 'settings' | 'preview' | 'analytics' | 'hidden'>('rules');
+  const [activeTab, setActiveTab] = useState<'rules' | 'settings' | 'currencies' | 'preview' | 'analytics' | 'hidden'>('rules');
 
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -51,6 +56,23 @@ export const MarginAdminPanel: React.FC = () => {
   const [adminOrders, setAdminOrders] = useState<NumberOrder[]>([]);
   const [adminOrdersTotal, setAdminOrdersTotal] = useState(0);
   const [fiveSimHealth, setFiveSimHealth] = useState<{ profile: FiveSimProfile; isLowBalance: boolean; lowBalanceThreshold: number } | null>(null);
+
+  // Multi-Currency Admin States
+  const [currencies, setCurrencies] = useState<CurrencyRecord[]>([]);
+  const [loadingCurrencies, setLoadingCurrencies] = useState(false);
+  const [isAddCurrencyOpen, setIsAddCurrencyOpen] = useState(false);
+  const [editingCurrencyCode, setEditingCurrencyCode] = useState<string | null>(null);
+  const [editingCurrencyRate, setEditingCurrencyRate] = useState<number>(1.0);
+  const [isSavingCurrency, setIsSavingCurrency] = useState(false);
+  const [newCurrency, setNewCurrency] = useState({
+    code: '',
+    name: '',
+    symbol: '',
+    rate_from_5sim_base: 1.0,
+    is_default: false,
+    is_active: true
+  });
+  const [currencyTestRub, setCurrencyTestRub] = useState<number>(50);
 
   // Settings form states
   const [fxRateInput, setFxRateInput] = useState<number>(1.0);
@@ -99,6 +121,7 @@ export const MarginAdminPanel: React.FC = () => {
       await Promise.all([
         loadRules(),
         loadSettings(),
+        loadCurrencies(),
         loadHiddenItems(),
         loadProfitReport(profitPeriod),
         loadAdminOrders(),
@@ -280,6 +303,104 @@ export const MarginAdminPanel: React.FC = () => {
     }
   };
 
+  // --- Multi-Currency Handlers ---
+  const loadCurrencies = async () => {
+    try {
+      setLoadingCurrencies(true);
+      const res = await api.currency.admin.getAll();
+      if (res.success && res.currencies) {
+        setCurrencies(res.currencies);
+      }
+    } catch (err: any) {
+      console.warn('Failed to load admin currencies:', err);
+    } finally {
+      setLoadingCurrencies(false);
+    }
+  };
+
+  const handleAddCurrency = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCurrency.code.trim() || !newCurrency.name.trim() || !newCurrency.symbol.trim()) {
+      showToast('Please fill all required currency fields', 'error');
+      return;
+    }
+    if (newCurrency.rate_from_5sim_base <= 0) {
+      showToast('Exchange rate must be > 0', 'error');
+      return;
+    }
+    setIsSavingCurrency(true);
+    try {
+      const res = await api.currency.admin.add(newCurrency);
+      if (res.success) {
+        showToast(res.message, 'success');
+        setIsAddCurrencyOpen(false);
+        setNewCurrency({ code: '', name: '', symbol: '', rate_from_5sim_base: 1.0, is_default: false, is_active: true });
+        await loadCurrencies();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to add currency', 'error');
+    } finally {
+      setIsSavingCurrency(false);
+    }
+  };
+
+  const handleUpdateCurrencyRate = async (code: string) => {
+    if (editingCurrencyRate <= 0) {
+      showToast('Exchange rate must be > 0', 'error');
+      return;
+    }
+    setIsSavingCurrency(true);
+    try {
+      const res = await api.currency.admin.update(code, { rate_from_5sim_base: editingCurrencyRate });
+      if (res.success) {
+        showToast(`Rate for ${code} updated to ${editingCurrencyRate}!`, 'success');
+        setEditingCurrencyCode(null);
+        await loadCurrencies();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update rate', 'error');
+    } finally {
+      setIsSavingCurrency(false);
+    }
+  };
+
+  const handleToggleCurrencyActive = async (curr: CurrencyRecord) => {
+    try {
+      const res = await api.currency.admin.update(curr.code, { is_active: curr.is_active !== 1 });
+      if (res.success) {
+        showToast(`Currency ${curr.code} is now ${curr.is_active === 1 ? 'disabled' : 'active'}.`, 'info');
+        await loadCurrencies();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to toggle status', 'error');
+    }
+  };
+
+  const handleDeleteCurrency = async (code: string) => {
+    if (!confirm(`Are you sure you want to delete currency '${code}'?`)) return;
+    try {
+      const res = await api.currency.admin.delete(code);
+      if (res.success) {
+        showToast(`Currency '${code}' deleted.`, 'info');
+        await loadCurrencies();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete currency', 'error');
+    }
+  };
+
+  const handleSetDefaultCurrency = async (code: string) => {
+    try {
+      const res = await api.currency.admin.update(code, { is_default: true, is_active: true });
+      if (res.success) {
+        showToast(`Default system currency set to ${code}!`, 'success');
+        await loadCurrencies();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to set default currency', 'error');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Toast Alert */}
@@ -403,7 +524,19 @@ export const MarginAdminPanel: React.FC = () => {
           }`}
         >
           <Sliders className="w-4 h-4" />
-          <span>Pricing Settings & FX Rate</span>
+          <span>Pricing Settings</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('currencies')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'currencies'
+              ? 'bg-sky-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Coins className="w-4 h-4" />
+          <span>Currencies & FX Rates ({currencies.length})</span>
         </button>
 
         <button
@@ -668,6 +801,249 @@ export const MarginAdminPanel: React.FC = () => {
             </button>
           </div>
         </form>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: CURRENCIES & EXCHANGE RATES */}
+      {/* ========================================================================= */}
+      {activeTab === 'currencies' && (
+        <div className="space-y-6">
+          {/* Header Card */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-2xs flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <Globe className="w-4 h-4 text-sky-600" />
+                Decoupled Multi-Currency Engine & Exchange Rates
+              </h3>
+              <p className="text-xs text-slate-500 max-w-2xl">
+                Raw 5SIM base costs are in Russian Rubles (RUB). Below, manage conversion rates for each supported currency. When customers select their preferred currency, prices, numbers, and wallet transactions are converted automatically at your specified rates.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsAddCurrencyOpen(true)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Currency</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={loadCurrencies}
+                disabled={loadingCurrencies}
+                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+                title="Refresh Currencies"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingCurrencies ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Currencies Table */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4">Currency</th>
+                    <th className="py-3 px-4">Symbol</th>
+                    <th className="py-3 px-4">5SIM Base Exchange Rate (1 RUB = ?)</th>
+                    <th className="py-3 px-4">Example (100 RUB)</th>
+                    <th className="py-3 px-4">Default</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                  {currencies.map((curr) => {
+                    const isEditing = editingCurrencyCode === curr.code;
+                    return (
+                      <tr key={curr.code} className="hover:bg-slate-50/80 transition">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-lg bg-sky-100 text-sky-800 font-mono font-black text-xs flex items-center justify-center shrink-0">
+                              {curr.symbol || curr.code.slice(0, 2)}
+                            </span>
+                            <div>
+                              <div className="font-bold text-slate-900 font-mono flex items-center gap-1.5">
+                                <span>{curr.code}</span>
+                                {curr.is_default === 1 && (
+                                  <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-0.5">
+                                    <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-600" />
+                                    Default
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 font-normal">{curr.name}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900 text-sm">
+                          {curr.symbol}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {isEditing ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] text-slate-400 font-mono">1 RUB =</span>
+                              <input
+                                type="number"
+                                step="0.0001"
+                                min="0.000001"
+                                value={editingCurrencyRate}
+                                onChange={(e) => setEditingCurrencyRate(Number(e.target.value))}
+                                className="w-28 px-2 py-1 bg-white border border-sky-400 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-hidden ring-2 ring-sky-500/20"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateCurrencyRate(curr.code)}
+                                disabled={isSavingCurrency}
+                                className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition"
+                                title="Save Rate"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingCurrencyCode(null)}
+                                className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition"
+                                title="Cancel"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-500 font-mono text-xs">1 RUB =</span>
+                              <span className="font-mono font-black text-slate-900 text-xs">
+                                {curr.rate_from_5sim_base} {curr.code}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCurrencyCode(curr.code);
+                                  setEditingCurrencyRate(curr.rate_from_5sim_base);
+                                }}
+                                className="p-1 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-md transition"
+                                title="Edit Rate"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-800">
+                          {curr.symbol} {(100 * curr.rate_from_5sim_base).toFixed(2)}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {curr.is_default === 1 ? (
+                            <span className="text-xs font-bold text-amber-700 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" /> Primary
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSetDefaultCurrency(curr.code)}
+                              className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-800 transition"
+                            >
+                              Make Default
+                            </button>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleCurrencyActive(curr)}
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
+                              curr.is_active === 1
+                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            }`}
+                          >
+                            {curr.is_active === 1 ? 'Active' : 'Disabled'}
+                          </button>
+                        </td>
+
+                        <td className="py-3 px-4 text-right">
+                          {curr.is_default !== 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCurrency(curr.code)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                              title="Delete Currency"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Live Multi-Currency Conversion Playground */}
+          <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl p-6 shadow-md border border-slate-800 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Calculator className="w-4 h-4 text-sky-400" />
+                  <h4 className="text-sm font-black tracking-tight">Live Multi-Currency Conversion Playground</h4>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Simulate any 5SIM raw cost in RUB to preview exactly what users see in each configured currency.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-2xl border border-slate-700">
+                <label className="text-xs font-bold text-slate-300">Test 5SIM Cost (RUB):</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={currencyTestRub}
+                  onChange={(e) => setCurrencyTestRub(Number(e.target.value))}
+                  className="w-20 px-2 py-1 bg-slate-900 border border-slate-600 rounded-lg text-xs font-mono font-bold text-white text-center focus:outline-hidden focus:border-sky-400"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {currencies
+                .filter((c) => c.is_active === 1)
+                .map((curr) => {
+                  const converted = (currencyTestRub * curr.rate_from_5sim_base).toFixed(2);
+                  return (
+                    <div
+                      key={curr.code}
+                      className="bg-white/5 border border-white/10 hover:border-sky-400/50 rounded-2xl p-3 space-y-1 transition backdrop-blur-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-black text-xs text-sky-300">{curr.code}</span>
+                        <span className="text-[10px] text-slate-400">{curr.symbol}</span>
+                      </div>
+                      <div className="text-base font-black font-mono text-white tracking-tight">
+                        {curr.symbol} {converted}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        {currencyTestRub} RUB × {curr.rate_from_5sim_base}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ========================================================================= */}
@@ -1176,6 +1552,126 @@ export const MarginAdminPanel: React.FC = () => {
                   className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-xs disabled:opacity-50"
                 >
                   {isSubmittingRule ? 'Saving Rule...' : 'Establish Rule'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Add Currency Modal */}
+      {isAddCurrencyOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-emerald-600" />
+                  Add New Supported Currency
+                </h3>
+                <p className="text-xs text-slate-500">Configure a new currency with exchange multiplier from 5SIM RUB base.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddCurrencyOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCurrency} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Currency Code</label>
+                  <input
+                    type="text"
+                    value={newCurrency.code}
+                    onChange={(e) => setNewCurrency({ ...newCurrency, code: e.target.value.toUpperCase() })}
+                    placeholder="e.g. AUD, JPY, SGD"
+                    maxLength={5}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-hidden"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Symbol</label>
+                  <input
+                    type="text"
+                    value={newCurrency.symbol}
+                    onChange={(e) => setNewCurrency({ ...newCurrency, symbol: e.target.value })}
+                    placeholder="e.g. A$, ¥, S$"
+                    maxLength={5}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-hidden"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Full Currency Name</label>
+                <input
+                  type="text"
+                  value={newCurrency.name}
+                  onChange={(e) => setNewCurrency({ ...newCurrency, name: e.target.value })}
+                  placeholder="e.g. Australian Dollar, Japanese Yen"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-hidden"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Exchange Rate (1 RUB = ?)</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  min="0.000001"
+                  value={newCurrency.rate_from_5sim_base}
+                  onChange={(e) => setNewCurrency({ ...newCurrency, rate_from_5sim_base: Number(e.target.value) })}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-hidden"
+                  required
+                />
+                <p className="text-[11px] text-slate-400">
+                  Multiplier from 1 5SIM RUB. For example, if 1 AUD = 60 RUB, rate = 1/60 = 0.0167.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-4 pt-1">
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newCurrency.is_default}
+                    onChange={(e) => setNewCurrency({ ...newCurrency, is_default: e.target.checked })}
+                    className="rounded text-sky-600 focus:ring-sky-500"
+                  />
+                  <span>Set as Default Currency</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newCurrency.is_active}
+                    onChange={(e) => setNewCurrency({ ...newCurrency, is_active: e.target.checked })}
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Active for Customers</span>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAddCurrencyOpen(false)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingCurrency}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-xs disabled:opacity-50"
+                >
+                  {isSavingCurrency ? 'Adding...' : 'Add Currency'}
                 </button>
               </div>
             </form>

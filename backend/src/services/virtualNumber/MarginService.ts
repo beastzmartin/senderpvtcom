@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getDatabase } from '../../db/database.js';
+import { CurrencyService } from './CurrencyService.js';
 
 export type MarginScope = 'global' | 'country' | 'product' | 'country_product' | 'country_product_operator';
 export type MarginType = 'percent' | 'fixed' | 'percent_plus_fixed';
@@ -349,13 +350,34 @@ export class MarginService {
     costIn5SimCurrency: number,
     country?: string,
     product?: string,
-    operator?: string
+    operator?: string,
+    targetCurrency?: string
   ): CalculatedPrice {
     const settings = this.getPricingSettings();
     const rawCost = Math.max(0, Number(costIn5SimCurrency || 0));
 
+    // Determine target currency and FX rate
+    let fxRate = settings.fx_rate || 1.0;
+    let chosenCurrency = settings.display_currency || 'INR';
+    let scaledMinMargin = settings.min_margin;
+    let scaledMinSellPrice = settings.min_sell_price;
+
+    if (targetCurrency && targetCurrency.toUpperCase() !== (settings.display_currency || 'INR').toUpperCase()) {
+      const currencyService = CurrencyService.getInstance();
+      const currRecord = currencyService.getCurrency(targetCurrency);
+      if (currRecord) {
+        chosenCurrency = currRecord.code;
+        fxRate = currRecord.rate_from_5sim_base;
+
+        const baseCurr = currencyService.getCurrency(settings.display_currency) || { rate_from_5sim_base: settings.fx_rate || 1.0 };
+        const ratio = fxRate / (baseCurr.rate_from_5sim_base || 1.0);
+        scaledMinMargin = Number((settings.min_margin * ratio).toFixed(2));
+        scaledMinSellPrice = Number((settings.min_sell_price * ratio).toFixed(2));
+      }
+    }
+
     // 1. Convert cost via exchange rate multiplier
-    const convertedCost = Number((rawCost * settings.fx_rate).toFixed(4));
+    const convertedCost = Number((rawCost * fxRate).toFixed(4));
 
     // 2. Resolve matching rule by strict priority
     const rule = this.resolveMarginRule(country, product, operator);
@@ -372,15 +394,15 @@ export class MarginService {
       : 'cost (no rule applied)';
 
     // 4. Floor: minimum profit margin
-    if (sell < convertedCost + settings.min_margin) {
-      sell = convertedCost + settings.min_margin;
-      formulaDesc += ` → floor min_margin (+${settings.min_margin})`;
+    if (sell < convertedCost + scaledMinMargin) {
+      sell = convertedCost + scaledMinMargin;
+      formulaDesc += ` → floor min_margin (+${scaledMinMargin})`;
     }
 
     // 5. Floor: absolute minimum sell price
-    if (sell < settings.min_sell_price) {
-      sell = settings.min_sell_price;
-      formulaDesc += ` → floor min_sell_price (${settings.min_sell_price})`;
+    if (sell < scaledMinSellPrice) {
+      sell = scaledMinSellPrice;
+      formulaDesc += ` → floor min_sell_price (${scaledMinSellPrice})`;
     }
 
     // 6. Rounding
@@ -392,7 +414,7 @@ export class MarginService {
       costPrice: Number(convertedCost.toFixed(2)),
       sellPrice: finalSell,
       profit: Math.max(0, profit),
-      displayCurrency: settings.display_currency,
+      displayCurrency: chosenCurrency,
       appliedRule: rule,
       matchedScope,
       formula: formulaDesc
