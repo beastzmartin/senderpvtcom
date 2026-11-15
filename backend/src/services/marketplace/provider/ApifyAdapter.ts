@@ -153,7 +153,13 @@ export class ApifyAdapter implements ProviderAdapter {
    * Fetch Actor info & input schema for Admin "Import from Provider ID"
    */
   public async getActorInfo(actorId: string): Promise<ProviderActorInfo> {
-    const cleanId = encodeURIComponent(actorId.trim().replace(/^https?:\/\/[^/]+\//, ''));
+    let rawClean = actorId.trim()
+      .replace(/^https?:\/\/(?:www\.)?(?:console\.)?apify\.com\/(?:actors\/)?/i, '')
+      .replace(/\/+$/, '');
+    if (rawClean.includes('/') && !rawClean.includes('~')) {
+      rawClean = rawClean.replace(/\//g, '~');
+    }
+    const cleanId = encodeURIComponent(rawClean);
     const response = await this.safeRequest<any>(`/acts/${cleanId}`, { method: 'GET' }, true);
     const data = response.data || {};
 
@@ -163,7 +169,7 @@ export class ApifyAdapter implements ProviderAdapter {
 
     const pricingInfos = data.pricingInfos || [];
     if (pricingInfos.length > 0) {
-      const activePricing = pricingInfos[0];
+      const activePricing = pricingInfos[pricingInfos.length - 1];
       pricingModel = activePricing.pricingModel || 'free_usage_based';
       if (activePricing.pricePerUnitUsd) {
         usdPer1000Items = Number(activePricing.pricePerUnitUsd) * 1000;
@@ -171,20 +177,45 @@ export class ApifyAdapter implements ProviderAdapter {
       if (activePricing.pricePerRunUsd) {
         usdPerRunStart = Number(activePricing.pricePerRunUsd);
       }
+      // Check event tiered pricing (e.g. pay per lead or pay per dataset item)
+      const events = activePricing.pricingPerEvent?.actorChargeEvents;
+      if (events) {
+        for (const [evtKey, evtVal] of Object.entries(events as Record<string, any>)) {
+          if (evtVal.isPrimaryEvent || evtKey.includes('lead') || evtKey.includes('store') || evtKey.includes('item')) {
+            const tiered = evtVal.eventTieredPricingUsd?.FREE?.tieredEventPriceUsd || evtVal.eventPriceUsd;
+            if (tiered) {
+              usdPer1000Items = Number(tiered) * 1000;
+            }
+          }
+        }
+      }
     }
 
-    // Try fetching the input schema from latest version
+    // Try fetching the input schema from latest build or versions
     let inputSchema: any = undefined;
-    try {
-      const buildVer = data.defaultRunOptions?.build || 'latest';
-      const versionRes = await this.safeRequest<any>(`/acts/${cleanId}/versions/${buildVer}`, { method: 'GET' }, true);
-      if (versionRes?.data?.inputSchema) {
-        inputSchema = typeof versionRes.data.inputSchema === 'string'
-          ? JSON.parse(versionRes.data.inputSchema)
-          : versionRes.data.inputSchema;
+    if (data.taggedBuilds?.latest?.buildId) {
+      try {
+        const buildRes = await this.safeRequest<any>(`/actor-builds/${data.taggedBuilds.latest.buildId}`, { method: 'GET' }, true);
+        if (buildRes?.data?.inputSchema) {
+          inputSchema = typeof buildRes.data.inputSchema === 'string'
+            ? JSON.parse(buildRes.data.inputSchema)
+            : buildRes.data.inputSchema;
+        }
+      } catch {}
+    }
+
+    if (!inputSchema && data.versions && data.versions.length > 0) {
+      for (const ver of data.versions) {
+        try {
+          const versionRes = await this.safeRequest<any>(`/acts/${cleanId}/versions/${ver.versionNumber}`, { method: 'GET' }, true);
+          if (versionRes?.data?.inputSchema) {
+            inputSchema = typeof versionRes.data.inputSchema === 'string'
+              ? JSON.parse(versionRes.data.inputSchema)
+              : versionRes.data.inputSchema;
+            break;
+          }
+        } catch {}
       }
-    } catch {
-      // Fallback if version detail is inaccessible
     }
 
     return {

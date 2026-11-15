@@ -91,13 +91,18 @@ export const AdminDataMarketplaceTab: React.FC = () => {
   };
 
   const handleImportActor = async () => {
-    if (!importActorId.trim()) return;
+    if (!importActorId.trim()) {
+      alert('Please enter an Actor ID or URL (e.g. username~actor-name or https://apify.com/username/actor-name)');
+      return;
+    }
     setImporting(true);
     try {
       const res = await api.dataMarketplace.adminImportProvider('apify', importActorId.trim());
       if (res.success && res.product) {
         setEditingProduct(res.product);
         setJsonText(JSON.stringify(res.product, null, 2));
+      } else {
+        alert('Could not import actor details. Please check the Actor ID or URL.');
       }
     } catch (err: any) {
       alert(err.message || 'Import failed');

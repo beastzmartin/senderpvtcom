@@ -424,13 +424,14 @@ export class MarketplaceController {
    */
   public adminImportFromProvider = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const { providerType, actorIdOrUrl } = req.body;
-      if (!actorIdOrUrl) {
-        res.status(400).json({ error: 'Actor ID or URL is required.' });
+      const { providerType, actorIdOrUrl, actorId } = req.body;
+      const targetId = (actorIdOrUrl || actorId || '').trim();
+      if (!targetId) {
+        res.status(400).json({ error: 'Actor ID or URL is required. Please provide a valid actor slug, ID, or Apify URL.' });
         return;
       }
 
-      const prefilled = await this.productService.importFromProvider(providerType || 'apify', actorIdOrUrl);
+      const prefilled = await this.productService.importFromProvider(providerType || 'apify', targetId);
       res.json({ success: true, product: prefilled });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to import from provider.' });

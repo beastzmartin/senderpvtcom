@@ -98,7 +98,12 @@ export class MarketplaceProductService {
     providerType: string,
     actorIdOrUrl: string
   ): Promise<Partial<ProductDefinition>> {
-    const cleanActorId = actorIdOrUrl.trim().replace(/^https?:\/\/(?:www\.)?apify\.com\//i, '');
+    let cleanActorId = actorIdOrUrl.trim()
+      .replace(/^https?:\/\/(?:www\.)?(?:console\.)?apify\.com\/(?:actors\/)?/i, '')
+      .replace(/\/+$/, '');
+    if (cleanActorId.includes('/') && !cleanActorId.includes('~')) {
+      cleanActorId = cleanActorId.replace(/\//g, '~');
+    }
     const adapter = ProviderRegistry.getInstance().getAdapter(providerType || 'apify');
     const info = await adapter.getActorInfo(cleanActorId);
 

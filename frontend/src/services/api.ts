@@ -2143,10 +2143,10 @@ export const api = {
         body: JSON.stringify({ product, changelog })
       }),
 
-    adminImportProvider: (providerType: string, actorId: string) =>
+    adminImportProvider: (providerType: string, actorIdOrUrl: string) =>
       request<{ success: boolean; product: any }>('/marketplace/admin/import-provider', {
         method: 'POST',
-        body: JSON.stringify({ providerType, actorId })
+        body: JSON.stringify({ providerType, actorIdOrUrl, actorId: actorIdOrUrl })
       }),
 
     adminDuplicateProduct: (slug: string) =>
