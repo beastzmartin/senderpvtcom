@@ -374,6 +374,87 @@ CREATE TABLE IF NOT EXISTS grizzly_data_imports (
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_grizzly_imports_type ON grizzly_data_imports(import_type);
+
+-- 20. GrizzlySMS Customer API Configuration (Purchasing from GrizzlySMS)
+CREATE TABLE IF NOT EXISTS grizzly_customer_config (
+  id TEXT PRIMARY KEY DEFAULT 'default',
+  is_enabled INTEGER DEFAULT 1,
+  api_key TEXT DEFAULT '',
+  base_url TEXT DEFAULT 'https://api.grizzlysms.com/stubs/handler_api.php',
+  default_country TEXT DEFAULT 'any',
+  min_price REAL DEFAULT 0.0,
+  max_price REAL DEFAULT 500.0,
+  included_provider_ids TEXT DEFAULT '',
+  excluded_provider_ids TEXT DEFAULT '',
+  default_phone_exceptions TEXT DEFAULT '',
+  timeout_seconds INTEGER DEFAULT 15,
+  markup_percentage REAL DEFAULT 25.0,
+  fixed_fee REAL DEFAULT 5.0,
+  customer_daily_limit INTEGER DEFAULT 50,
+  cached_balance REAL DEFAULT 0.0,
+  cached_balance_currency TEXT DEFAULT 'RUB',
+  last_health_check_at TEXT,
+  last_error TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- 21. GrizzlySMS Customer Activations (Purchases made by our platform users from GrizzlySMS)
+CREATE TABLE IF NOT EXISTS grizzly_customer_activations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  workspace_id TEXT,
+  provider_id TEXT DEFAULT 'grizzlysms',
+  provider_activation_id TEXT NOT NULL,
+  phone_number TEXT NOT NULL,
+  country_id TEXT NOT NULL,
+  country_name TEXT,
+  service_code TEXT NOT NULL,
+  service_name TEXT,
+  purchase_request_id TEXT NOT NULL,
+  wallet_transaction_id TEXT,
+  customer_selling_price REAL NOT NULL,
+  provider_acquisition_cost REAL DEFAULT 0.0,
+  admin_profit REAL DEFAULT 0.0,
+  currency TEXT DEFAULT 'INR',
+  status TEXT DEFAULT 'NUMBER_ASSIGNED' CHECK(status IN ('NUMBER_ASSIGNED', 'WAITING_SMS', 'COMPLETED', 'CANCELLED', 'FAILED', 'UNRESOLVED')),
+  sms_text TEXT,
+  sms_code TEXT,
+  sms_status TEXT DEFAULT 'PENDING' CHECK(sms_status IN ('PENDING', 'RECEIVED', 'EXPIRED')),
+  idempotency_key TEXT UNIQUE,
+  expires_at TEXT,
+  completed_at TEXT,
+  cancelled_at TEXT,
+  failure_reason TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_act_user ON grizzly_customer_activations(user_id);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_act_prov_id ON grizzly_customer_activations(provider_activation_id);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_act_phone ON grizzly_customer_activations(phone_number);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_act_status ON grizzly_customer_activations(status);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_act_idem ON grizzly_customer_activations(idempotency_key);
+
+-- 22. GrizzlySMS Customer API Request/Response Diagnostics Logs
+CREATE TABLE IF NOT EXISTS grizzly_customer_api_logs (
+  id TEXT PRIMARY KEY,
+  correlation_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  request_params TEXT,
+  response_status_code INTEGER,
+  response_body TEXT,
+  parsed_status TEXT,
+  is_success INTEGER DEFAULT 0,
+  error_message TEXT,
+  duration_ms INTEGER DEFAULT 0,
+  user_id TEXT,
+  client_ip TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_logs_corr ON grizzly_customer_api_logs(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_logs_action ON grizzly_customer_api_logs(action);
+CREATE INDEX IF NOT EXISTS idx_grizzly_cust_logs_created ON grizzly_customer_api_logs(created_at);
 `;
 
 export function initGrizzlyDatabase(db: Database.Database): void {
@@ -422,6 +503,13 @@ export function initGrizzlyDatabase(db: Database.Database): void {
   } catch {}
 
   db.exec(GRIZZLY_SCHEMA_SQL);
+
+  try {
+    db.prepare(`
+      INSERT OR IGNORE INTO grizzly_customer_config (id, is_enabled, base_url, timeout_seconds, markup_percentage, fixed_fee)
+      VALUES ('default', 1, 'https://api.grizzlysms.com/stubs/handler_api.php', 15, 25.0, 5.0)
+    `).run();
+  } catch {}
 
   console.log('[DB] GrizzlySMS Partner Protocol production schema initialized.');
 }

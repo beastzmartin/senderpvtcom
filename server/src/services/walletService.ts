@@ -231,6 +231,183 @@ export class WalletService {
   }
 
   /**
+   * Atomically reserve funds in user wallet (e.g. before an outbound API purchase call)
+   */
+  public reserveFunds(
+    userId: string,
+    amount: number,
+    description: string,
+    referenceId?: string,
+    meta?: any
+  ): { success: boolean; reservationId: string; availableBalance: number } {
+    if (amount <= 0) {
+      return { success: true, reservationId: `free_res_${Date.now()}`, availableBalance: this.getOrCreateWallet(userId).balance };
+    }
+
+    const db = getDatabase();
+    const current = this.getOrCreateWallet(userId);
+    const available = Number((current.balance - current.reserved_balance).toFixed(2));
+
+    if (available < amount) {
+      throw new Error(
+        `Insufficient available wallet balance. Required: ₹${amount.toFixed(2)}, Available: ₹${available.toFixed(2)}. Please top up your wallet to continue.`
+      );
+    }
+
+    const reservationId = crypto.randomUUID();
+    const newReserved = Number((current.reserved_balance + amount).toFixed(2));
+
+    const reserveTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE user_wallets
+        SET reserved_balance = ?, updated_at = datetime('now')
+        WHERE user_id = ?
+      `).run(newReserved, userId);
+
+      db.prepare(`
+        INSERT INTO wallet_transactions (
+          id, user_id, transaction_type, amount, currency,
+          previous_balance, new_balance, reference_id, description, metadata, status
+        ) VALUES (
+          ?, ?, 'usage_reservation', ?, 'INR',
+          ?, ?, ?, ?, ?, 'pending'
+        )
+      `).run(
+        reservationId,
+        userId,
+        amount,
+        current.balance,
+        current.balance,
+        referenceId || null,
+        description,
+        meta ? JSON.stringify(meta) : null
+      );
+    });
+
+    reserveTx();
+
+    try {
+      getSocketIO()?.to(`user:${userId}`).emit('wallet:updated', {
+        balance: current.balance,
+        reservedBalance: newReserved,
+        availableBalance: available - amount,
+        currency: current.currency,
+        type: 'usage_reservation',
+        txId: reservationId
+      });
+    } catch {}
+
+    return {
+      success: true,
+      reservationId,
+      availableBalance: Number((available - amount).toFixed(2))
+    };
+  }
+
+  /**
+   * Commit a previously reserved amount upon successful purchase
+   */
+  public commitReservation(
+    userId: string,
+    amount: number,
+    reservationId: string,
+    finalDescription?: string,
+    meta?: any
+  ): { success: boolean; newBalance: number; transactionId: string } {
+    if (amount <= 0) {
+      return { success: true, newBalance: this.getOrCreateWallet(userId).balance, transactionId: reservationId };
+    }
+
+    const db = getDatabase();
+    const current = this.getOrCreateWallet(userId);
+    const newBalance = Number((current.balance - amount).toFixed(2));
+    const newReserved = Number(Math.max(0, current.reserved_balance - amount).toFixed(2));
+    const newSpent = Number((current.total_spent + amount).toFixed(2));
+
+    const commitTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE user_wallets
+        SET balance = ?, reserved_balance = ?, total_spent = ?, updated_at = datetime('now')
+        WHERE user_id = ?
+      `).run(newBalance, newReserved, newSpent, userId);
+
+      db.prepare(`
+        UPDATE wallet_transactions
+        SET status = 'completed',
+            new_balance = ?,
+            description = COALESCE(?, description),
+            metadata = COALESCE(?, metadata)
+        WHERE id = ?
+      `).run(newBalance, finalDescription || null, meta ? JSON.stringify(meta) : null, reservationId);
+    });
+
+    commitTx();
+
+    try {
+      getSocketIO()?.to(`user:${userId}`).emit('wallet:updated', {
+        balance: newBalance,
+        reservedBalance: newReserved,
+        availableBalance: newBalance - newReserved,
+        currency: current.currency,
+        change: -amount,
+        type: 'usage_deduction',
+        txId: reservationId
+      });
+    } catch {}
+
+    return { success: true, newBalance, transactionId: reservationId };
+  }
+
+  /**
+   * Release reserved funds back to user on provider purchase failure or timeout
+   */
+  public releaseReservation(
+    userId: string,
+    amount: number,
+    reservationId: string,
+    reason: string
+  ): { success: boolean; availableBalance: number } {
+    if (amount <= 0) {
+      return { success: true, availableBalance: this.getOrCreateWallet(userId).balance };
+    }
+
+    const db = getDatabase();
+    const current = this.getOrCreateWallet(userId);
+    const newReserved = Number(Math.max(0, current.reserved_balance - amount).toFixed(2));
+    const newAvailable = Number((current.balance - newReserved).toFixed(2));
+
+    const releaseTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE user_wallets
+        SET reserved_balance = ?, updated_at = datetime('now')
+        WHERE user_id = ?
+      `).run(newReserved, userId);
+
+      db.prepare(`
+        UPDATE wallet_transactions
+        SET status = 'reversed',
+            description = description || ' [RELEASED: ' || ? || ']'
+        WHERE id = ?
+      `).run(reason, reservationId);
+    });
+
+    releaseTx();
+
+    try {
+      getSocketIO()?.to(`user:${userId}`).emit('wallet:updated', {
+        balance: current.balance,
+        reservedBalance: newReserved,
+        availableBalance: newAvailable,
+        currency: current.currency,
+        type: 'reservation_release',
+        txId: reservationId
+      });
+    } catch {}
+
+    return { success: true, availableBalance: newAvailable };
+  }
+
+  /**
    * Refund a previous deduction
    */
   public refund(

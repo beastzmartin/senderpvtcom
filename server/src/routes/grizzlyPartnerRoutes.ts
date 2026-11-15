@@ -28,4 +28,25 @@ router.post('/admin/grizzly/activations/:activationId/finish', requireAuth, requ
 router.post('/admin/grizzly/trigger-call', requireAuth, requireAdmin, GrizzlyPartnerController.triggerPushCall);
 router.post('/admin/grizzly/trigger-sms', requireAuth, requireAdmin, GrizzlyPartnerController.triggerPushSms);
 
+// 3. Official Country, Service & Operator Data Management
+router.get('/admin/grizzly/data/countries', requireAuth, requireAdmin, GrizzlyPartnerController.getDataCountries);
+router.put('/admin/grizzly/data/countries/:id/toggle', requireAuth, requireAdmin, GrizzlyPartnerController.toggleDataCountry);
+router.put('/admin/grizzly/data/countries/:id', requireAuth, requireAdmin, GrizzlyPartnerController.updateDataCountry);
+router.delete('/admin/grizzly/data/countries/:id', requireAuth, requireAdmin, GrizzlyPartnerController.deleteDataCountry);
+router.post('/admin/grizzly/data/countries/import', requireAuth, requireAdmin, GrizzlyPartnerController.importDataCountries);
+
+router.get('/admin/grizzly/data/services', requireAuth, requireAdmin, GrizzlyPartnerController.getDataServices);
+router.put('/admin/grizzly/data/services/:code/toggle', requireAuth, requireAdmin, GrizzlyPartnerController.toggleDataService);
+router.post('/admin/grizzly/data/services', requireAuth, requireAdmin, GrizzlyPartnerController.addOrUpdateDataService);
+router.delete('/admin/grizzly/data/services/:code', requireAuth, requireAdmin, GrizzlyPartnerController.deleteDataService);
+router.post('/admin/grizzly/data/services/import', requireAuth, requireAdmin, GrizzlyPartnerController.importDataServices);
+
+router.get('/admin/grizzly/data/operators', requireAuth, requireAdmin, GrizzlyPartnerController.getDataOperators);
+router.post('/admin/grizzly/data/operators', requireAuth, requireAdmin, GrizzlyPartnerController.addDataOperator);
+
+router.get('/admin/grizzly/data/country-services', requireAuth, requireAdmin, GrizzlyPartnerController.getDataCountryServices);
+router.post('/admin/grizzly/data/sync-inventory', requireAuth, requireAdmin, GrizzlyPartnerController.syncDataInventory);
+router.get('/admin/grizzly/data/export', requireAuth, requireAdmin, GrizzlyPartnerController.exportDataMapping);
+router.get('/admin/grizzly/data/imports', requireAuth, requireAdmin, GrizzlyPartnerController.getDataImports);
+
 export default router;

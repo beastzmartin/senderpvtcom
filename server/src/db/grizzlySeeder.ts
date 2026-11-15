@@ -1,5 +1,10 @@
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
+import {
+  GRIZZLY_OFFICIAL_COUNTRIES,
+  GRIZZLY_OFFICIAL_SERVICES,
+  GRIZZLY_OFFICIAL_OPERATORS
+} from './grizzlyOfficialData.js';
 
 export function seedGrizzlyData(db: Database.Database): void {
   // 1. Ensure GrizzlySMS exists in main virtual_number_providers table
@@ -19,7 +24,7 @@ export function seedGrizzlyData(db: Database.Database): void {
       10,
       'active',
       0,
-      JSON.stringify(['US', 'RU', 'IN', 'GB', 'DE', 'CA', 'FR', 'NL', 'BR']),
+      JSON.stringify(['US', 'RU', 'IN', 'GB', 'DE', 'CA', 'FR', 'NL', 'BR', 'SG', 'ID', 'PH']),
       JSON.stringify(['sms', 'partner_api', 'flashcall'])
     );
     console.log('[DB] Seeded GrizzlySMS provider record in virtual_number_providers.');
@@ -51,55 +56,92 @@ export function seedGrizzlyData(db: Database.Database): void {
     console.log('[DB] Seeded GrizzlySMS provider configuration.');
   }
 
-  // 3. Seed Country Mappings (Numeric Grizzly ID <-> Country Code)
-  const countryMappings = [
-    { id: 12, iso: 'US', name: 'United States', dial: '+1', flag: '🇺🇸' },
-    { id: 0, iso: 'RU', name: 'Russia', dial: '+7', flag: '🇷🇺' },
-    { id: 22, iso: 'IN', name: 'India', dial: '+91', flag: '🇮🇳' },
-    { id: 16, iso: 'GB', name: 'United Kingdom', dial: '+44', flag: '🇬🇧' },
-    { id: 36, iso: 'CA', name: 'Canada', dial: '+1', flag: '🇨🇦' },
-    { id: 43, iso: 'DE', name: 'Germany', dial: '+49', flag: '🇩🇪' },
-    { id: 78, iso: 'FR', name: 'France', dial: '+33', flag: '🇫🇷' },
-    { id: 48, iso: 'NL', name: 'Netherlands', dial: '+31', flag: '🇳🇱' },
-    { id: 73, iso: 'BR', name: 'Brazil', dial: '+55', flag: '🇧🇷' },
-    { id: 187, iso: 'US', name: 'United States (Alt)', dial: '+1', flag: '🇺🇸' }
-  ];
+  // 3. Seed Official Grizzly Countries Database
+  const upsertCountry = db.prepare(`
+    INSERT INTO grizzly_countries (
+      id, provider_country_id, country_name, country_code_iso2, country_code_iso3, flag, dial_code, is_active, is_supported
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)
+    ON CONFLICT(provider_country_id) DO UPDATE SET
+      country_name = excluded.country_name,
+      country_code_iso2 = excluded.country_code_iso2,
+      country_code_iso3 = excluded.country_code_iso3,
+      flag = excluded.flag,
+      dial_code = excluded.dial_code
+  `);
 
-  const checkCountry = db.prepare('SELECT id FROM grizzly_country_mappings WHERE grizzly_country_id = ?');
-  const insertCountry = db.prepare(`
+  const insertCountryMapping = db.prepare(`
     INSERT INTO grizzly_country_mappings (id, grizzly_country_id, iso_code, country_name, dial_code, flag_emoji, is_enabled)
     VALUES (?, ?, ?, ?, ?, ?, 1)
+    ON CONFLICT(grizzly_country_id) DO NOTHING
   `);
 
-  for (const c of countryMappings) {
-    if (!checkCountry.get(c.id)) {
-      insertCountry.run(crypto.randomUUID(), c.id, c.iso, c.name, c.dial, c.flag);
-    }
+  for (const c of GRIZZLY_OFFICIAL_COUNTRIES) {
+    const cid = crypto.randomUUID();
+    upsertCountry.run(
+      cid,
+      c.provider_country_id,
+      c.country_name,
+      c.country_code_iso2,
+      c.country_code_iso3,
+      c.flag,
+      c.dial_code
+    );
+    insertCountryMapping.run(
+      cid,
+      c.provider_country_id,
+      c.country_code_iso2,
+      c.country_name,
+      c.dial_code,
+      c.flag
+    );
   }
+  console.log(`[DB] Seeded ${GRIZZLY_OFFICIAL_COUNTRIES.length} official countries into grizzly_countries.`);
 
-  // 4. Seed Service Mappings
-  const serviceMappings = [
-    { code: 'tg', name: 'Telegram', category: 'social' },
-    { code: 'wa', name: 'WhatsApp', category: 'social' },
-    { code: 'go', name: 'Google / YouTube', category: 'technology' },
-    { code: 'ig', name: 'Instagram', category: 'social' },
-    { code: 'vi', name: 'Viber', category: 'social' },
-    { code: 'fb', name: 'Facebook', category: 'social' },
-    { code: 'tw', name: 'Twitter / X', category: 'social' },
-    { code: 'wb', name: 'WeChat', category: 'social' },
-    { code: 'ot', name: 'Other Services', category: 'general' }
-  ];
+  // 4. Seed Official Grizzly Service Registry
+  const upsertService = db.prepare(`
+    INSERT INTO grizzly_services (
+      id, provider_service_code, service_name, display_name, icon, category, is_active, is_supported
+    ) VALUES (?, ?, ?, ?, ?, ?, 1, 1)
+    ON CONFLICT(provider_service_code) DO UPDATE SET
+      service_name = excluded.service_name,
+      display_name = excluded.display_name,
+      icon = excluded.icon,
+      category = excluded.category
+  `);
 
-  const checkService = db.prepare('SELECT id FROM grizzly_service_mappings WHERE service_code = ?');
-  const insertService = db.prepare(`
+  const insertServiceMapping = db.prepare(`
     INSERT INTO grizzly_service_mappings (id, service_code, name, category, is_enabled)
     VALUES (?, ?, ?, ?, 1)
+    ON CONFLICT(service_code) DO NOTHING
   `);
 
-  for (const s of serviceMappings) {
-    if (!checkService.get(s.code)) {
-      insertService.run(crypto.randomUUID(), s.code, s.name, s.category);
-    }
+  for (const s of GRIZZLY_OFFICIAL_SERVICES) {
+    const sid = crypto.randomUUID();
+    upsertService.run(
+      sid,
+      s.provider_service_code,
+      s.service_name,
+      s.display_name,
+      s.icon || 'Send',
+      s.category || 'general'
+    );
+    insertServiceMapping.run(
+      sid,
+      s.provider_service_code,
+      s.display_name,
+      s.category || 'general'
+    );
+  }
+  console.log(`[DB] Seeded ${GRIZZLY_OFFICIAL_SERVICES.length} official services into grizzly_services.`);
+
+  // 5. Seed Operators (Default "any")
+  const checkOp = db.prepare("SELECT id FROM grizzly_operators WHERE provider_operator_code = 'any' AND country_id IS NULL").get();
+  if (!checkOp) {
+    db.prepare(`
+      INSERT INTO grizzly_operators (id, provider_operator_code, operator_name, is_active)
+      VALUES (?, ?, ?, 1)
+    `).run('op_any_global', 'any', 'Any Operator (Default)');
+    console.log('[DB] Seeded default "any" operator into grizzly_operators.');
   }
 
   // 5. Seed Initial Hardware Modules & Inventory for testing GET_SERVICES & GET_NUMBER

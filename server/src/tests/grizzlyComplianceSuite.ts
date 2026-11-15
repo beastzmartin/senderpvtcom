@@ -72,15 +72,25 @@ async function runComplianceSuite() {
     console.log('   Goal: Issue 100 concurrent requests; exactly 0 duplicates, serialized DB locks.');
 
     // Clean up child tables before parent tables
-    db.prepare(`DELETE FROM grizzly_provider_accounting WHERE activation_id IN (SELECT activation_id FROM grizzly_activations WHERE phone_number LIKE '44%')`).run();
+    db.prepare(`DELETE FROM grizzly_provider_accounting`).run();
     db.prepare(`DELETE FROM grizzly_sms_messages`).run();
     db.prepare(`DELETE FROM grizzly_voice_calls`).run();
     db.prepare(`DELETE FROM grizzly_call_records`).run();
-    db.prepare(`DELETE FROM grizzly_activations WHERE phone_number LIKE '44%' OR id LIKE 'act_test_%'`).run();
+    db.prepare(`DELETE FROM grizzly_activations`).run();
     db.prepare(`DELETE FROM grizzly_inventory WHERE phone_number LIKE '44%' OR id LIKE 'inv_%'`).run();
     db.prepare(`DELETE FROM grizzly_number_service_cancellations WHERE phone_number LIKE '44%'`).run();
     db.prepare(`DELETE FROM grizzly_number_quarantine WHERE phone_number LIKE '44%'`).run();
     db.prepare(`DELETE FROM grizzly_prohibited_numbers WHERE phone_number LIKE '44%'`).run();
+
+    // Ensure compliance test services are recognized in official services registry
+    db.prepare(`
+      INSERT OR IGNORE INTO grizzly_services (id, provider_service_code, service_name, display_name, is_active, is_supported)
+      VALUES 
+        ('srv_sub_test_b', 'sub_test_b', 'Sub Test B', 'Sub Test B', 1, 1),
+        ('srv_bench', 'bench', 'Bench Service', 'Bench Service', 1, 1),
+        ('srv_pfx_test', 'pfx_test', 'Prefix Test', 'Prefix Test', 1, 1),
+        ('srv_type_test', 'type_test', 'Type Test', 'Type Test', 1, 1)
+    `).run();
 
     // Seed 100 unique available numbers for Country 12, service "tg"
     const seedInvStmt = db.prepare(`

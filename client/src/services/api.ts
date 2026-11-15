@@ -1502,6 +1502,106 @@ export const api = {
         body: JSON.stringify({ reason })
       }),
 
+    // --- GrizzlySMS Customer API (getNumber & Direct Purchasing) ---
+    grizzlyCustomer: {
+      getOptions: () =>
+        request<{
+          success: boolean;
+          countries: any[];
+          services: any[];
+          pricing: { markupPercentage: number; fixedFee: number; currency: string };
+        }>('/virtual-numbers/grizzly-customer/options'),
+
+      purchaseNumber: (data: {
+        service: string;
+        country?: string | number;
+        maxPrice?: number;
+        workspaceId?: string;
+        idempotencyKey?: string;
+      }) =>
+        request<{
+          success: boolean;
+          activationId: string;
+          phoneNumber: string;
+          serviceCode: string;
+          serviceName: string;
+          countryName: string;
+          sellingPrice: number;
+          currency: string;
+          status: string;
+          expiresAt: string;
+          walletTransactionId: string;
+          message: string;
+        }>('/virtual-numbers/grizzly-customer/purchase', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        }),
+
+      getMyActivations: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/grizzly-customer/activations?${query.toString()}`);
+      },
+
+      checkSms: (activationId: string) =>
+        request<{
+          success: boolean;
+          status: 'WAITING_CODE' | 'CODE_RECEIVED' | 'CANCELLED' | 'EXPIRED';
+          code?: string;
+          message?: string;
+        }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/check-sms`),
+
+      cancelActivation: (activationId: string) =>
+        request<{ success: boolean; message: string }>(`/virtual-numbers/grizzly-customer/activations/${activationId}/cancel`, {
+          method: 'POST'
+        }),
+
+      getAdminConfig: () =>
+        request<{ success: boolean; config: any }>('/virtual-numbers/admin/grizzly-customer/config'),
+
+      updateAdminConfig: (data: any) =>
+        request<{ success: boolean; config: any }>('/virtual-numbers/admin/grizzly-customer/config', {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        }),
+
+      testConnection: (apiKey?: string) =>
+        request<{
+          success: boolean;
+          healthy: boolean;
+          balance?: number;
+          currency?: string;
+          latencyMs?: number;
+          message?: string;
+          error?: string;
+        }>('/virtual-numbers/admin/grizzly-customer/test-connection', {
+          method: 'POST',
+          body: JSON.stringify({ apiKey })
+        }),
+
+      getAdminLogs: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly-customer/logs?${query.toString()}`);
+      },
+
+      getAdminActivations: (params?: { limit?: number; offset?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.limit) query.set('limit', String(params.limit));
+        if (params?.offset) query.set('offset', String(params.offset));
+        return request<{
+          success: boolean;
+          total: number;
+          totalRevenue: number;
+          totalCost: number;
+          totalProfit: number;
+          rows: any[];
+        }>(`/virtual-numbers/admin/grizzly-customer/activations?${query.toString()}`);
+      }
+    },
+
     // --- GrizzlySMS Partner Protocol Admin API ---
     grizzly: {
       getOverview: () =>
@@ -1587,7 +1687,109 @@ export const api = {
         request<{ success: boolean; result: any }>('/virtual-numbers/admin/grizzly/trigger-sms', {
           method: 'POST',
           body: JSON.stringify(data)
-        })
+        }),
+
+      // Official Data Management APIs
+      data: {
+        getCountries: (params?: { search?: string; activeOnly?: boolean; supportedOnly?: boolean; limit?: number; offset?: number }) => {
+          const query = new URLSearchParams();
+          if (params?.search) query.set('search', params.search);
+          if (params?.activeOnly) query.set('activeOnly', 'true');
+          if (params?.supportedOnly) query.set('supportedOnly', 'true');
+          if (params?.limit) query.set('limit', String(params.limit));
+          if (params?.offset) query.set('offset', String(params.offset));
+          return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/data/countries?${query.toString()}`);
+        },
+
+        toggleCountry: (id: number, data: { isActive?: boolean; isSupported?: boolean }) =>
+          request<{ success: boolean; country: any }>(`/virtual-numbers/admin/grizzly/data/countries/${id}/toggle`, {
+            method: 'PUT',
+            body: JSON.stringify(data)
+          }),
+
+        updateCountry: (id: number, data: any) =>
+          request<{ success: boolean; country: any }>(`/virtual-numbers/admin/grizzly/data/countries/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data)
+          }),
+
+        deleteCountry: (id: number) =>
+          request<{ success: boolean; message: string }>(`/virtual-numbers/admin/grizzly/data/countries/${id}`, {
+            method: 'DELETE'
+          }),
+
+        importCountries: (countries: any[], fileName?: string) =>
+          request<{ success: boolean; total: number; inserted: number; updated: number; skipped: number }>('/virtual-numbers/admin/grizzly/data/countries/import', {
+            method: 'POST',
+            body: JSON.stringify({ countries, fileName })
+          }),
+
+        getServices: (params?: { search?: string; category?: string; activeOnly?: boolean; supportedOnly?: boolean }) => {
+          const query = new URLSearchParams();
+          if (params?.search) query.set('search', params.search);
+          if (params?.category) query.set('category', params.category);
+          if (params?.activeOnly) query.set('activeOnly', 'true');
+          if (params?.supportedOnly) query.set('supportedOnly', 'true');
+          return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/data/services?${query.toString()}`);
+        },
+
+        toggleService: (code: string, data: { isActive?: boolean; isSupported?: boolean }) =>
+          request<{ success: boolean; service: any }>(`/virtual-numbers/admin/grizzly/data/services/${code}/toggle`, {
+            method: 'PUT',
+            body: JSON.stringify(data)
+          }),
+
+        addOrUpdateService: (data: any) =>
+          request<{ success: boolean; service: any }>('/virtual-numbers/admin/grizzly/data/services', {
+            method: 'POST',
+            body: JSON.stringify(data)
+          }),
+
+        deleteService: (code: string) =>
+          request<{ success: boolean; message: string }>(`/virtual-numbers/admin/grizzly/data/services/${code}`, {
+            method: 'DELETE'
+          }),
+
+        importServices: (services: any[], fileName?: string) =>
+          request<{ success: boolean; total: number; inserted: number; updated: number; skipped: number }>('/virtual-numbers/admin/grizzly/data/services/import', {
+            method: 'POST',
+            body: JSON.stringify({ services, fileName })
+          }),
+
+        getOperators: (countryId?: number) => {
+          const query = new URLSearchParams();
+          if (countryId !== undefined) query.set('countryId', String(countryId));
+          return request<{ success: boolean; operators: any[] }>(`/virtual-numbers/admin/grizzly/data/operators?${query.toString()}`);
+        },
+
+        addOperator: (data: { code: string; name: string; countryId?: number }) =>
+          request<{ success: boolean; operator: any }>('/virtual-numbers/admin/grizzly/data/operators', {
+            method: 'POST',
+            body: JSON.stringify(data)
+          }),
+
+        getCountryServices: (params?: { countryId?: number; serviceCode?: string; operator?: string; availableOnly?: boolean; limit?: number; offset?: number }) => {
+          const query = new URLSearchParams();
+          if (params?.countryId !== undefined) query.set('countryId', String(params.countryId));
+          if (params?.serviceCode) query.set('serviceCode', params.serviceCode);
+          if (params?.operator) query.set('operator', params.operator);
+          if (params?.availableOnly) query.set('availableOnly', 'true');
+          if (params?.limit) query.set('limit', String(params.limit));
+          if (params?.offset) query.set('offset', String(params.offset));
+          return request<{ success: boolean; total: number; rows: any[] }>(`/virtual-numbers/admin/grizzly/data/country-services?${query.toString()}`);
+        },
+
+        syncInventory: () =>
+          request<{ success: boolean; totalCombinations: number; availableCombinations: number; totalAvailableQuantity: number }>('/virtual-numbers/admin/grizzly/data/sync-inventory', {
+            method: 'POST'
+          }),
+
+        exportMapping: () =>
+          request<any>('/virtual-numbers/admin/grizzly/data/export'),
+
+        getImports: () =>
+          request<{ success: boolean; imports: any[] }>('/virtual-numbers/admin/grizzly/data/imports')
+      }
     }
   }
 };

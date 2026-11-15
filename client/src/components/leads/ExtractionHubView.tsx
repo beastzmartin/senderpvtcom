@@ -367,11 +367,10 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
                     key={preset}
                     type="button"
                     onClick={() => setJobCount(preset)}
-                    className={`px-2 py-1.5 rounded-lg text-[10px] font-bold transition ${
-                      jobCount === preset
+                    className={`px-2 py-1.5 rounded-lg text-[10px] font-bold transition ${jobCount === preset
                         ? 'bg-emerald-600 text-white shadow-xs'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                      }`}
                   >
                     {preset}
                   </button>
@@ -480,17 +479,16 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
 
                       <td className="py-3 px-4">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold capitalize ${
-                            job.status === 'completed'
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold capitalize ${job.status === 'completed'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : job.status === 'running'
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200 animate-pulse'
-                              : job.status === 'paused'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : job.status === 'failed'
-                              ? 'bg-red-50 text-red-700 border border-red-200'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200 animate-pulse'
+                                : job.status === 'paused'
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : job.status === 'failed'
+                                    ? 'bg-red-50 text-red-700 border border-red-200'
+                                    : 'bg-slate-100 text-slate-700'
+                            }`}
                         >
                           {job.status === 'running' && <RotateCw className="w-3 h-3 animate-spin" />}
                           {job.status}
@@ -662,11 +660,10 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
                       key={preset}
                       type="button"
                       onClick={() => setJobCount(preset)}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                        jobCount === preset
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${jobCount === preset
                           ? 'bg-emerald-600 text-white shadow-xs'
                           : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
+                        }`}
                     >
                       {preset}
                     </button>

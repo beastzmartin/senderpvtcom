@@ -29,11 +29,15 @@ import {
   ArrowRight,
   Send,
   Ban,
-  Volume2
+  Volume2,
+  Globe,
+  ShoppingBag
 } from 'lucide-react';
+import { GrizzlyDataManagementView } from './GrizzlyDataManagementView';
+import { GrizzlyCustomerAdminView } from './GrizzlyCustomerAdminView';
 
 export const GrizzlyDashboardView: React.FC = () => {
-  const [subTab, setSubTab] = useState<'overview' | 'inventory' | 'hardware' | 'activations' | 'sms' | 'voice' | 'blacklist' | 'config' | 'logs'>('overview');
+  const [subTab, setSubTab] = useState<'overview' | 'inventory' | 'hardware' | 'activations' | 'sms' | 'voice' | 'blacklist' | 'data' | 'customer-api' | 'config' | 'logs'>('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -478,6 +482,30 @@ export const GrizzlyDashboardView: React.FC = () => {
           >
             <Ban className="w-4 h-4" />
             Blacklist & Quarantine ({cancellations.filter((c: any) => c.is_permanently_excluded).length + quarantine.length + prohibited.length})
+          </button>
+
+          <button
+            onClick={() => setSubTab('data')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+              subTab === 'data'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            Data Management
+          </button>
+
+          <button
+            onClick={() => setSubTab('customer-api')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+              subTab === 'customer-api'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            Customer getNumber API
           </button>
 
           <button
@@ -1285,6 +1313,12 @@ export const GrizzlyDashboardView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* SUB-TAB: DATA MANAGEMENT */}
+      {subTab === 'data' && <GrizzlyDataManagementView />}
+
+      {/* SUB-TAB: CUSTOMER GETNUMBER API */}
+      {subTab === 'customer-api' && <GrizzlyCustomerAdminView />}
 
       {/* SUB-TAB 6: PROVIDER CONFIGURATION */}
       {subTab === 'config' && (

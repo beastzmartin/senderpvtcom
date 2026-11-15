@@ -120,6 +120,24 @@ export class GrizzlyPartnerProtocolService {
       `).all() as any[]).map((r) => r.k)
     );
 
+    // Active & supported countries from official registry
+    const activeCountries = new Set(
+      (db.prepare(`
+        SELECT provider_country_id
+        FROM grizzly_countries
+        WHERE is_active = 1 AND is_supported = 1
+      `).all() as any[]).map((r) => r.provider_country_id)
+    );
+
+    // Active & supported services from official registry
+    const activeServices = new Set(
+      (db.prepare(`
+        SELECT provider_service_code
+        FROM grizzly_services
+        WHERE is_active = 1 AND is_supported = 1
+      `).all() as any[]).map((r) => r.provider_service_code)
+    );
+
     // 4. Query physical inventory currently available with active hardware capacity
     const rows = db.prepare(`
       SELECT
@@ -142,6 +160,12 @@ export class GrizzlyPartnerProtocolService {
     const countryMap = new Map<number, Map<string, Map<string, number>>>();
 
     for (const row of rows) {
+      const countryId = row.country_id;
+      // Skip if country is inactive or unsupported in official registry
+      if (activeCountries.size > 0 && !activeCountries.has(countryId)) {
+        continue;
+      }
+
       let services: string[] = [];
       try {
         services = JSON.parse(row.supported_services || '[]');
@@ -149,11 +173,15 @@ export class GrizzlyPartnerProtocolService {
         services = ['tg', 'wa'];
       }
 
-      const countryId = row.country_id;
-      const op = row.operator || 'any';
+      const op = (row.operator || 'any').trim().toLowerCase();
       const cleanPhone = row.phone_number.replace(/\D/g, '');
 
       for (const s of services) {
+        // Skip if service is inactive or unsupported in official registry
+        if (activeServices.size > 0 && !activeServices.has(s)) {
+          continue;
+        }
+
         const key = `${cleanPhone}::${s}`;
         const keyAll = `${cleanPhone}::ALL`;
 
@@ -202,6 +230,28 @@ export class GrizzlyPartnerProtocolService {
         });
       }
     }
+
+    // 7. Atomically synchronize grizzly_country_services availability registry
+    try {
+      const upsertCs = db.prepare(`
+        INSERT INTO grizzly_country_services (
+          id, provider_country_id, provider_service_code, operator_code, available_quantity, is_available, is_enabled, last_inventory_sync
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'))
+        ON CONFLICT(provider_country_id, provider_service_code, operator_code) DO UPDATE SET
+          available_quantity = excluded.available_quantity,
+          is_available = excluded.is_available,
+          last_inventory_sync = datetime('now'),
+          updated_at = datetime('now')
+      `);
+
+      for (const item of countryList) {
+        for (const [op, svcMap] of Object.entries(item.operatorMap)) {
+          for (const [svc, qty] of Object.entries(svcMap)) {
+            upsertCs.run(crypto.randomUUID(), item.country, svc, op, qty, qty > 0 ? 1 : 0);
+          }
+        }
+      }
+    } catch {}
 
     const response: GrizzlyGetServicesResponse = {
       countryList,
@@ -294,6 +344,49 @@ export class GrizzlyPartnerProtocolService {
     }
 
     const db = getDatabase();
+
+    // 2.5 Official Country and Service Validation
+    const countryRecord = db.prepare(`
+      SELECT 1 FROM grizzly_countries
+      WHERE provider_country_id = ? AND is_active = 1 AND is_supported = 1
+    `).get(country);
+
+    if (!countryRecord) {
+      const duration = Date.now() - startTime;
+      const noNumbersResp: GrizzlyGetNumberResponse = { status: 'NO_NUMBERS' };
+      GrizzlyProviderConfigService.logApiCall(
+        'GET_NUMBER',
+        clientIp,
+        {},
+        request,
+        'NO_NUMBERS',
+        noNumbersResp,
+        duration,
+        `Unsupported, inactive, or unknown country ID: ${country}`
+      );
+      return noNumbersResp;
+    }
+
+    const serviceRecord = db.prepare(`
+      SELECT 1 FROM grizzly_services
+      WHERE provider_service_code = ? AND is_active = 1 AND is_supported = 1
+    `).get(service);
+
+    if (!serviceRecord) {
+      const duration = Date.now() - startTime;
+      const noNumbersResp: GrizzlyGetNumberResponse = { status: 'NO_NUMBERS' };
+      GrizzlyProviderConfigService.logApiCall(
+        'GET_NUMBER',
+        clientIp,
+        {},
+        request,
+        'NO_NUMBERS',
+        noNumbersResp,
+        duration,
+        `Unsupported, inactive, or unknown service code: ${service}`
+      );
+      return noNumbersResp;
+    }
 
     // 3. Check active allocations limit
     const activeCount = (db.prepare(`

@@ -6,6 +6,7 @@ import { GrizzlyAdminService } from '../services/virtualNumber/grizzly/GrizzlyAd
 import { GrizzlySmsQueueService } from '../services/virtualNumber/grizzly/GrizzlySmsQueueService.js';
 import { GrizzlyVoiceQueueService } from '../services/virtualNumber/grizzly/GrizzlyVoiceQueueService.js';
 import { grizzlyFinishActivationAdapter } from '../services/virtualNumber/grizzly/GrizzlyFinishActivationAdapter.js';
+import { GrizzlyDataManagementService } from '../services/virtualNumber/grizzly/GrizzlyDataManagementService.js';
 
 export class GrizzlyPartnerController {
   /**
@@ -285,6 +286,198 @@ export class GrizzlyPartnerController {
         activationId: activationId ? parseInt(String(activationId), 10) : 0
       });
       res.json({ success: true, result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  // --- OFFICIAL DATA MANAGEMENT ENDPOINTS ---
+
+  public static async getDataCountries(req: Request, res: Response): Promise<void> {
+    try {
+      const { search, activeOnly, supportedOnly, limit, offset } = req.query;
+      const result = GrizzlyDataManagementService.listCountries({
+        search: search as string,
+        activeOnly: activeOnly === 'true',
+        supportedOnly: supportedOnly === 'true',
+        limit: limit ? parseInt(String(limit), 10) : undefined,
+        offset: offset ? parseInt(String(offset), 10) : undefined
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async toggleDataCountry(req: Request, res: Response): Promise<void> {
+    try {
+      const countryId = parseInt(String(req.params.id), 10);
+      const { isActive, isSupported } = req.body;
+      const country = GrizzlyDataManagementService.toggleCountry(countryId, Boolean(isActive), isSupported !== undefined ? Boolean(isSupported) : undefined);
+      res.json({ success: true, country });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async updateDataCountry(req: Request, res: Response): Promise<void> {
+    try {
+      const countryId = parseInt(String(req.params.id), 10);
+      const country = GrizzlyDataManagementService.updateCountry(countryId, req.body);
+      res.json({ success: true, country });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async deleteDataCountry(req: Request, res: Response): Promise<void> {
+    try {
+      const countryId = parseInt(String(req.params.id), 10);
+      const result = GrizzlyDataManagementService.deleteCountry(countryId);
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async importDataCountries(req: Request, res: Response): Promise<void> {
+    try {
+      const { countries, fileName } = req.body;
+      if (!Array.isArray(countries) || countries.length === 0) {
+        res.status(400).json({ success: false, error: 'countries array is required for import' });
+        return;
+      }
+      const result = GrizzlyDataManagementService.importCountries(countries, fileName);
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async getDataServices(req: Request, res: Response): Promise<void> {
+    try {
+      const { search, category, activeOnly, supportedOnly } = req.query;
+      const result = GrizzlyDataManagementService.listServices({
+        search: search as string,
+        category: category as string,
+        activeOnly: activeOnly === 'true',
+        supportedOnly: supportedOnly === 'true'
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async toggleDataService(req: Request, res: Response): Promise<void> {
+    try {
+      const code = String(req.params.code);
+      const { isActive, isSupported } = req.body;
+      const service = GrizzlyDataManagementService.toggleService(code, Boolean(isActive), isSupported !== undefined ? Boolean(isSupported) : undefined);
+      res.json({ success: true, service });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async addOrUpdateDataService(req: Request, res: Response): Promise<void> {
+    try {
+      const service = GrizzlyDataManagementService.addOrUpdateService(req.body);
+      res.json({ success: true, service });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async deleteDataService(req: Request, res: Response): Promise<void> {
+    try {
+      const code = String(req.params.code);
+      const result = GrizzlyDataManagementService.deleteService(code);
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async importDataServices(req: Request, res: Response): Promise<void> {
+    try {
+      const { services, fileName } = req.body;
+      if (!Array.isArray(services) || services.length === 0) {
+        res.status(400).json({ success: false, error: 'services array is required for import' });
+        return;
+      }
+      const result = GrizzlyDataManagementService.importServices(services, fileName);
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async getDataOperators(req: Request, res: Response): Promise<void> {
+    try {
+      const countryId = req.query.countryId ? parseInt(String(req.query.countryId), 10) : undefined;
+      const operators = GrizzlyDataManagementService.listOperators(countryId);
+      res.json({ success: true, operators });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async addDataOperator(req: Request, res: Response): Promise<void> {
+    try {
+      const { code, name, countryId } = req.body;
+      if (!code || !name) {
+        res.status(400).json({ success: false, error: 'code and name are required' });
+        return;
+      }
+      const operator = GrizzlyDataManagementService.addOperator(code, name, countryId);
+      res.json({ success: true, operator });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async getDataCountryServices(req: Request, res: Response): Promise<void> {
+    try {
+      const { countryId, serviceCode, operator, availableOnly, limit, offset } = req.query;
+      const result = GrizzlyDataManagementService.listCountryServices({
+        countryId: countryId ? parseInt(String(countryId), 10) : undefined,
+        serviceCode: serviceCode as string,
+        operator: operator as string,
+        availableOnly: availableOnly === 'true',
+        limit: limit ? parseInt(String(limit), 10) : undefined,
+        offset: offset ? parseInt(String(offset), 10) : undefined
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async syncDataInventory(_req: Request, res: Response): Promise<void> {
+    try {
+      const result = GrizzlyDataManagementService.syncCountryServicesWithLiveInventory();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async exportDataMapping(_req: Request, res: Response): Promise<void> {
+    try {
+      const exportData = GrizzlyDataManagementService.exportMappingData();
+      res.setHeader('Content-Disposition', 'attachment; filename="grizzlysms_mappings.json"');
+      res.setHeader('Content-Type', 'application/json');
+      res.json(exportData);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async getDataImports(_req: Request, res: Response): Promise<void> {
+    try {
+      const imports = GrizzlyDataManagementService.getImportHistory();
+      res.json({ success: true, imports });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
