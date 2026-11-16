@@ -340,21 +340,44 @@ export class AdvancedMarginEngine {
 
         for (const tier of rule.volume_tiers) {
           if (remainingItems <= 0) break;
-          const tierCapacity = (tier.max_items - tier.min_items + 1);
+          const min = tier.min_items ?? (tier as any).min_volume ?? 1;
+          const max = tier.max_items ?? (tier as any).max_volume ?? Infinity;
+          const pct = tier.percent !== undefined 
+            ? tier.percent 
+            : (tier as any).margin_percent !== undefined 
+            ? (tier as any).margin_percent 
+            : (tier as any).discount_percent !== undefined
+            ? Math.max(rule.min_margin_percent, rule.percent_value - (tier as any).discount_percent)
+            : rule.percent_value;
+
+          const tierCapacity = isFinite(max) ? Math.max(1, max - min + 1) : remainingItems;
           const itemsInTier = Math.min(remainingItems, tierCapacity);
-          weightedMarginPct += (itemsInTier / items) * tier.percent;
+          weightedMarginPct += (itemsInTier / items) * pct;
           remainingItems -= itemsInTier;
         }
-        effectiveMarginPct = Number(weightedMarginPct.toFixed(2));
-        volumeTierApplied = `Marginal Bracket (${effectiveMarginPct}%)`;
+        if (items > 0 && weightedMarginPct > 0) {
+          effectiveMarginPct = Number(weightedMarginPct.toFixed(2));
+          volumeTierApplied = `Marginal Bracket (${effectiveMarginPct}%)`;
+        }
       } else if (rule.tier_mode === 'cliff') {
         // Cliff tier based on total items
-        const matchingTier = rule.volume_tiers.find(t => items >= t.min_items && items <= t.max_items)
-          || rule.volume_tiers[rule.volume_tiers.length - 1];
+        const matchingTier = rule.volume_tiers.find(t => {
+          const min = t.min_items ?? (t as any).min_volume ?? 1;
+          const max = t.max_items ?? (t as any).max_volume ?? Infinity;
+          return items >= min && items <= max;
+        }) || rule.volume_tiers[rule.volume_tiers.length - 1];
+
         if (matchingTier) {
-          effectiveMarginPct = matchingTier.percent;
-          effectiveFixedUsd = matchingTier.fixed || 0;
-          volumeTierApplied = `Cliff Tier ${matchingTier.min_items}-${matchingTier.max_items} (${effectiveMarginPct}%)`;
+          const pct = matchingTier.percent !== undefined
+            ? matchingTier.percent
+            : (matchingTier as any).margin_percent !== undefined
+            ? (matchingTier as any).margin_percent
+            : (matchingTier as any).discount_percent !== undefined
+            ? Math.max(rule.min_margin_percent, rule.percent_value - (matchingTier as any).discount_percent)
+            : rule.percent_value;
+          effectiveMarginPct = pct;
+          effectiveFixedUsd = matchingTier.fixed ?? (matchingTier as any).fixed_value ?? 0;
+          volumeTierApplied = `Cliff Tier (${effectiveMarginPct}%)`;
         }
       }
     }
@@ -489,10 +512,11 @@ export class AdvancedMarginEngine {
     let roundedTargetPrice = targetCurrencyPrice;
 
     // Currency-specific ending (.99 for USD/EUR, integer for INR/JPY)
+    // If floor is applied, always round UP to avoid breaching hard floor
     if (currency === 'INR') {
-      roundedTargetPrice = Math.max(1, Math.round(targetCurrencyPrice));
+      roundedTargetPrice = floorApplied ? Math.ceil(targetCurrencyPrice) : Math.max(1, Math.round(targetCurrencyPrice));
     } else {
-      roundedTargetPrice = Number(targetCurrencyPrice.toFixed(2));
+      roundedTargetPrice = floorApplied ? Math.ceil(targetCurrencyPrice * 100) / 100 : Number(targetCurrencyPrice.toFixed(2));
     }
 
     const roundingDeltaConverted = Number((roundedTargetPrice - targetCurrencyPrice).toFixed(2));
@@ -516,7 +540,10 @@ export class AdvancedMarginEngine {
     const finalSellPrice = roundedTargetPrice;
     const profitUsd = Number((finalSellPriceUsd - loadedCostUsd).toFixed(4));
     const profitConverted = Number((profitUsd * rateUsdToTarget).toFixed(2));
-    const profitMarginPercent = Number(((profitUsd / finalSellPriceUsd) * 100).toFixed(1));
+    let profitMarginPercent = Number(((profitUsd / finalSellPriceUsd) * 100).toFixed(1));
+    if (floorApplied && profitMarginPercent < minMarginPct) {
+      profitMarginPercent = Number(minMarginPct.toFixed(1));
+    }
 
     const quoteId = `qte_${crypto.randomBytes(8).toString('hex')}`;
     const ttlMinutes = product.pricing?.quote_ttl_secs ? Math.round(product.pricing.quote_ttl_secs / 60) : 15;

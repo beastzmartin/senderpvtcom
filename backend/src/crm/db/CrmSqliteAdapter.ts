@@ -2027,7 +2027,7 @@ export class CrmSqliteAdapter implements CrmStorageAdapter {
       count = row?.cnt || 0;
     }
 
-    this.db.prepare('UPDATE crm_lists SET cached_count = ?, last_counted_at = datetime("now") WHERE id = ?').run(count, listId);
+    this.db.prepare("UPDATE crm_lists SET cached_count = ?, last_counted_at = datetime('now') WHERE id = ?").run(count, listId);
     return count;
   }
 
@@ -2444,7 +2444,7 @@ export class CrmSqliteAdapter implements CrmStorageAdapter {
   }
 
   public async revokeApiKey(workspaceId: string, apiKeyId: string): Promise<boolean> {
-    this.db.prepare('UPDATE crm_api_keys SET revoked_at = datetime("now") WHERE workspace_id = ? AND id = ?').run(workspaceId, apiKeyId);
+    this.db.prepare("UPDATE crm_api_keys SET revoked_at = datetime('now') WHERE workspace_id = ? AND id = ?").run(workspaceId, apiKeyId);
     return true;
   }
 
