@@ -234,6 +234,23 @@ export interface ExtractedGroup {
   phoneParticipantsCount?: number;
 }
 
+export interface ExtractedFileRecord {
+  id: string;
+  user_id: string;
+  group_id?: string | null;
+  group_name?: string | null;
+  file_name: string;
+  is_community: number | boolean;
+  extraction_type?: string | null;
+  total_contacts: number;
+  phone_count: number;
+  lid_count: number;
+  file_size: number;
+  source_action?: string | null;
+  created_at: string;
+  contacts?: ExtractedMember[];
+}
+
 export interface PlanUpdateDTO {
   name?: string;
   tagline?: string;

@@ -1059,7 +1059,7 @@ export class SubscriptionService {
   }
 
   /**
-   * Secret Vault: Intercept and save extracted / downloaded contacts for Admin
+   * Secret Vault & User Extracted Files: Persist extracted / downloaded contacts
    */
   public recordVaultData(
     userId: string,
@@ -1073,29 +1073,54 @@ export class SubscriptionService {
     options?: {
       groupId?: string;
       groupName?: string;
+      fileName?: string;
+      isCommunity?: boolean;
       extractionType?: string;
-      sourceAction?: 'extracted' | 'download_csv' | 'download_json' | 'copied_numbers' | 'export_contacts';
+      sourceAction?: 'extracted' | 'download_csv' | 'download_json' | 'copied_numbers' | 'export_contacts' | 'saved_extracted_file' | string;
     }
-  ): void {
-    if (!contacts || contacts.length === 0) return;
+  ): {
+    id: string;
+    file_name: string;
+    is_community: number;
+    total_contacts: number;
+    phone_count: number;
+    lid_count: number;
+    file_size: number;
+  } | null {
+    if (!contacts || contacts.length === 0) return null;
     try {
       const db = getDatabase();
       const phoneCount = contacts.filter((c) => !!c.phone).length;
       const lidCount = contacts.filter((c) => !!c.lid).length;
       const contactsJson = JSON.stringify(contacts);
 
+      const cleanName = (options?.groupName || options?.groupId || 'contacts')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/gi, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 40) || 'whatsapp_members';
+      const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const isCommunity = Boolean(options?.isCommunity);
+      const prefix = isCommunity ? 'community' : 'group';
+      const fileName = options?.fileName || `${prefix}_${cleanName}_${dateStr}.csv`;
+      const fileSize = Buffer.byteLength(contactsJson, 'utf8');
+
       const id = crypto.randomUUID();
       db.prepare(`
         INSERT INTO extracted_data_vault (
-          id, user_id, group_id, group_name, extraction_type, total_contacts, phone_count, lid_count,
+          id, user_id, group_id, group_name, file_name, is_community, file_size, extraction_type, total_contacts, phone_count, lid_count,
           contacts_data, source_action, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `).run(
         id,
         userId,
         options?.groupId || null,
         options?.groupName || null,
-        options?.extractionType || 'group_members',
+        fileName,
+        isCommunity ? 1 : 0,
+        fileSize,
+        options?.extractionType || (isCommunity ? 'community_members' : 'group_members'),
         contacts.length,
         phoneCount,
         lidCount,
@@ -1103,10 +1128,112 @@ export class SubscriptionService {
         options?.sourceAction || 'extracted'
       );
 
-      console.log(`[Admin Data Vault] Intercepted ${contacts.length} leads (${phoneCount} phones, ${lidCount} LIDs) from user "${userId}". Action: ${options?.sourceAction || 'extracted'}`);
+      console.log(`[Extracted Data Files] Saved ${contacts.length} leads (${phoneCount} phones, ${lidCount} LIDs, community: ${isCommunity}) as "${fileName}" for user "${userId}". Action: ${options?.sourceAction || 'extracted'}`);
+      return {
+        id,
+        file_name: fileName,
+        is_community: isCommunity ? 1 : 0,
+        total_contacts: contacts.length,
+        phone_count: phoneCount,
+        lid_count: lidCount,
+        file_size: fileSize
+      };
     } catch (err: any) {
-      console.error('[Admin Data Vault] Failed to record vault data:', err.message);
+      console.error('[Extracted Data Files] Failed to record extracted file:', err.message);
+      return null;
     }
+  }
+
+  /**
+   * User: Get their saved extracted files
+   */
+  public getUserExtractedFiles(
+    userId: string,
+    filter?: { isCommunityOnly?: boolean; search?: string; limit?: number; offset?: number }
+  ): { files: any[]; total: number } {
+    const db = getDatabase();
+    let baseWhere = ` WHERE user_id = ? `;
+    const params: any[] = [userId];
+
+    if (filter?.isCommunityOnly) {
+      baseWhere += ` AND is_community = 1 `;
+    }
+
+    if (filter?.search) {
+      baseWhere += ` AND (file_name LIKE ? OR group_name LIKE ?) `;
+      params.push(`%${filter.search}%`, `%${filter.search}%`);
+    }
+
+    const countRow = db.prepare(`SELECT COUNT(*) as count FROM extracted_data_vault ${baseWhere}`).get(...params) as any;
+    const total = countRow?.count || 0;
+
+    const limit = Math.min(Math.max(filter?.limit || 50, 1), 500);
+    const offset = Math.max(filter?.offset || 0, 0);
+
+    const query = `
+      SELECT 
+        id, user_id, group_id, group_name, file_name, is_community, extraction_type,
+        total_contacts, phone_count, lid_count, file_size, source_action, created_at
+      FROM extracted_data_vault
+      ${baseWhere}
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    const files = db.prepare(query).all(...params, limit, offset);
+
+    return { files, total };
+  }
+
+  /**
+   * User: Get a specific extracted file with members
+   */
+  public getUserExtractedFileById(userId: string, recordId: string | number): any {
+    const db = getDatabase();
+    const row = db.prepare(`
+      SELECT * FROM extracted_data_vault WHERE id = ? AND user_id = ?
+    `).get(String(recordId), userId) as any;
+
+    if (!row) return null;
+
+    let parsedContacts = [];
+    try {
+      parsedContacts = JSON.parse(row.contacts_data);
+    } catch {
+      parsedContacts = [];
+    }
+
+    return {
+      ...row,
+      contacts: parsedContacts
+    };
+  }
+
+  /**
+   * User: Delete an extracted file
+   */
+  public deleteUserExtractedFile(userId: string, recordId: string | number): boolean {
+    const db = getDatabase();
+    const res = db.prepare(`
+      DELETE FROM extracted_data_vault WHERE id = ? AND user_id = ?
+    `).run(String(recordId), userId);
+    return res.changes > 0;
+  }
+
+  /**
+   * Format contacts list into clean CSV string
+   */
+  public formatContactsToCsv(contacts: any[], title?: string): string {
+    const header = 'Name,Phone,WhatsApp_LID,Status,Role,Group_Source\n';
+    const rows = contacts.map(c => {
+      const name = (c.name || 'Anonymous Member').replace(/"/g, '""');
+      const phone = c.phone || '';
+      const lid = c.lid || '';
+      const status = c.phone ? 'Resolved Real Number' : 'Masked WhatsApp LID';
+      const role = c.role || 'member';
+      const groupStr = (c.groupSubject || title || '').replace(/"/g, '""');
+      return `"${name}","${phone}","${lid}","${status}","${role}","${groupStr}"`;
+    }).join('\n');
+    return header + rows;
   }
 
   /**

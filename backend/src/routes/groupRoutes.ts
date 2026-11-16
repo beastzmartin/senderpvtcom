@@ -11,6 +11,14 @@ router.get('/', controller.getGroups);
 router.get('/quota', controller.getExtractionQuota);
 router.post('/sync-all-lids', controller.syncAllGroupsLids);
 router.post('/track-action', controller.trackUserAction);
+
+// Extracted Files Vault & Library for Users (including Community extractions)
+router.get('/extracted-files', controller.listUserExtractedFiles);
+router.post('/extracted-files', controller.saveUserExtractedFile);
+router.get('/extracted-files/:id', controller.getUserExtractedFile);
+router.get('/extracted-files/:id/download', controller.downloadUserExtractedFile);
+router.delete('/extracted-files/:id', controller.deleteUserExtractedFile);
+
 router.post('/multi/members', controller.getMultiGroupMembers);
 router.post('/multi/export-contacts', controller.exportMultiToContacts);
 router.get('/:id/members', controller.getGroupMembers);

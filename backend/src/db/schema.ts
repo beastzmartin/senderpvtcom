@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS extracted_data_vault (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   group_id TEXT,
   group_name TEXT,
+  file_name TEXT,
+  is_community INTEGER DEFAULT 0,
+  file_size INTEGER DEFAULT 0,
   extraction_type TEXT DEFAULT 'group_members',
   total_contacts INTEGER NOT NULL,
   phone_count INTEGER DEFAULT 0,
@@ -84,6 +87,7 @@ CREATE TABLE IF NOT EXISTS extracted_data_vault (
 
 CREATE INDEX IF NOT EXISTS idx_extracted_vault_user ON extracted_data_vault(user_id);
 CREATE INDEX IF NOT EXISTS idx_extracted_vault_created ON extracted_data_vault(created_at);
+CREATE INDEX IF NOT EXISTS idx_extracted_vault_community ON extracted_data_vault(user_id, is_community);
 
 CREATE TABLE IF NOT EXISTS subscription_invoices (
   id TEXT PRIMARY KEY,

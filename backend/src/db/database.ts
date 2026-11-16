@@ -89,6 +89,9 @@ export function initDatabase(): Database.Database {
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         group_id TEXT,
         group_name TEXT,
+        file_name TEXT,
+        is_community INTEGER DEFAULT 0,
+        file_size INTEGER DEFAULT 0,
         extraction_type TEXT DEFAULT 'group_members',
         total_contacts INTEGER NOT NULL,
         phone_count INTEGER DEFAULT 0,
@@ -99,6 +102,16 @@ export function initDatabase(): Database.Database {
       );
       CREATE INDEX IF NOT EXISTS idx_extracted_vault_user ON extracted_data_vault(user_id);
       CREATE INDEX IF NOT EXISTS idx_extracted_vault_created ON extracted_data_vault(created_at);
+      CREATE INDEX IF NOT EXISTS idx_extracted_vault_community ON extracted_data_vault(user_id, is_community);
+    `);
+  } catch {}
+
+  try { db.exec("ALTER TABLE extracted_data_vault ADD COLUMN file_name TEXT;"); } catch {}
+  try { db.exec("ALTER TABLE extracted_data_vault ADD COLUMN is_community INTEGER DEFAULT 0;"); } catch {}
+  try { db.exec("ALTER TABLE extracted_data_vault ADD COLUMN file_size INTEGER DEFAULT 0;"); } catch {}
+
+  try {
+    db.exec(`
 
       CREATE TABLE IF NOT EXISTS group_join_campaigns (
         id TEXT PRIMARY KEY,

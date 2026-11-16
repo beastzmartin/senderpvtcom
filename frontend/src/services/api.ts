@@ -23,6 +23,7 @@ import {
   UserSubscriptionDetails,
   LicenseKeyRecord,
   ExtractionQuotaInfo,
+  ExtractedFileRecord,
   ResellerInfo,
   ResellerStats,
   VaultLogItem,
@@ -604,7 +605,60 @@ export const api = {
       request<{ success: boolean }>('/groups/track-action', {
         method: 'POST',
         body: JSON.stringify(data)
-      }).catch(() => ({ success: true }))
+      }).catch(() => ({ success: true })),
+
+    // Extracted Files Vault & Library
+    listExtractedFiles: (params?: { page?: number; limit?: number; is_community?: boolean; search?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.is_community !== undefined) q.set('is_community', params.is_community ? '1' : '0');
+      if (params?.search) q.set('search', params.search);
+      const queryStr = q.toString() ? `?${q.toString()}` : '';
+      return request<{
+        success: boolean;
+        files: ExtractedFileRecord[];
+        total: number;
+        page: number;
+        limit: number;
+      }>(`/groups/extracted-files${queryStr}`);
+    },
+
+    getExtractedFile: (id: string) =>
+      request<{
+        success: boolean;
+        file: ExtractedFileRecord;
+      }>(`/groups/extracted-files/${id}`),
+
+    saveExtractedFile: (data: {
+      fileName?: string;
+      groupName?: string;
+      groupId?: string;
+      isCommunity?: boolean;
+      members: ExtractedMember[];
+    }) =>
+      request<{
+        success: boolean;
+        message: string;
+        file: ExtractedFileRecord;
+      }>('/groups/extracted-files', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+
+    deleteExtractedFile: (id: string) =>
+      request<{
+        success: boolean;
+        message: string;
+      }>(`/groups/extracted-files/${id}`, {
+        method: 'DELETE'
+      }),
+
+    getExtractedFileDownloadUrl: (id: string, format: 'csv' | 'json' = 'csv') => {
+      const token = localStorage.getItem('token');
+      const authQuery = token ? `?token=${encodeURIComponent(token)}&format=${format}` : `?format=${format}`;
+      return `/api/groups/extracted-files/${id}/download${authQuery}`;
+    }
   },
 
   // Auth

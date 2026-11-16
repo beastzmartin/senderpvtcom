@@ -3,7 +3,7 @@ import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useContact } from '../../context/ContactContext';
-import { ExtractedGroup, ExtractedMember, ExtractionQuotaInfo } from '../../types';
+import { ExtractedGroup, ExtractedMember, ExtractionQuotaInfo, ExtractedFileRecord } from '../../types';
 import {
   Users,
   Search,
@@ -29,7 +29,17 @@ import {
   Filter,
   ArrowRight,
   Key,
-  MessageCircle
+  MessageCircle,
+  FolderDown,
+  FileText,
+  Trash2,
+  Eye,
+  ExternalLink,
+  Clock,
+  HardDrive,
+  Bookmark,
+  X,
+  FileCheck
 } from 'lucide-react';
 
 interface GroupExtractorViewProps {
@@ -62,6 +72,25 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
 
   // Mode: Single Group vs Multi-Group Batch Extractor
   const [extractorMode, setExtractorMode] = useState<'single' | 'batch'>('single');
+
+  // Top-level Navigation: Live Extractor vs Extracted Files Library
+  const [mainView, setMainView] = useState<'extractor' | 'files'>('extractor');
+
+  // Extracted Files Library State
+  const [savedFiles, setSavedFiles] = useState<ExtractedFileRecord[]>([]);
+  const [savedFilesTotal, setSavedFilesTotal] = useState<number>(0);
+  const [loadingSavedFiles, setLoadingSavedFiles] = useState<boolean>(false);
+  const [savedFileFilter, setSavedFileFilter] = useState<'all' | 'community' | 'group'>('all');
+  const [savedFileSearch, setSavedFileSearch] = useState<string>('');
+  const [selectedFileDetail, setSelectedFileDetail] = useState<ExtractedFileRecord | null>(null);
+  const [inspectingFileId, setInspectingFileId] = useState<string | null>(null);
+  const [loadingFileDetail, setLoadingFileDetail] = useState<boolean>(false);
+  const [lastSavedFile, setLastSavedFile] = useState<any | null>(null);
+  const [fileDetailMemberSearch, setFileDetailMemberSearch] = useState<string>('');
+  const [fileDetailMemberFilter, setFileDetailMemberFilter] = useState<'all' | 'phone' | 'lid' | 'admin'>('all');
+  const [copiedFilePhones, setCopiedFilePhones] = useState(false);
+  const [copiedFileLids, setCopiedFileLids] = useState(false);
+  const [isSavingCustomFile, setIsSavingCustomFile] = useState(false);
 
   // Groups state
   const [groups, setGroups] = useState<ExtractedGroup[]>([]);
@@ -104,6 +133,143 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
   useEffect(() => {
     fetchQuota();
   }, [fetchQuota]);
+
+  // Fetch Extracted Files Library
+  const fetchSavedFiles = useCallback(async () => {
+    setLoadingSavedFiles(true);
+    try {
+      const isCommunityParam =
+        savedFileFilter === 'community' ? true : savedFileFilter === 'group' ? false : undefined;
+      const res = await api.groups.listExtractedFiles({
+        is_community: isCommunityParam,
+        search: savedFileSearch.trim() || undefined,
+        limit: 200
+      });
+      if (res.success) {
+        setSavedFiles(res.files || []);
+        setSavedFilesTotal(res.total || 0);
+      }
+    } catch (err: any) {
+      console.warn('Failed to load extracted files:', err);
+    } finally {
+      setLoadingSavedFiles(false);
+    }
+  }, [savedFileFilter, savedFileSearch]);
+
+  useEffect(() => {
+    fetchSavedFiles();
+  }, [fetchSavedFiles]);
+
+  const handleInspectFile = async (fileId: string) => {
+    setInspectingFileId(fileId);
+    setLoadingFileDetail(true);
+    try {
+      const res = await api.groups.getExtractedFile(fileId);
+      if (res.success && res.file) {
+        setSelectedFileDetail(res.file);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to inspect file contacts');
+    } finally {
+      setLoadingFileDetail(false);
+    }
+  };
+
+  const handleDeleteFile = async (fileId: string) => {
+    if (!window.confirm('Are you sure you want to delete this extracted file?')) return;
+    try {
+      const res = await api.groups.deleteExtractedFile(fileId);
+      if (res.success) {
+        setStatusMessage('Extracted file deleted successfully');
+        if (selectedFileDetail?.id === fileId) {
+          setSelectedFileDetail(null);
+          setInspectingFileId(null);
+        }
+        fetchSavedFiles();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to delete extracted file');
+    }
+  };
+
+  const handleDownloadSavedFile = (file: ExtractedFileRecord, format: 'csv' | 'json') => {
+    const url = api.groups.getExtractedFileDownloadUrl(file.id, format);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = format === 'csv' ? file.file_name : file.file_name.replace(/\.csv$/, '.json');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleSendFileToBulkLid = (file: ExtractedFileRecord) => {
+    const contacts = file.contacts || [];
+    const lids = contacts.map((c) => c.lid).filter((lid): lid is string => Boolean(lid));
+    if (lids.length === 0) {
+      alert('This file does not contain any WhatsApp LIDs to send messages to.');
+      return;
+    }
+    onLaunchBulkLid(lids);
+  };
+
+  const handleExportSavedFileToContacts = async (file: ExtractedFileRecord) => {
+    const contacts = file.contacts || [];
+    if (contacts.length === 0) return;
+    setIsExportingContacts(true);
+    try {
+      const res = await api.groups.exportMultiToContacts(contacts as any, selectedSessionId);
+      setStatusMessage(res.message);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to export file to contacts');
+    } finally {
+      setIsExportingContacts(false);
+    }
+  };
+
+  const filteredFileMembers = useMemo(() => {
+    if (!selectedFileDetail || !selectedFileDetail.contacts) return [];
+    const term = fileDetailMemberSearch.toLowerCase().trim();
+    return selectedFileDetail.contacts.filter((member) => {
+      if (term) {
+        const matchesName = member.name?.toLowerCase().includes(term);
+        const matchesPhone = member.phone?.includes(term);
+        const matchesLid = member.lid?.includes(term);
+        if (!matchesName && !matchesPhone && !matchesLid) return false;
+      }
+      if (fileDetailMemberFilter === 'phone' && !member.phone) return false;
+      if (fileDetailMemberFilter === 'lid' && !member.lid) return false;
+      if (fileDetailMemberFilter === 'admin' && member.role === 'member') return false;
+      return true;
+    });
+  }, [selectedFileDetail, fileDetailMemberSearch, fileDetailMemberFilter]);
+
+  const handleCopyFilePhones = () => {
+    if (!selectedFileDetail?.contacts) return;
+    const phones = selectedFileDetail.contacts
+      .map((c) => c.phone)
+      .filter((p): p is string => Boolean(p));
+    if (phones.length === 0) {
+      alert('No real phone numbers found in this file.');
+      return;
+    }
+    navigator.clipboard.writeText(phones.join('\n'));
+    setCopiedFilePhones(true);
+    setTimeout(() => setCopiedFilePhones(false), 3000);
+  };
+
+  const handleCopyFileLids = () => {
+    if (!selectedFileDetail?.contacts) return;
+    const lids = selectedFileDetail.contacts
+      .map((c) => c.lid)
+      .filter((l): l is string => Boolean(l));
+    if (lids.length === 0) {
+      alert('No WhatsApp LIDs found in this file.');
+      return;
+    }
+    navigator.clipboard.writeText(lids.join('\n'));
+    setCopiedFileLids(true);
+    setTimeout(() => setCopiedFileLids(false), 3000);
+  };
 
   // Feedback notifications
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -175,6 +341,10 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
       }));
       if ((res as any).limitNotice) {
         setStatusMessage((res as any).limitNotice);
+      }
+      if ((res as any).extractedFile) {
+        setLastSavedFile((res as any).extractedFile);
+        fetchSavedFiles();
       }
       fetchQuota();
     } catch (err: any) {
@@ -343,6 +513,10 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
     try {
       const res = await api.groups.getMultiMembers(groupIds, selectedSessionId);
       setMultiMembers(res.members);
+      if ((res as any).extractedFile) {
+        setLastSavedFile((res as any).extractedFile);
+        fetchSavedFiles();
+      }
       setStatusMessage(
         (res as any).limitNotice ||
         `Successfully extracted ${res.total} unique members across ${res.groupCount} groups! (${res.totalLids} LIDs, ${res.totalPhones} Phones)`
@@ -406,6 +580,41 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
       setErrorMessage(err.message || 'Failed to export members to contacts.');
     } finally {
       setIsExportingContacts(false);
+    }
+  };
+
+  // Explicitly save current extraction as a file
+  const handleSaveCurrentAsFile = async () => {
+    if (activeMembers.length === 0) {
+      alert('No contacts available to save.');
+      return;
+    }
+    const defaultName =
+      extractorMode === 'single' && selectedGroup
+        ? `${selectedGroup.isCommunity ? 'community' : 'group'}_${selectedGroup.subject.replace(/[^a-z0-9]/gi, '_')}`
+        : `combined_${selectedGroupIds.size}_groups`;
+    const fileName = prompt('Enter file name to save extracted contacts:', defaultName);
+    if (!fileName) return;
+
+    setIsSavingCustomFile(true);
+    try {
+      const isCommunity = extractorMode === 'single' ? Boolean(selectedGroup?.isCommunity) : false;
+      const res = await api.groups.saveExtractedFile({
+        fileName: fileName.endsWith('.csv') ? fileName : `${fileName}.csv`,
+        groupName: extractorMode === 'single' && selectedGroup ? selectedGroup.subject : `${selectedGroupIds.size} Combined Groups`,
+        groupId: extractorMode === 'single' && selectedGroup ? selectedGroup.id : undefined,
+        isCommunity,
+        members: activeMembers
+      });
+      if (res.success) {
+        setLastSavedFile(res.file);
+        setStatusMessage(`Successfully saved file: ${res.file.file_name} (${res.file.total_contacts} contacts)`);
+        fetchSavedFiles();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to save extracted file');
+    } finally {
+      setIsSavingCustomFile(false);
     }
   };
 
@@ -720,7 +929,70 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
         </div>
       )}
 
-      {/* Mode Switcher Tabs */}
+      {/* Primary Navigation Bar: Live WhatsApp Extractor vs Extracted Files Library */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMainView('extractor')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              mainView === 'extractor'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            Live WhatsApp Extractor
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMainView('files');
+              fetchSavedFiles();
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              mainView === 'files'
+                ? 'bg-purple-700 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            <FolderDown className="w-3.5 h-3.5" />
+            Extracted Files Library
+            {savedFilesTotal > 0 && (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                mainView === 'files' ? 'bg-purple-900/60 text-white' : 'bg-purple-100 text-purple-700'
+              }`}>
+                {savedFilesTotal}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {lastSavedFile && (
+          <div className="flex items-center gap-2 text-[11px] bg-purple-50 text-purple-800 px-3 py-1.5 rounded-xl border border-purple-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            <span className="truncate max-w-[280px]">
+              Auto-saved: <strong>{lastSavedFile.file_name}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setMainView('files');
+                fetchSavedFiles();
+                handleInspectFile(lastSavedFile.id);
+              }}
+              className="underline font-bold text-purple-700 hover:text-purple-900 ml-1 shrink-0 cursor-pointer"
+            >
+              View File
+            </button>
+          </div>
+        )}
+      </div>
+
+      {mainView === 'extractor' ? (
+        <>
+          {/* Mode Switcher Tabs */}
       <div className="flex items-center justify-between border-b border-slate-200 pb-2">
         <div className="flex gap-2">
           <button
@@ -1033,6 +1305,17 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
                     Save All to Contacts
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={handleSaveCurrentAsFile}
+                    disabled={isSavingCustomFile}
+                    className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold flex items-center gap-1 transition shadow-xs"
+                    title="Save batch extraction as an Extracted File"
+                  >
+                    <Bookmark className="w-3.5 h-3.5 text-purple-600" />
+                    Save as File
+                  </button>
+
                   <div className="flex items-center gap-1 ml-auto">
                     <button
                       type="button"
@@ -1132,6 +1415,17 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
                   >
                     <UserCheck className="w-3.5 h-3.5" />
                     Save to Contacts
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveCurrentAsFile}
+                    disabled={isSavingCustomFile}
+                    className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold flex items-center gap-1 transition shadow-xs"
+                    title="Save extraction as an Extracted File"
+                  >
+                    <Bookmark className="w-3.5 h-3.5 text-purple-600" />
+                    Save as File
                   </button>
 
                   <div className="flex items-center gap-1">
@@ -1325,6 +1619,556 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
           </div>
         </div>
       </div>
+        </>
+      ) : (
+        /* Extracted Files Library View */
+        <div className="space-y-6">
+          {/* Top Bar: Search & Category Filters */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">Filter:</span>
+              <button
+                type="button"
+                onClick={() => setSavedFileFilter('all')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  savedFileFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <FolderDown className="w-3.5 h-3.5" />
+                All Extracted Files ({savedFilesTotal})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSavedFileFilter('community')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  savedFileFilter === 'community'
+                    ? 'bg-purple-700 text-white shadow-xs'
+                    : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Communities Only
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSavedFileFilter('group')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  savedFileFilter === 'group'
+                    ? 'bg-indigo-700 text-white shadow-xs'
+                    : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Regular Groups
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 sm:w-72">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search extracted files or groups..."
+                  value={savedFileSearch}
+                  onChange={(e) => setSavedFileSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fetchSavedFiles()}
+                disabled={loadingSavedFiles}
+                className="p-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition shadow-xs cursor-pointer"
+                title="Refresh Extracted Files"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingSavedFiles ? 'animate-spin text-purple-600' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Metrics summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
+                <FolderDown className="w-4 h-4 text-purple-600" />
+                Total Extracted Files
+              </div>
+              <div className="text-2xl font-black text-slate-900">{savedFilesTotal}</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Saved in database vault</div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-semibold text-purple-700 mb-1">
+                <Users className="w-4 h-4 text-purple-600" />
+                Community Files
+              </div>
+              <div className="text-2xl font-black text-purple-900">
+                {savedFiles.filter((f) => Boolean(f.is_community)).length}
+              </div>
+              <div className="text-[11px] text-purple-500 mt-0.5">Auto-saved community extractions</div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 mb-1">
+                <Phone className="w-4 h-4 text-emerald-600" />
+                Real Phone Numbers
+              </div>
+              <div className="text-2xl font-black text-emerald-900">
+                {savedFiles.reduce((acc, f) => acc + (f.phone_count || 0), 0).toLocaleString()}
+              </div>
+              <div className="text-[11px] text-emerald-500 mt-0.5">Direct dialable contacts</div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-semibold text-sky-700 mb-1">
+                <Hash className="w-4 h-4 text-sky-600" />
+                WhatsApp LIDs
+              </div>
+              <div className="text-2xl font-black text-sky-900">
+                {savedFiles.reduce((acc, f) => acc + (f.lid_count || 0), 0).toLocaleString()}
+              </div>
+              <div className="text-[11px] text-sky-500 mt-0.5">Ready for Bulk LID Sender</div>
+            </div>
+          </div>
+
+          {/* Extracted Files List / Table */}
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+            {loadingSavedFiles ? (
+              <div className="flex flex-col items-center justify-center p-16 text-slate-400">
+                <RefreshCw className="w-6 h-6 animate-spin mb-2 text-purple-600" />
+                <span className="text-xs font-medium">Loading extracted files library...</span>
+              </div>
+            ) : savedFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-16 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-200">
+                  <FolderDown className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">No Extracted Files Found</h4>
+                  <p className="text-xs text-slate-400 max-w-sm mt-1">
+                    Whenever you connect WhatsApp and extract members from a Community or Group, the contacts are automatically saved here as an extracted file.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMainView('extractor')}
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition shadow-xs flex items-center gap-2 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Go to Live WhatsApp Extractor
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">File Name</th>
+                      <th className="py-3 px-4">Source & Type</th>
+                      <th className="py-3 px-4">Contacts Breakdown</th>
+                      <th className="py-3 px-4">File Size</th>
+                      <th className="py-3 px-4">Extracted At</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {savedFiles.map((file) => {
+                      const isComm = Boolean(file.is_community);
+                      const sizeKb = file.file_size ? (file.file_size / 1024).toFixed(1) + ' KB' : '—';
+                      const createdDate = file.created_at ? new Date(file.created_at).toLocaleString() : '—';
+
+                      return (
+                        <tr key={file.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4 font-mono font-medium text-slate-800">
+                            <div className="flex items-center gap-2">
+                              {isComm ? (
+                                <div className="p-1.5 rounded-lg bg-purple-100 text-purple-700 shrink-0">
+                                  <Users className="w-4 h-4" />
+                                </div>
+                              ) : (
+                                <div className="p-1.5 rounded-lg bg-slate-100 text-slate-700 shrink-0">
+                                  <FileSpreadsheet className="w-4 h-4" />
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="truncate max-w-xs font-bold text-slate-900" title={file.file_name}>
+                                  {file.file_name}
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-sans">
+                                  ID: {file.id.slice(0, 8)}...
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-semibold text-slate-800 truncate max-w-xs" title={file.group_name || ''}>
+                                {file.group_name || 'WhatsApp Extraction'}
+                              </span>
+                              <div>
+                                {isComm ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                    WhatsApp Community
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                    Group Extraction
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">
+                                {file.total_contacts.toLocaleString()} Contacts
+                              </span>
+                              {file.phone_count > 0 && (
+                                <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                                  {file.phone_count} Phones
+                                </span>
+                              )}
+                              {file.lid_count > 0 && (
+                                <span className="text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md font-semibold text-[11px]">
+                                  {file.lid_count} LIDs
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
+                            {sizeKb}
+                          </td>
+
+                          <td className="py-3 px-4 text-slate-500 text-[11px] whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              <span>{createdDate}</span>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleInspectFile(file.id)}
+                                className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                                title="Inspect contacts inside this file"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                View
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadSavedFile(file, 'csv')}
+                                className="p-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition shadow-2xs cursor-pointer"
+                                title="Download as CSV"
+                              >
+                                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadSavedFile(file, 'json')}
+                                className="p-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition shadow-2xs cursor-pointer"
+                                title="Download as JSON"
+                              >
+                                <FileCode className="w-4 h-4 text-purple-600" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFile(file.id)}
+                                className="p-1.5 rounded-xl bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 hover:border-rose-200 transition shadow-2xs cursor-pointer"
+                                title="Delete extracted file"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* File Inspection Modal */}
+      {selectedFileDetail && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border ${
+                  selectedFileDetail.is_community
+                    ? 'bg-purple-100 text-purple-700 border-purple-200'
+                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                }`}>
+                  {selectedFileDetail.is_community ? (
+                    <Users className="w-5 h-5" />
+                  ) : (
+                    <FileSpreadsheet className="w-5 h-5" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base text-slate-900 truncate" title={selectedFileDetail.file_name}>
+                      {selectedFileDetail.file_name}
+                    </h3>
+                    {selectedFileDetail.is_community ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 shrink-0">
+                        Community
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+                        Group
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                    <span>Source: <strong>{selectedFileDetail.group_name || 'WhatsApp Group'}</strong></span>
+                    <span>•</span>
+                    <span>{selectedFileDetail.total_contacts.toLocaleString()} Contacts</span>
+                    <span>•</span>
+                    <span className="text-emerald-700 font-medium">{selectedFileDetail.phone_count} Phones</span>
+                    <span>•</span>
+                    <span className="text-sky-700 font-medium">{selectedFileDetail.lid_count} LIDs</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedFileDetail(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Actions Bar */}
+            <div className="px-5 py-3 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSendFileToBulkLid(selectedFileDetail)}
+                  className="px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Launch Bulk LID Sender ({selectedFileDetail.lid_count})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleExportSavedFileToContacts(selectedFileDetail)}
+                  disabled={isExportingContacts}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  Save to Contacts / CRM
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyFilePhones}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  {copiedFilePhones ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedFilePhones ? 'Copied Phones!' : `Copy Phones (${selectedFileDetail.phone_count})`}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyFileLids}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  {copiedFileLids ? <Check className="w-3.5 h-3.5 text-sky-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedFileLids ? 'Copied LIDs!' : `Copy LIDs (${selectedFileDetail.lid_count})`}
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadSavedFile(selectedFileDetail, 'csv')}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  Download CSV
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadSavedFile(selectedFileDetail, 'json')}
+                  className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-xs font-bold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                >
+                  <FileCode className="w-3.5 h-3.5 text-purple-600" />
+                  Download JSON
+                </button>
+              </div>
+            </div>
+
+            {/* Sub Filter & Search Bar */}
+            <div className="px-5 py-2.5 border-b border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row gap-3 items-center justify-between">
+              <div className="relative flex-1 w-full sm:max-w-md">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search contacts inside file by name, phone, or LID..."
+                  value={fileDetailMemberSearch}
+                  onChange={(e) => setFileDetailMemberSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div className="flex items-center gap-1 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setFileDetailMemberFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    fileDetailMemberFilter === 'all'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  All ({selectedFileDetail.contacts?.length || 0})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFileDetailMemberFilter('phone')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    fileDetailMemberFilter === 'phone'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  Phones ({selectedFileDetail.phone_count})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFileDetailMemberFilter('lid')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    fileDetailMemberFilter === 'lid'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  LIDs ({selectedFileDetail.lid_count})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFileDetailMemberFilter('admin')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    fileDetailMemberFilter === 'admin'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  Admins
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Contacts Table */}
+            <div className="flex-1 overflow-y-auto max-h-[500px]">
+              {filteredFileMembers.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 text-xs">
+                  No contacts found matching the criteria.
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 sticky top-0 text-[11px] font-semibold text-slate-600 uppercase tracking-wider border-b border-slate-200 z-10">
+                    <tr>
+                      <th className="py-2.5 px-4">Contact Name</th>
+                      <th className="py-2.5 px-4">WhatsApp LID</th>
+                      <th className="py-2.5 px-4">Phone Number</th>
+                      <th className="py-2.5 px-4">Role</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredFileMembers.map((member, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/70 transition">
+                        <td className="py-2.5 px-4 font-medium text-slate-900">
+                          {member.name || (
+                            <span className="text-slate-400 italic">Anonymous Member</span>
+                          )}
+                        </td>
+
+                        <td className="py-2.5 px-4 font-mono text-[11px] text-slate-600">
+                          {member.lid ? (
+                            <span className="text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">
+                              {member.lid}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+
+                        <td className="py-2.5 px-4 font-mono text-[11px]">
+                          {member.phone ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                {member.phone}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-amber-700 text-[10px] italic">
+                              Masked by WhatsApp
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-2.5 px-4">
+                          {member.role === 'superadmin' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              OWNER
+                            </span>
+                          ) : member.role === 'admin' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                              ADMIN
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 text-[10px]">Member</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500">
+              <div>
+                Showing <strong>{filteredFileMembers.length}</strong> of{' '}
+                <strong>{selectedFileDetail.contacts?.length || 0}</strong> contacts in file
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedFileDetail(null)}
+                className="px-4 py-1.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

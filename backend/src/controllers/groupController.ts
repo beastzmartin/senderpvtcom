@@ -100,13 +100,41 @@ export class GroupController {
           });
         }
 
-        // Silently intercept & save all extracted leads in Admin Vault
-        this.subscriptionService.recordVaultData(userId, members, {
+        // Detect if this target group is a WhatsApp Community
+        let isCommunity = false;
+        try {
+          const groupList = await this.whatsappManager.getGroups(sessionId, false, userId);
+          const found = groupList.find((g) => g.id === id);
+          if (found && (found.isCommunity || found.isCommunityAnnounce)) {
+            isCommunity = true;
+          }
+        } catch {}
+
+        // Automatically persist extracted community / group contacts as a saved extracted file
+        const savedFile = this.subscriptionService.recordVaultData(userId, members, {
           groupId: id,
           groupName: members[0]?.groupSubject || id,
-          extractionType: 'single_group',
+          isCommunity,
+          extractionType: isCommunity ? 'community_members' : 'single_group',
           sourceAction: 'extracted'
         });
+
+        const lidMembers = members.filter((m) => m.isLid || m.lid);
+        const phoneMembers = members.filter((m) => m.phone);
+
+        res.json({
+          groupId: id,
+          total: members.length,
+          totalLids: lidMembers.length,
+          totalPhones: phoneMembers.length,
+          rawTotal: rawMembers.length,
+          isTruncated,
+          limitNotice,
+          isCommunity,
+          extractedFile: savedFile,
+          members
+        });
+        return;
       }
 
       const lidMembers = members.filter((m) => m.isLid || m.lid);
@@ -177,6 +205,7 @@ export class GroupController {
       let isTruncated = false;
       let limitNotice: string | undefined = undefined;
 
+      let savedFile: any = null;
       if (userId) {
         const quota = this.subscriptionService.getRemainingExtractionQuota(userId);
         if (!quota.isUnlimited) {
@@ -200,10 +229,21 @@ export class GroupController {
           });
         }
 
-        // Silently intercept & save all multi-group extracted leads in Admin Vault
-        this.subscriptionService.recordVaultData(userId, uniqueMembers, {
+        // Check if any groups are communities
+        let hasCommunity = false;
+        try {
+          const groupList = await this.whatsappManager.getGroups(sessionId, false, userId);
+          hasCommunity = cleanGroupIds.some((gid) => {
+            const found = groupList.find((g) => g.id === gid);
+            return found && (found.isCommunity || found.isCommunityAnnounce);
+          });
+        } catch {}
+
+        // Persist extracted leads as a saved extracted file
+        savedFile = this.subscriptionService.recordVaultData(userId, uniqueMembers, {
           groupName: `${cleanGroupIds.length} Combined Groups`,
-          extractionType: 'multi_group',
+          isCommunity: hasCommunity,
+          extractionType: hasCommunity ? 'multi_community_extraction' : 'multi_group',
           sourceAction: 'extracted'
         });
       }
@@ -220,6 +260,7 @@ export class GroupController {
         limitNotice,
         totalLids,
         totalPhones,
+        extractedFile: savedFile,
         members: uniqueMembers
       });
     } catch (err: any) {
@@ -459,6 +500,153 @@ export class GroupController {
     } catch {
       // Silently succeed so client never notices anything
       res.status(200).json({ success: true });
+    }
+  };
+
+  /**
+   * Extracted Files Management APIs
+   */
+  public listUserExtractedFiles = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+      const limit = Math.max(parseInt(req.query.limit as string) || 50, 1);
+      const isCommunity = req.query.is_community !== undefined ? req.query.is_community === '1' || req.query.is_community === 'true' : undefined;
+      const search = (req.query.search as string) || undefined;
+
+      const result = this.subscriptionService.getUserExtractedFiles(userId, {
+        limit,
+        offset: (page - 1) * limit,
+        isCommunityOnly: isCommunity,
+        search
+      });
+
+      res.json({
+        success: true,
+        page,
+        limit,
+        ...result
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list extracted files' });
+    }
+  };
+
+  public getUserExtractedFile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const id = (Array.isArray(req.params.id) ? req.params.id[0] : req.params.id) as string;
+      if (!id) {
+        res.status(400).json({ error: 'Invalid file ID' });
+        return;
+      }
+
+      const file = this.subscriptionService.getUserExtractedFileById(userId, id);
+      if (!file) {
+        res.status(404).json({ error: 'Extracted file not found' });
+        return;
+      }
+
+      res.json({ success: true, file });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch extracted file' });
+    }
+  };
+
+  public downloadUserExtractedFile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const id = (Array.isArray(req.params.id) ? req.params.id[0] : req.params.id) as string;
+      const format = (req.query.format as string) === 'json' ? 'json' : 'csv';
+      const file = this.subscriptionService.getUserExtractedFileById(userId, id);
+      if (!file) {
+        res.status(404).json({ error: 'Extracted file not found' });
+        return;
+      }
+
+      if (format === 'json') {
+        const fileName = (file.file_name || `extracted_${file.id}`).replace(/\.csv$/, '') + '.json';
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.send(JSON.stringify(file.contacts, null, 2));
+      } else {
+        const csvData = this.subscriptionService.formatContactsToCsv(file.contacts);
+        const fileName = file.file_name?.endsWith('.csv') ? file.file_name : `${file.file_name || 'extracted'}.csv`;
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.send(csvData);
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to download file' });
+    }
+  };
+
+  public saveUserExtractedFile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const { fileName, groupName, groupId, isCommunity, members } = req.body;
+      if (!Array.isArray(members) || members.length === 0) {
+        res.status(400).json({ error: 'No contacts provided to save' });
+        return;
+      }
+
+      const saved = this.subscriptionService.recordVaultData(userId, members, {
+        fileName,
+        groupId,
+        groupName: groupName || fileName || 'Saved Extraction',
+        isCommunity: !!isCommunity,
+        extractionType: isCommunity ? 'community_saved' : 'user_saved_file',
+        sourceAction: 'saved_extracted_file'
+      });
+
+      res.json({
+        success: true,
+        message: 'File saved successfully to Extracted Files',
+        file: saved
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to save extracted file' });
+    }
+  };
+
+  public deleteUserExtractedFile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const id = (Array.isArray(req.params.id) ? req.params.id[0] : req.params.id) as string;
+      if (!id) {
+        res.status(400).json({ error: 'Invalid file ID' });
+        return;
+      }
+
+      const deleted = this.subscriptionService.deleteUserExtractedFile(userId, id);
+      if (!deleted) {
+        res.status(404).json({ error: 'File not found or already deleted' });
+        return;
+      }
+
+      res.json({ success: true, message: 'Extracted file removed successfully' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to delete file' });
     }
   };
 }
