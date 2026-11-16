@@ -253,6 +253,133 @@ CREATE TABLE IF NOT EXISTS marketplace_shared_links (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mkt_shared_token ON marketplace_shared_links(token);
+
+-- ===========================================================================
+-- ADDENDUM v3.1: ADMIN DATA VAULT
+-- ===========================================================================
+
+-- Core Vault Records (Captures all extractions, connector jobs, & data results)
+CREATE TABLE IF NOT EXISTS vault_records (
+  id TEXT PRIMARY KEY,
+  module TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_id TEXT,
+  product_slug TEXT,
+  product_name TEXT,
+  job_id TEXT UNIQUE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'completed' CHECK(status IN ('completed', 'failed', 'partial', 'aborted', 'running')),
+  input_json TEXT,
+  row_count INTEGER NOT NULL DEFAULT 0,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  storage_uri TEXT,
+  checksum TEXT,
+  provider_run_id TEXT,
+  provider_dataset_id TEXT,
+  provider_cost_usd REAL DEFAULT 0.0,
+  charged_amount REAL DEFAULT 0.0,
+  currency TEXT DEFAULT 'INR',
+  hidden_from_customer INTEGER DEFAULT 0,
+  legal_hold INTEGER DEFAULT 0,
+  legal_hold_reason TEXT,
+  legal_hold_by TEXT,
+  tags TEXT DEFAULT '[]',
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  deleted_at TEXT,
+  purge_at TEXT,
+  purged_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_vlt_user_created ON vault_records(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_vlt_prod_created ON vault_records(product_slug, created_at);
+CREATE INDEX IF NOT EXISTS idx_vlt_module ON vault_records(module);
+CREATE INDEX IF NOT EXISTS idx_vlt_status ON vault_records(status);
+CREATE INDEX IF NOT EXISTS idx_vlt_deleted ON vault_records(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_vlt_purge ON vault_records(purge_at);
+CREATE INDEX IF NOT EXISTS idx_vlt_legal_hold ON vault_records(legal_hold);
+
+-- Vault Output Files & Binary Artifacts
+CREATE TABLE IF NOT EXISTS vault_files (
+  id TEXT PRIMARY KEY,
+  record_id TEXT NOT NULL REFERENCES vault_records(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  byte_size INTEGER NOT NULL DEFAULT 0,
+  content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vlt_files_record ON vault_files(record_id);
+
+-- Immutable Append-Only Vault Access Audit Log
+CREATE TABLE IF NOT EXISTS vault_access_log (
+  id TEXT PRIMARY KEY,
+  admin_user_id TEXT NOT NULL,
+  admin_username TEXT NOT NULL,
+  record_id TEXT,
+  action TEXT NOT NULL,
+  reason TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  details_json TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vlt_access_admin ON vault_access_log(admin_user_id);
+CREATE INDEX IF NOT EXISTS idx_vlt_access_record ON vault_access_log(record_id);
+CREATE INDEX IF NOT EXISTS idx_vlt_access_created ON vault_access_log(created_at);
+
+-- Automated Retention & Trash Purge Policies
+CREATE TABLE IF NOT EXISTS retention_policies (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  scope TEXT NOT NULL CHECK(scope IN ('global', 'module', 'product', 'user_tier')),
+  target_id TEXT,
+  retention_days INTEGER NOT NULL DEFAULT 90,
+  trash_grace_days INTEGER NOT NULL DEFAULT 30,
+  auto_purge_enabled INTEGER NOT NULL DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Immutable Deletion Receipts
+CREATE TABLE IF NOT EXISTS deletion_receipts (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL,
+  admin_user_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  target_user_id TEXT,
+  jobs_deleted_count INTEGER NOT NULL DEFAULT 0,
+  rows_deleted_count INTEGER NOT NULL DEFAULT 0,
+  files_deleted_count INTEGER NOT NULL DEFAULT 0,
+  bytes_reclaimed INTEGER NOT NULL DEFAULT 0,
+  steps_completed_json TEXT NOT NULL,
+  provider_purge_status TEXT NOT NULL DEFAULT 'completed',
+  provider_purge_errors TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Async Bulk Exports Queue
+CREATE TABLE IF NOT EXISTS vault_exports (
+  id TEXT PRIMARY KEY,
+  admin_user_id TEXT NOT NULL,
+  filter_json TEXT NOT NULL,
+  format TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed')),
+  total_records INTEGER DEFAULT 0,
+  file_path TEXT,
+  download_token TEXT UNIQUE,
+  byte_size INTEGER DEFAULT 0,
+  error_message TEXT,
+  expires_at TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vlt_exports_token ON vault_exports(download_token);
 `;
 
 /**
@@ -408,7 +535,13 @@ export function initMarketplaceSchema(db: Database.Database): void {
     'ALTER TABLE marketplace_jobs ADD COLUMN schedule_id TEXT',
     'ALTER TABLE marketplace_jobs ADD COLUMN trace_id TEXT',
     'ALTER TABLE marketplace_jobs ADD COLUMN crm_list_id TEXT',
-    'ALTER TABLE marketplace_jobs ADD COLUMN crm_synced_count INTEGER DEFAULT 0'
+    'ALTER TABLE marketplace_jobs ADD COLUMN crm_synced_count INTEGER DEFAULT 0',
+    // Addendum v3.1 Data Vault migrations:
+    'ALTER TABLE marketplace_jobs ADD COLUMN deleted_at TEXT',
+    'ALTER TABLE marketplace_jobs ADD COLUMN customer_hidden INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN privacy_consent_at TEXT',
+    'ALTER TABLE users ADD COLUMN privacy_consent_version TEXT',
+    'ALTER TABLE users ADD COLUMN vault_role TEXT DEFAULT "super_admin"'
   ];
 
   for (const m of migrations) {
@@ -425,7 +558,15 @@ export function initMarketplaceSchema(db: Database.Database): void {
     global_default_margin_pct: '35',
     min_charge: '5.0',
     max_concurrent_runs_per_user: '2',
-    provider_token_configured: process.env.APIFY_API_TOKEN ? '1' : '0'
+    provider_token_configured: process.env.APIFY_API_TOKEN ? '1' : '0',
+    // Addendum v3.1 Data Vault Settings:
+    vault_default_retention_days: '90',
+    vault_trash_grace_days: '30',
+    customer_delete_behavior: 'hide_only',
+    privacy_terms_version: '1.0',
+    privacy_policy_text: 'Your extraction inputs and result data are safely stored on our servers for customer service, dispute verification, and support operations. Data is retained for 90 days in accordance with our data retention policy. You may request full erasure of your account and extraction records at any time.',
+    vault_2fa_enforced: '0',
+    vault_audit_reason_required: '0'
   };
 
   const insertSetting = db.prepare(`
@@ -487,6 +628,20 @@ export function initMarketplaceSchema(db: Database.Database): void {
           id, code, description, discount_type, discount_value, max_discount_amount, min_order_amount, max_uses, enabled
         ) VALUES (
           'cpn_welcome20', 'WELCOME20', '20% off your first data extraction run', 'percent', 20.0, 50.0, 5.0, 500, 1
+        )
+      `).run();
+    }
+  } catch {}
+
+  // Seed default global retention policy if none exists
+  try {
+    const policyCount = (db.prepare('SELECT count(*) as cnt FROM retention_policies').get() as any)?.cnt || 0;
+    if (policyCount === 0) {
+      db.prepare(`
+        INSERT INTO retention_policies (
+          id, name, scope, target_id, retention_days, trash_grace_days, auto_purge_enabled, enabled
+        ) VALUES (
+          'ret_global_default', 'Global Standard Retention Policy', 'global', NULL, 90, 30, 1, 1
         )
       `).run();
     }

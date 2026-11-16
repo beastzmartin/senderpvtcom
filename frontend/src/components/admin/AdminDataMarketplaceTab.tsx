@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { MarginStudioTab } from './MarginStudioTab';
+import { DataVaultTab } from './DataVaultTab';
 import {
   Database,
   Plus,
@@ -31,7 +32,7 @@ import {
 } from 'lucide-react';
 
 export const AdminDataMarketplaceTab: React.FC = () => {
-  const [subTab, setSubTab] = useState<'products' | 'jobs' | 'margin-studio' | 'finance' | 'health' | 'settings'>('products');
+  const [subTab, setSubTab] = useState<'products' | 'jobs' | 'vault' | 'margin-studio' | 'finance' | 'health' | 'settings'>('products');
   const [products, setProducts] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [finance, setFinance] = useState<any | null>(null);
@@ -347,6 +348,15 @@ export const AdminDataMarketplaceTab: React.FC = () => {
         >
           <Activity className="w-3.5 h-3.5" />
           <span>Jobs Monitor</span>
+        </button>
+        <button
+          onClick={() => setSubTab('vault')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+            subTab === 'vault' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Database className="w-3.5 h-3.5" />
+          <span>Data Vault (v3.1)</span>
         </button>
         <button
           onClick={() => setSubTab('margin-studio')}
@@ -1560,6 +1570,11 @@ export const AdminDataMarketplaceTab: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* =====================================================================
+          SUB-TAB: ADMIN DATA VAULT (v3.1)
+         ===================================================================== */}
+      {subTab === 'vault' && <DataVaultTab />}
 
       {/* =====================================================================
           SUB-TAB: ADVANCED MARGIN STUDIO (v3)

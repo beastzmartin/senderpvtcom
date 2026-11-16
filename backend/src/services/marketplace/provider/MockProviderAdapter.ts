@@ -466,5 +466,17 @@ export class MockProviderAdapter implements ProviderAdapter {
   public verifyWebhook(_secretOrSignature: string, _rawPayload: string): boolean {
     return true;
   }
+
+  public async deleteDataset(_datasetId: string): Promise<boolean> {
+    return true;
+  }
+
+  public async deleteRun(_runId: string): Promise<boolean> {
+    return true;
+  }
+
+  public async deleteKeyValueStore(_keyValueStoreId: string): Promise<boolean> {
+    return true;
+  }
 }
 

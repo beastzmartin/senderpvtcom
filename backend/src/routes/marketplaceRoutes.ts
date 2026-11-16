@@ -46,6 +46,9 @@ router.get('/jobs/:id/results', requireAuth, WhiteLabelSanitizer.middleware(), c
 router.get('/jobs/:id/files', requireAuth, WhiteLabelSanitizer.middleware(), controller.listJobFiles);
 router.get('/files/:id/download', controller.downloadJobFile);
 router.get('/jobs/:id/export', requireAuth, controller.exportJob);
+router.delete('/jobs/:id', requireAuth, WhiteLabelSanitizer.middleware(), controller.deleteUserJob);
+router.get('/privacy/policy', controller.getPrivacyPolicy);
+router.post('/privacy/consent', requireAuth, controller.recordPrivacyConsent);
 router.post('/jobs/:id/abort', requireAuth, WhiteLabelSanitizer.middleware(), controller.abortJob);
 router.post('/jobs/:id/share', requireAuth, WhiteLabelSanitizer.middleware(), controller.createShareLink);
 router.get('/shared/:token', WhiteLabelSanitizer.middleware(), controller.getSharedJob);

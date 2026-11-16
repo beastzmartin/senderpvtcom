@@ -18,10 +18,26 @@ import {
   ChevronDown,
   Layers,
   Sparkles,
-  DollarSign
+  DollarSign,
+  Undo2,
+  Clock,
+  Eye,
+  Trash2,
+  ChevronRight,
+  User,
+  Tag as TagIcon
 } from 'lucide-react';
 import { crmApi } from './crmApi';
 import { CardLayoutDesignerModal } from './CardLayoutDesignerModal';
+import {
+  Button,
+  Badge,
+  Input,
+  Drawer,
+  Modal,
+  Skeleton,
+  EmptyState
+} from './ui/CrmDesignSystem';
 
 interface BoardColumn {
   id: string;
@@ -47,6 +63,7 @@ interface BoardCard {
     phone?: string;
     lead_score?: number;
     status?: string;
+    company_name?: string;
     custom_fields?: Record<string, any>;
   };
 }
@@ -69,15 +86,32 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
   const [stats, setStats] = useState<any | null>(null);
   const [availableSuperFields, setAvailableSuperFields] = useState<any[]>([]);
 
-  // Modals & Popups
+  // Search & Density
+  const [cardSearch, setCardSearch] = useState('');
+  const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
+
+  // Modals & Drawers
   const [isLayoutDesignerOpen, setIsLayoutDesignerOpen] = useState(false);
-  const [isNewBoardModalOpen, setIsNewBoardModalOpen] = useState(false);
+  const [isNewBoardWizardOpen, setIsNewBoardWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
   const [newBoardName, setNewBoardName] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('sales_funnel');
+
+  // Card Detail Drawer
+  const [selectedCardForDrawer, setSelectedCardForDrawer] = useState<BoardCard | null>(null);
+  const [cardDrawerTab, setCardDrawerTab] = useState<'details' | 'timeline' | 'notes'>('details');
+
+  // Quick Move Modal
   const [isMoveCardModalOpen, setIsMoveCardModalOpen] = useState(false);
   const [cardToMove, setCardToMove] = useState<BoardCard | null>(null);
-  const [newColumnName, setNewColumnName] = useState('');
-  const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
+
+  // Undo Toast state
+  const [lastMoveAction, setLastMoveAction] = useState<{
+    cardId: string;
+    sourceColumnId: string;
+    targetColumnId: string;
+    targetColumnName: string;
+  } | null>(null);
 
   // Dragging state
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
@@ -101,7 +135,6 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
         if (res.boards.length > 0 && !selectedBoardId) {
           setSelectedBoardId(res.boards[0].id);
         } else if (res.boards.length === 0) {
-          // Auto create default board from sales funnel template
           const defBoard = await crmApi.createBoardFromTemplate('sales_funnel', 'Sales Pipeline');
           if (defBoard && defBoard.board) {
             setBoards([defBoard.board]);
@@ -138,10 +171,9 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
         const cols = boardRes.board.columns || [];
         setColumns(cols);
 
-        // Fetch cards for each column
         const cardMap: Record<string, BoardCard[]> = {};
         for (const col of cols) {
-          const cardsRes = await crmApi.listBoardCards(bId, col.id, undefined, 40);
+          const cardsRes = await crmApi.listBoardCards(bId, col.id, undefined, 50);
           cardMap[col.id] = cardsRes.cards || [];
         }
         setCardsByColumn(cardMap);
@@ -170,7 +202,6 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
   const handleDropOnColumn = async (targetColumnId: string) => {
     if (!draggedCardId) return;
 
-    // Find card
     let targetCard: BoardCard | null = null;
     let sourceColumnId = '';
 
@@ -188,6 +219,8 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
       return;
     }
 
+    const targetCol = columns.find((c) => c.id === targetColumnId);
+
     // Optimistic UI update
     const sourceCards = cardsByColumn[sourceColumnId].filter((c) => c.id !== targetCard!.id);
     const targetCards = [...(cardsByColumn[targetColumnId] || []), { ...targetCard, column_id: targetColumnId }];
@@ -198,87 +231,94 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
       [targetColumnId]: targetCards
     }));
 
+    // Trigger Undo Toast
+    setLastMoveAction({
+      cardId: targetCard.id,
+      sourceColumnId,
+      targetColumnId,
+      targetColumnName: targetCol?.name || 'New Stage'
+    });
+
     try {
       const lastRank = targetCards.length > 1 ? targetCards[targetCards.length - 2].rank : null;
       await crmApi.moveBoardCard(targetCard.id, targetColumnId, lastRank, null);
     } catch (err) {
       console.error('Failed to move card:', err);
-      // Revert on error
       loadBoardDetails(selectedBoardId);
     } finally {
       setDraggedCardId(null);
     }
   };
 
-  const handleQuickMove = async (targetColumnId: string) => {
-    if (!cardToMove) return;
-    const sourceColId = cardToMove.column_id;
+  // Undo Last Move
+  const handleUndoMove = async () => {
+    if (!lastMoveAction) return;
+    const { cardId, sourceColumnId, targetColumnId } = lastMoveAction;
 
-    // Optimistic update
+    let cardToRevert: BoardCard | null = null;
+    for (const [, list] of Object.entries(cardsByColumn)) {
+      const found = list.find((c) => c.id === cardId);
+      if (found) {
+        cardToRevert = found;
+        break;
+      }
+    }
+
+    if (!cardToRevert) return;
+
     setCardsByColumn((prev) => ({
       ...prev,
-      [sourceColId]: (prev[sourceColId] || []).filter((c) => c.id !== cardToMove.id),
-      [targetColumnId]: [...(prev[targetColumnId] || []), { ...cardToMove, column_id: targetColumnId }]
+      [targetColumnId]: (prev[targetColumnId] || []).filter((c) => c.id !== cardId),
+      [sourceColumnId]: [...(prev[sourceColumnId] || []), { ...cardToRevert!, column_id: sourceColumnId }]
     }));
 
-    setIsMoveCardModalOpen(false);
+    setLastMoveAction(null);
+
     try {
-      await crmApi.moveBoardCard(cardToMove.id, targetColumnId);
-    } catch (err) {
-      console.error('Move failed:', err);
+      await crmApi.moveBoardCard(cardId, sourceColumnId, null, null);
+    } catch {
       loadBoardDetails(selectedBoardId);
-    } finally {
-      setCardToMove(null);
     }
   };
 
-  const handleCreateNewBoard = async () => {
+  // Guided Wizard: Create Board
+  const handleFinishWizard = async () => {
     if (!newBoardName.trim()) return;
     try {
-      const res = await crmApi.createBoardFromTemplate(selectedTemplate, newBoardName);
+      const res = await crmApi.createBoardFromTemplate(selectedTemplate, newBoardName.trim());
       if (res && res.success && res.board) {
         setBoards((prev) => [res.board, ...prev]);
         setSelectedBoardId(res.board.id);
-        setIsNewBoardModalOpen(false);
+        setIsNewBoardWizardOpen(false);
         setNewBoardName('');
       }
     } catch (err: any) {
-      alert(`Error creating board: ${err.message}`);
+      alert(`Failed to create board: ${err.message}`);
     }
   };
 
-  const handleAddColumn = async () => {
-    if (!newColumnName.trim() || !selectedBoardId) return;
-    try {
-      const res = await crmApi.createBoardColumn(selectedBoardId, {
-        name: newColumnName,
-        order_index: columns.length,
-        stage_type: 'standard',
-        color: '#6366f1'
-      });
-      if (res && res.success && res.column) {
-        setColumns((p) => [...p, res.column]);
-        setCardsByColumn((p) => ({ ...p, [res.column.id]: [] }));
-        setNewColumnName('');
-        setIsAddColumnOpen(false);
-      }
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
-    }
-  };
-
-  const handleSaveLayout = async (newLayout: any) => {
-    if (!selectedBoardId) return;
-    await crmApi.updateBoard(selectedBoardId, { card_layout: newLayout });
-    setBoard((prev: any) => ({ ...prev, card_layout: newLayout }));
+  // Filter cards by search
+  const filterCards = (list: BoardCard[] = []) => {
+    if (!cardSearch.trim()) return list;
+    const q = cardSearch.toLowerCase();
+    return list.filter((c) => {
+      const fn = c.entity_data?.first_name?.toLowerCase() || '';
+      const ln = c.entity_data?.last_name?.toLowerCase() || '';
+      const email = c.entity_data?.email?.toLowerCase() || '';
+      const phone = c.entity_data?.phone || '';
+      const comp = c.entity_data?.company_name?.toLowerCase() || '';
+      return fn.includes(q) || ln.includes(q) || email.includes(q) || phone.includes(q) || comp.includes(q);
+    });
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header & Board Controls */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-6 animate-in fade-in duration-200">
+      {/* ========================================================================= */}
+      {/* 1. TOP TOOLBAR & STATS HEADER */}
+      {/* ========================================================================= */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-xs">
+          <div className="w-10 h-10 rounded-xl bg-indigo-950/60 border border-indigo-800/50 flex items-center justify-center text-indigo-400">
             <Kanban className="w-5 h-5" />
           </div>
           <div>
@@ -286,386 +326,396 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
               <select
                 value={selectedBoardId}
                 onChange={(e) => setSelectedBoardId(e.target.value)}
-                className="text-base font-black text-slate-900 bg-transparent border-none focus:ring-0 cursor-pointer pr-8"
+                className="bg-transparent font-bold text-slate-100 text-base focus:outline-none cursor-pointer border-b border-dashed border-slate-700 hover:border-indigo-400 pb-0.5"
               >
                 {boards.map((b) => (
-                  <option key={b.id} value={b.id}>
+                  <option key={b.id} value={b.id} className="bg-slate-900 text-slate-200">
                     {b.name}
                   </option>
                 ))}
               </select>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">
-                LexoRank O(1)
-              </span>
+              <Badge variant="indigo" size="xs">
+                {columns.length} Stages
+              </Badge>
             </div>
-            <p className="text-xs text-slate-500 font-medium">
-              {board?.description || 'Enterprise visual sales and contacts pipeline'}
-            </p>
+            <p className="text-xs text-slate-400 mt-0.5">Drag cards to transition contacts between pipeline stages.</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsLayoutDesignerOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
-          >
-            <Layout className="w-4 h-4 text-slate-500" />
-            Card Layout
-          </button>
+        {/* Stats Summary Strip */}
+        <div className="flex items-center gap-4 text-xs divide-x divide-slate-800">
+          <div className="pr-4">
+            <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold block">Total Cards</span>
+            <span className="font-bold text-slate-200 font-mono text-sm">{stats?.total_cards ?? 0}</span>
+          </div>
+          <div className="px-4">
+            <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold block">Win Rate</span>
+            <span className="font-bold text-emerald-400 font-mono text-sm">{stats?.win_rate_percent ?? 0}%</span>
+          </div>
+          <div className="pl-4 flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Layout className="w-3.5 h-3.5" />}
+              onClick={() => setIsLayoutDesignerOpen(true)}
+            >
+              Card Layout
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Plus className="w-3.5 h-3.5" />}
+              onClick={() => {
+                setWizardStep(1);
+                setIsNewBoardWizardOpen(true);
+              }}
+            >
+              New Board
+            </Button>
+          </div>
+        </div>
+      </div>
 
+      {/* Filter and Density Sub-Bar */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="relative w-64">
+          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search cards..."
+            value={cardSearch}
+            onChange={(e) => setCardSearch(e.target.value)}
+            className="w-full bg-slate-900/80 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <span>Density:</span>
           <button
-            type="button"
-            onClick={() => setIsNewBoardModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition"
+            onClick={() => setDensity('comfortable')}
+            className={`px-2 py-1 rounded ${density === 'comfortable' ? 'bg-slate-800 text-slate-200 font-bold' : 'hover:text-slate-200'}`}
           >
-            <Plus className="w-4 h-4" />
-            New Board
+            Comfortable
+          </button>
+          <button
+            onClick={() => setDensity('compact')}
+            className={`px-2 py-1 rounded ${density === 'compact' ? 'bg-slate-800 text-slate-200 font-bold' : 'hover:text-slate-200'}`}
+          >
+            Compact
           </button>
         </div>
       </div>
 
-      {/* Stats Header Bar */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Cards</p>
-              <h4 className="text-xl font-black text-slate-900">{stats.total_cards || 0}</h4>
-            </div>
-            <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600">
-              <Layers className="w-5 h-5" />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Won Deals</p>
-              <h4 className="text-xl font-black text-emerald-600">{stats.won_count || 0}</h4>
-            </div>
-            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Win Rate</p>
-              <h4 className="text-xl font-black text-indigo-600">{stats.win_rate_percent || 0}%</h4>
-            </div>
-            <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Columns</p>
-              <h4 className="text-xl font-black text-slate-900">{columns.length}</h4>
-            </div>
-            <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600">
-              <Kanban className="w-5 h-5" />
-            </div>
-          </div>
+      {/* Undo Toast Notification */}
+      {lastMoveAction && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-900 border border-indigo-500/80 rounded-xl px-4 py-3 shadow-2xl text-xs text-slate-200 animate-in slide-in-from-bottom-4">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>Moved card to <strong>{lastMoveAction.targetColumnName}</strong></span>
+          <button
+            onClick={handleUndoMove}
+            className="ml-2 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-1 transition-all"
+          >
+            <Undo2 className="w-3 h-3" /> Undo
+          </button>
         </div>
       )}
 
-      {/* Kanban Board Columns Container */}
-      <div className="flex gap-4 overflow-x-auto pb-6 min-h-[600px] select-none">
-        {columns.map((col) => {
-          const cards = cardsByColumn[col.id] || [];
-          const isWipExceeded = col.wip_limit && cards.length > col.wip_limit;
+      {/* ========================================================================= */}
+      {/* 2. HORIZONTAL KANBAN COLUMNS */}
+      {/* ========================================================================= */}
+      <div className="overflow-x-auto pb-4">
+        <div className="flex gap-4 min-h-[600px] items-start">
+          {columns.map((col) => {
+            const rawCards = cardsByColumn[col.id] || [];
+            const filtered = filterCards(rawCards);
+            const isWipExceeded = col.wip_limit && rawCards.length > col.wip_limit;
 
-          return (
-            <div
-              key={col.id}
-              onDragOver={handleDragOver}
-              onDrop={() => handleDropOnColumn(col.id)}
-              className="w-80 shrink-0 flex flex-col bg-slate-100/70 border border-slate-200/80 rounded-3xl overflow-hidden shadow-xs"
-            >
-              {/* Column Header */}
-              <div className="p-4 bg-white border-b border-slate-200/60 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: col.color || '#6366f1' }}
-                  />
-                  <h3 className="font-bold text-sm text-slate-800 truncate">{col.name}</h3>
-                  <span className="text-xs font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                    {cards.length}
-                  </span>
+            return (
+              <div
+                key={col.id}
+                onDragOver={handleDragOver}
+                onDrop={() => handleDropOnColumn(col.id)}
+                className={`w-72 sm:w-80 shrink-0 bg-slate-900/70 border rounded-2xl flex flex-col max-h-[80vh] transition-all ${
+                  isWipExceeded ? 'border-rose-800/80 shadow-rose-950/20 shadow-md' : 'border-slate-800'
+                }`}
+              >
+                {/* Column Header */}
+                <div className="p-3.5 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-900/90 rounded-t-2xl">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: col.color || '#6366f1' }}
+                    />
+                    <span className="font-bold text-xs text-slate-200 tracking-tight">{col.name}</span>
+                    <span className="text-[11px] font-mono px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400">
+                      {rawCards.length}
+                    </span>
+                  </div>
+
+                  {col.wip_limit && (
+                    <span
+                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        isWipExceeded ? 'bg-rose-950 text-rose-400 border border-rose-800' : 'text-slate-500'
+                      }`}
+                    >
+                      WIP: {rawCards.length}/{col.wip_limit}
+                    </span>
+                  )}
                 </div>
 
-                {col.wip_limit && (
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isWipExceeded ? 'bg-rose-100 text-rose-700 font-black' : 'bg-slate-100 text-slate-500'
-                      }`}
-                  >
-                    WIP: {cards.length}/{col.wip_limit}
-                  </span>
-                )}
-              </div>
+                {/* Cards List (Virtualized Scrollable) */}
+                <div className="p-2 space-y-2 overflow-y-auto flex-1">
+                  {filtered.map((card) => {
+                    const d = card.entity_data || {};
+                    const fullName = `${d.first_name || ''} ${d.last_name || ''}`.trim() || 'Unnamed Contact';
+                    const initials = (d.first_name?.[0] || 'C') + (d.last_name?.[0] || '');
 
-              {/* Cards List (Infinite Scroll / Keyset Container) */}
-              <div className="p-3 space-y-3 flex-1 overflow-y-auto max-h-[calc(100vh-340px)]">
-                {cards.map((card) => {
-                  const contact = card.entity_data || {};
-                  const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unnamed Contact';
-                  const layout = board?.card_layout || {};
-
-                  return (
-                    <div
-                      key={card.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, card)}
-                      onClick={() => onSelectContact && onSelectContact(card.entity_id)}
-                      className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition cursor-grab active:cursor-grabbing group relative"
-                    >
-                      {/* Card Header */}
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          {layout.show_avatar !== false && (
-                            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white text-[11px] font-bold flex items-center justify-center">
-                              {fullName.slice(0, 1).toUpperCase()}
+                    return (
+                      <div
+                        key={card.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, card)}
+                        onClick={() => setSelectedCardForDrawer(card)}
+                        className={`bg-slate-950/90 border border-slate-800 hover:border-indigo-500/70 rounded-xl p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all group ${
+                          density === 'compact' ? 'py-2' : 'py-3'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-full bg-indigo-950 border border-indigo-800 text-indigo-300 font-bold text-[10px] flex items-center justify-center shrink-0 uppercase">
+                              {initials}
                             </div>
-                          )}
-                          <div className="font-bold text-slate-900 text-xs truncate max-w-[140px]">
-                            {fullName}
+                            <div className="min-w-0">
+                              <h4 className="font-bold text-xs text-slate-200 truncate group-hover:text-indigo-400 transition-colors">
+                                {fullName}
+                              </h4>
+                              {d.company_name && (
+                                <p className="text-[11px] text-slate-500 truncate">{d.company_name}</p>
+                              )}
+                            </div>
                           </div>
+
+                          {d.lead_score !== undefined && d.lead_score > 0 && (
+                            <span
+                              className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                                d.lead_score >= 80 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50' : 'bg-slate-800 text-slate-300'
+                              }`}
+                            >
+                              {d.lead_score}
+                            </span>
+                          )}
                         </div>
 
-                        {layout.show_score !== false && contact.lead_score !== undefined && (
-                          <span
-
-                            className={`text-[10px] font-black px-2 py-0.5 rounded-full ${contact.lead_score >= 80
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : contact.lead_score >= 50
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-slate-100 text-slate-600'
-                              }`}
-                          >
-                            {contact.lead_score} pts
-                          </span>
+                        {density === 'comfortable' && (
+                          <div className="mt-2.5 pt-2 border-t border-slate-900 text-xs text-slate-400 space-y-1">
+                            {d.email && <div className="text-[11px] truncate text-slate-400">{d.email}</div>}
+                            {d.phone && <div className="text-[11px] font-mono text-slate-500">{d.phone}</div>}
+                          </div>
                         )}
-                      </div>
 
-                      {/* Visible Field Properties */}
-                      <div className="space-y-1 mb-3 text-xs text-slate-600">
-                        {contact.email && (
-                          <p className="truncate text-slate-500 font-medium">✉ {contact.email}</p>
-                        )}
-                        {contact.phone && (
-                          <p className="truncate text-slate-500 font-medium">☎ {contact.phone}</p>
-                        )}
-                      </div>
-
-                      {/* Action Buttons Row */}
-                      <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100">
-                        {contact.phone && (
+                        {/* Quick Action Hover Bar */}
+                        <div className="mt-2 pt-2 border-t border-slate-900/60 flex items-center justify-between text-[11px] text-slate-500">
+                          {d.phone && onStartWhatsAppChat && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onStartWhatsAppChat(d.phone!);
+                              }}
+                              className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold"
+                            >
+                              <MessageCircle className="w-3 h-3" /> Chat
+                            </button>
+                          )}
                           <button
-                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (onStartWhatsAppChat) onStartWhatsAppChat(contact.phone!);
-                              else window.open(`https://wa.me/${contact.phone!.replace(/[^0-9]/g, '')}`, '_blank');
+                              setCardToMove(card);
+                              setIsMoveCardModalOpen(true);
                             }}
-                            className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-xl transition"
+                            className="text-slate-400 hover:text-slate-200 flex items-center gap-1 ml-auto"
                           >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            Chat
+                            <MoveRight className="w-3 h-3" /> Move
                           </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCardToMove(card);
-                            setIsMoveCardModalOpen(true);
-                          }}
-                          className="flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-xl transition"
-                        >
-                          <MoveRight className="w-3.5 h-3.5" />
-                          Move
-                        </button>
+                        </div>
                       </div>
+                    );
+                  })}
+
+                  {filtered.length === 0 && (
+                    <div className="py-8 text-center text-slate-600 text-xs">
+                      {cardSearch ? 'No matches' : 'Drop cards here'}
                     </div>
-                  );
-                })}
-
-                {cards.length === 0 && (
-                  <div className="p-8 text-center text-xs text-slate-400 font-medium border-2 border-dashed border-slate-200 rounded-2xl">
-                    Drop cards here
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-
-        {/* Add Column Button */}
-        <div className="w-72 shrink-0">
-          {isAddColumnOpen ? (
-            <div className="p-4 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-3">
-              <input
-                type="text"
-                value={newColumnName}
-                onChange={(e) => setNewColumnName(e.target.value)}
-                placeholder="Column Name..."
-                className="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 font-medium"
-                autoFocus
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddColumn}
-                  className="flex-1 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAddColumnOpen(false)}
-                  className="px-3 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsAddColumnOpen(true)}
-              className="w-full py-4 rounded-3xl border-2 border-dashed border-slate-300 hover:border-indigo-400 text-slate-500 hover:text-indigo-600 font-bold text-xs flex items-center justify-center gap-2 transition"
-            >
-              <Plus className="w-4 h-4" />
-              Add Column
-            </button>
-          )}
+            );
+          })}
         </div>
       </div>
 
-      {/* Card Layout Designer Modal */}
-      {board && (
-        <CardLayoutDesignerModal
-          isOpen={isLayoutDesignerOpen}
-          onClose={() => setIsLayoutDesignerOpen(false)}
-          boardName={board.name}
-          layout={board.card_layout}
-          availableFields={availableSuperFields}
-          onSave={handleSaveLayout}
-        />
-      )}
-
-      {/* Quick Move Card Picker Modal */}
-      {isMoveCardModalOpen && cardToMove && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 border border-slate-200 shadow-2xl space-y-4">
-            <h3 className="font-bold text-base text-slate-900">Move Card to Stage</h3>
-            <div className="space-y-2">
-              {columns.map((col) => (
-                <button
-                  key={col.id}
-                  type="button"
-
-                  onClick={() => handleQuickMove(col.id)}
-                  className={`w-full flex items-center justify-between p-3 rounded-2xl border text-xs font-bold transition ${cardToMove.column_id === col.id
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: col.color }} />
+      {/* ========================================================================= */}
+      {/* 3. CARD DETAIL SIDE DRAWER */}
+      {/* ========================================================================= */}
+      <Drawer
+        isOpen={Boolean(selectedCardForDrawer)}
+        onClose={() => setSelectedCardForDrawer(null)}
+        title={
+          selectedCardForDrawer?.entity_data
+            ? `${selectedCardForDrawer.entity_data.first_name || ''} ${selectedCardForDrawer.entity_data.last_name || ''}`.trim() || 'Contact Card'
+            : 'Card Details'
+        }
+        subtitle={selectedCardForDrawer?.entity_data?.company_name || 'CRM Lead Record'}
+        width="lg"
+      >
+        {selectedCardForDrawer && (
+          <div className="space-y-6">
+            {/* Stage Selector */}
+            <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Current Pipeline Stage</label>
+              <select
+                value={selectedCardForDrawer.column_id}
+                onChange={async (e) => {
+                  const newColId = e.target.value;
+                  await crmApi.moveBoardCard(selectedCardForDrawer.id, newColId, null, null);
+                  setSelectedCardForDrawer((prev) => prev ? { ...prev, column_id: newColId } : null);
+                  loadBoardDetails(selectedBoardId);
+                }}
+                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2 text-xs text-slate-100 font-bold"
+              >
+                {columns.map((col) => (
+                  <option key={col.id} value={col.id}>
                     {col.name}
-                  </span>
-                  {cardToMove.column_id === col.id && <Check className="w-4 h-4" />}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Quick Contact Bar */}
+            {selectedCardForDrawer.entity_data?.phone && onStartWhatsAppChat && (
+              <Button
+                variant="success"
+                size="sm"
+                className="w-full"
+                icon={<MessageCircle className="w-4 h-4" />}
+                onClick={() => onStartWhatsAppChat(selectedCardForDrawer.entity_data!.phone!)}
+              >
+                Open WhatsApp Conversation
+              </Button>
+            )}
+
+            {/* Field Details */}
+            <div className="space-y-3 text-xs">
+              <h4 className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">Primary Contact Details</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg">
+                  <span className="text-slate-500 block">Email</span>
+                  <span className="font-medium text-slate-200">{selectedCardForDrawer.entity_data?.email || 'N/A'}</span>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg">
+                  <span className="text-slate-500 block">Phone</span>
+                  <span className="font-medium text-slate-200 font-mono">{selectedCardForDrawer.entity_data?.phone || 'N/A'}</span>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg">
+                  <span className="text-slate-500 block">Lead Score</span>
+                  <span className="font-medium text-emerald-400 font-bold">{selectedCardForDrawer.entity_data?.lead_score ?? 0}</span>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg">
+                  <span className="text-slate-500 block">Company</span>
+                  <span className="font-medium text-slate-200">{selectedCardForDrawer.entity_data?.company_name || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Super Fields */}
+            {selectedCardForDrawer.entity_data?.custom_fields && (
+              <div className="space-y-3 text-xs pt-4 border-t border-slate-800">
+                <h4 className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">Super Fields</h4>
+                <div className="space-y-2">
+                  {Object.entries(selectedCardForDrawer.entity_data.custom_fields).map(([k, v]) => (
+                    <div key={k} className="flex justify-between p-2.5 rounded bg-slate-950/50 border border-slate-800">
+                      <span className="text-slate-400 font-mono">{k}</span>
+                      <strong className="text-slate-200">{String(v)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
+
+      {/* ========================================================================= */}
+      {/* 4. GUIDED NEW BOARD WIZARD */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isNewBoardWizardOpen}
+        onClose={() => setIsNewBoardWizardOpen(false)}
+        title="Create New Kanban Board"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <Input
+            label="Board Name"
+            placeholder="e.g. Real Estate Sales Pipeline"
+            value={newBoardName}
+            onChange={(e) => setNewBoardName(e.target.value)}
+          />
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300">Choose Starting Template</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'sales_funnel', name: 'Sales Pipeline', cols: '6 stages' },
+                { id: 'real_estate', name: 'Real Estate Deals', cols: '5 stages' },
+                { id: 'support', name: 'Customer Support', cols: '4 stages' },
+                { id: 'recruiting', name: 'Recruiting Tracker', cols: '5 stages' }
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTemplate(t.id)}
+                  className={`p-3 text-left rounded-xl border transition-all ${
+                    selectedTemplate === t.id
+                      ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300'
+                      : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="font-bold text-xs text-slate-200">{t.name}</div>
+                  <div className="text-[10px] text-slate-500">{t.cols}</div>
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setIsMoveCardModalOpen(false);
-                setCardToMove(null);
-              }}
-              className="w-full py-2.5 text-xs font-bold text-slate-500 hover:text-slate-700"
-            >
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+            <Button variant="ghost" size="sm" onClick={() => setIsNewBoardWizardOpen(false)}>
               Cancel
-            </button>
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!newBoardName.trim()}
+              onClick={handleFinishWizard}
+            >
+              Create Board
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
 
-      {/* New Board Modal */}
-      {isNewBoardModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-indigo-600 rounded-2xl text-white">
-                <Kanban className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-base text-slate-900">Create New Kanban Board</h3>
-                <p className="text-xs text-slate-500">Pick a business template to scaffold stages instantly</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Board Name</label>
-              <input
-                type="text"
-                value={newBoardName}
-                onChange={(e) => setNewBoardName(e.target.value)}
-                placeholder="e.g. Enterprise Q3 Pipeline"
-                className="w-full text-xs border border-slate-300 rounded-xl px-3 py-2.5 font-medium"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Preset Template</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: 'sales_funnel', label: 'Sales Funnel' },
-                  { id: 'real_estate', label: 'Real Estate' },
-                  { id: 'customer_support', label: 'Support & Tickets' },
-                  { id: 'recruiting', label: 'Hiring Pipeline' }
-                ].map((t) => (
-                  <button
-                    key={t.id}
-
-                    type="button"
-                    onClick={() => setSelectedTemplate(t.id)}
-                    className={`p-3 rounded-2xl border text-left text-xs font-bold transition ${selectedTemplate === t.id
-                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                      }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsNewBoardModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCreateNewBoard}
-                className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700"
-              >
-                Create Board
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Card Layout Designer Modal */}
+      {isLayoutDesignerOpen && (
+        <CardLayoutDesignerModal
+          isOpen={isLayoutDesignerOpen}
+          onClose={() => setIsLayoutDesignerOpen(false)}
+          boardName={board?.name || 'Board'}
+          layout={board?.card_layout_config}
+          availableFields={availableSuperFields.map((f: any) => ({ slug: f.slug, name: f.name, field_type: f.field_type }))}
+          onSave={async (layout) => {
+            await crmApi.updateBoard(selectedBoardId, { card_layout_config: layout });
+            await loadBoardDetails(selectedBoardId);
+          }}
+        />
       )}
     </div>
   );
 };
-

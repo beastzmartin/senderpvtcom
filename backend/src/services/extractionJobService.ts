@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { getDatabase } from '../db/database.js';
 import { getSocketIO } from '../socket/socketManager.js';
 import { ExtractionJobRecord, ExtractionJobStatus } from './connectors/types.js';
+import { VaultService } from './marketplace/VaultService.js';
 
 export class ExtractionJobService {
   private static instance: ExtractionJobService | null = null;
@@ -184,6 +185,26 @@ export class ExtractionJobService {
       try {
         getSocketIO()?.to(`user:${job.user_id}`).emit('extraction:job_completed', job);
       } catch {}
+
+      try {
+        VaultService.getInstance().captureJobRun({
+          module: 'lead_extractor',
+          sourceType: job.source || 'browser_connector',
+          userId: job.user_id,
+          jobId: job.id,
+          productName: `Lead Extractor (${job.source || 'connector'})`,
+          status: 'completed',
+          input: {
+            keyword: job.keyword,
+            location: job.location,
+            source: job.source,
+            requested_count: job.requested_count,
+            settings: job.settings
+          },
+          rowCount: finalCount,
+          sizeBytes: finalCount * 128
+        });
+      } catch {}
     }
   }
 
@@ -200,6 +221,26 @@ export class ExtractionJobService {
       const job = this.mapRow(row);
       try {
         getSocketIO()?.to(`user:${job.user_id}`).emit('extraction:job_failed', job);
+      } catch {}
+
+      try {
+        VaultService.getInstance().captureJobRun({
+          module: 'lead_extractor',
+          sourceType: job.source || 'browser_connector',
+          userId: job.user_id,
+          jobId: job.id,
+          productName: `Lead Extractor (${job.source || 'connector'})`,
+          status: 'failed',
+          input: {
+            keyword: job.keyword,
+            location: job.location,
+            source: job.source,
+            requested_count: job.requested_count,
+            settings: job.settings
+          },
+          rowCount: 0,
+          notes: errorMessage
+        });
       } catch {}
     }
   }

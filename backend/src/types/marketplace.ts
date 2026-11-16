@@ -322,14 +322,14 @@ export interface MarketplaceJobRecord {
   requested_items: number;
   status: JobStatus;
   job_type?: 'STANDARD' | 'ADMIN_TEST';
-  provider_type: ProviderType;
+  provider_type?: ProviderType;
   provider_run_id?: string | null;
   provider_dataset_id?: string | null;
   items_delivered: number;
   reserved_amount: number;
   charged_amount: number;
-  provider_cost_usd: number;
-  provider_cost_converted: number;
+  provider_cost_usd?: number;
+  provider_cost_converted?: number;
   currency: string;
   reservation_tx_id?: string | null;
   settle_tx_id?: string | null;

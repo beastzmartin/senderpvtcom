@@ -127,5 +127,20 @@ export interface ProviderAdapter {
    * Verify inbound webhook authenticity
    */
   verifyWebhook(secretOrSignature: string, rawPayload: string): boolean;
+
+  /**
+   * Delete dataset from provider
+   */
+  deleteDataset?(datasetId: string): Promise<boolean>;
+
+  /**
+   * Delete run from provider
+   */
+  deleteRun?(runId: string): Promise<boolean>;
+
+  /**
+   * Delete key-value store from provider
+   */
+  deleteKeyValueStore?(keyValueStoreId: string): Promise<boolean>;
 }
 

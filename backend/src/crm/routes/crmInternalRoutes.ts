@@ -387,6 +387,8 @@ router.get('/admin/billing/settings', CrmInternalController.getBillingSettings);
 router.put('/admin/billing/settings', CrmInternalController.updateBillingSettings);
 router.post('/admin/billing/addons', CrmInternalController.saveBillingAddon);
 router.post('/admin/billing/coupons', CrmInternalController.saveBillingCoupon);
+router.post('/admin/billing/grant-plan', CrmInternalController.grantComplimentaryPlan);
+router.post('/admin/billing/refund', CrmInternalController.refundSubscription);
 
 export default router;
 

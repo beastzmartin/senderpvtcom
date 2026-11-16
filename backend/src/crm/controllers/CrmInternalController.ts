@@ -2855,7 +2855,8 @@ export class CrmInternalController {
     try {
       const db = getCrmDb();
       const wsId = await CrmInternalController.getWorkspaceId(req);
-      const { plan_id, coupon_code, auto_renew } = req.body;
+      const { plan_id, coupon_code, auto_renew, client_expected_price, idempotency_key } = req.body;
+      const idempotencyHeader = req.headers['idempotency-key'] as string | undefined;
 
       const result = await CrmBillingService.subscribeToPlan(
         db,
@@ -2863,7 +2864,9 @@ export class CrmInternalController {
         req.user!.id,
         plan_id,
         coupon_code,
-        auto_renew !== false
+        auto_renew !== false,
+        client_expected_price !== undefined && client_expected_price !== null ? Number(client_expected_price) : undefined,
+        idempotency_key || idempotencyHeader
       );
 
       res.json({
@@ -2873,6 +2876,28 @@ export class CrmInternalController {
         invoice: result.invoice
       });
     } catch (err: any) {
+      if (err.code === 'PRICE_CHANGED') {
+        res.status(409).json({
+          error: err.message,
+          code: 'PRICE_CHANGED',
+          expected_price: err.expected_price,
+          current_price: err.current_price,
+          currency: err.currency
+        });
+        return;
+      }
+      if (err.code === 'INSUFFICIENT_WALLET_BALANCE') {
+        res.status(402).json({
+          error: err.message,
+          code: 'INSUFFICIENT_WALLET_BALANCE',
+          required: err.required,
+          available: err.available,
+          shortfall: err.shortfall,
+          currency: err.currency,
+          topup_url: '/wallet'
+        });
+        return;
+      }
       res.status(400).json({ error: err.message });
     }
   }
@@ -2881,13 +2906,94 @@ export class CrmInternalController {
     try {
       const db = getCrmDb();
       const wsId = await CrmInternalController.getWorkspaceId(req);
-      const { addon_id } = req.body;
+      const { addon_id, idempotency_key } = req.body;
+      const idempotencyHeader = req.headers['idempotency-key'] as string | undefined;
 
-      const result = await CrmBillingService.purchaseAddon(db, wsId, req.user!.id, addon_id);
+      const result = await CrmBillingService.purchaseAddon(
+        db,
+        wsId,
+        req.user!.id,
+        addon_id,
+        idempotency_key || idempotencyHeader
+      );
+
       res.json({
         success: true,
         message: `Successfully purchased add-on pack using wallet balance.`,
         invoice: result.invoice
+      });
+    } catch (err: any) {
+      if (err.code === 'INSUFFICIENT_WALLET_BALANCE') {
+        res.status(402).json({
+          error: err.message,
+          code: 'INSUFFICIENT_WALLET_BALANCE',
+          required: err.required,
+          available: err.available,
+          shortfall: err.shortfall,
+          currency: err.currency,
+          topup_url: '/wallet'
+        });
+        return;
+      }
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async grantComplimentaryPlan(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const { plan_id, duration_days, reason } = req.body;
+
+      if (!plan_id || !reason) {
+        res.status(400).json({ error: 'plan_id and reason are required for administrative complimentary grants.' });
+        return;
+      }
+
+      const result = await CrmBillingService.grantComplimentaryPlan(
+        db,
+        wsId,
+        req.user!.id,
+        plan_id,
+        Number(duration_days) || 30,
+        reason
+      );
+
+      res.json({
+        success: true,
+        message: 'Complimentary plan granted successfully with $0 audited invoice.',
+        subscription: result.subscription,
+        invoice: result.invoice
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async refundSubscription(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const { subscription_id, reason } = req.body;
+
+      if (!subscription_id) {
+        res.status(400).json({ error: 'subscription_id is required for refund.' });
+        return;
+      }
+
+      const result = await CrmBillingService.refundSubscription(
+        db,
+        wsId,
+        req.user!.id,
+        subscription_id,
+        reason || 'Administrative refund'
+      );
+
+      res.json({
+        success: true,
+        message: 'Subscription refunded back to user wallet successfully.',
+        refund_tx_id: result.refundTxId,
+        new_balance: result.newBalance
       });
     } catch (err: any) {
       res.status(400).json({ error: err.message });

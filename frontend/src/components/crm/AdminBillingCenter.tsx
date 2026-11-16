@@ -10,32 +10,68 @@ import {
   FileText,
   Clock,
   Layers,
-  Percent
+  Percent,
+  Gift,
+  AlertCircle,
+  Eye,
+  TrendingUp,
+  Users,
+  Copy,
+  Receipt
 } from 'lucide-react';
 import { crmApi } from './crmApi';
+import {
+  Button,
+  Badge,
+  Input,
+  StatCard,
+  Modal,
+  Drawer,
+  Skeleton
+} from './ui/CrmDesignSystem';
 
 export const AdminBillingCenter: React.FC = () => {
   const [plans, setPlans] = useState<any[]>([]);
   const [settings, setSettings] = useState<any | null>(null);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isEditPlanModalOpen, setIsEditPlanModalOpen] = useState(false);
+
+  // Active Tab
+  const [activeTab, setActiveTab] = useState<'plans' | 'settings' | 'grants' | 'invoices'>('plans');
+
+  // Plan Edit Form & Modal
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<any | null>(null);
-
-  // Settings form
-  const [taxPercent, setTaxPercent] = useState('18.0');
-  const [companyGstin, setCompanyGstin] = useState('07AAAAA0000A1Z5');
-  const [companyName, setCompanyName] = useState('PVTSender Enterprise');
-  const [invoiceFooter, setInvoiceFooter] = useState('Thank you for choosing PVTSender Enterprise!');
-  const [graceDays, setGraceDays] = useState('3');
-  const [overflowPolicy, setOverflowPolicy] = useState('partial_accept');
-
-  // Plan Edit Form
   const [planName, setPlanName] = useState('');
   const [planSlug, setPlanSlug] = useState('');
+  const [planDescription, setPlanDescription] = useState('');
   const [planPrice, setPlanPrice] = useState('29.0');
   const [planContacts, setPlanContacts] = useState('10000');
   const [planBoards, setPlanBoards] = useState('10');
   const [planSuperFields, setPlanSuperFields] = useState('50');
+  const [planTags, setPlanTags] = useState('100');
+  const [planDuration, setPlanDuration] = useState('30');
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
+
+  // Complimentary Grant Modal
+  const [isGrantModalOpen, setIsGrantModalOpen] = useState(false);
+  const [grantWorkspaceId, setGrantWorkspaceId] = useState('');
+  const [grantPlanId, setGrantPlanId] = useState('');
+  const [grantDuration, setGrantDuration] = useState('30');
+  const [grantReason, setGrantReason] = useState('');
+  const [isGranting, setIsGranting] = useState(false);
+
+  // Settings form
+  const [taxPercent, setTaxPercent] = useState('18.0');
+  const [companyGstin, setCompanyGstin] = useState('07AAAAA0000A1Z5');
+  const [companyName, setCompanyName] = useState('PVTSender Enterprise CRM');
+  const [invoiceFooter, setInvoiceFooter] = useState('Thank you for choosing PVTSender Enterprise CRM!');
+  const [graceDays, setGraceDays] = useState('3');
+  const [minReserve, setMinReserve] = useState('0.0');
+  const [autoPause, setAutoPause] = useState(true);
+  const [retrySchedule, setRetrySchedule] = useState('1, 3, 5');
+  const [overflowPolicy, setOverflowPolicy] = useState('partial_accept');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   useEffect(() => {
     loadAdminData();
@@ -44,20 +80,25 @@ export const AdminBillingCenter: React.FC = () => {
   const loadAdminData = async () => {
     setLoading(true);
     try {
-      const [plansRes, settingsRes] = await Promise.all([
+      const [plansRes, settingsRes, invRes] = await Promise.all([
         crmApi.listBillingPlans(),
-        crmApi.getBillingSettings()
+        crmApi.getBillingSettings(),
+        crmApi.listInvoices()
       ]);
 
       if (plansRes && plansRes.success) setPlans(plansRes.plans || []);
+      if (invRes && invRes.success) setInvoices(invRes.invoices || []);
       if (settingsRes && settingsRes.success && settingsRes.settings) {
         const s = settingsRes.settings;
         setSettings(s);
-        setTaxPercent(String(s.gst_vat_rate_percent || 18.0));
+        setTaxPercent(String(s.gst_vat_rate_percent ?? 18.0));
         setCompanyGstin(s.company_gstin || '07AAAAA0000A1Z5');
-        setCompanyName(s.company_legal_name || 'PVTSender Enterprise');
-        setInvoiceFooter(s.invoice_footer || 'Thank you for choosing PVTSender Enterprise!');
-        setGraceDays(String(s.grace_period_days || 3));
+        setCompanyName(s.company_legal_name || 'PVTSender Enterprise CRM');
+        setInvoiceFooter(s.invoice_footer || 'Thank you for choosing PVTSender Enterprise CRM!');
+        setGraceDays(String(s.grace_period_days ?? 3));
+        setMinReserve(String(s.minimum_wallet_reserve_usd ?? 0.0));
+        setAutoPause(s.auto_pause_on_expiry !== false);
+        setRetrySchedule(Array.isArray(s.retry_schedule_days) ? s.retry_schedule_days.join(', ') : '1, 3, 5');
         setOverflowPolicy(s.quota_overflow_policy || 'partial_accept');
       }
     } catch (err) {
@@ -68,13 +109,22 @@ export const AdminBillingCenter: React.FC = () => {
   };
 
   const handleSaveSettings = async () => {
+    setIsSavingSettings(true);
     try {
+      const retryDaysArray = retrySchedule
+        .split(',')
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !isNaN(n));
+
       const res = await crmApi.updateBillingSettings({
         gst_vat_rate_percent: parseFloat(taxPercent) || 18.0,
         company_gstin: companyGstin,
         company_legal_name: companyName,
         invoice_footer: invoiceFooter,
         grace_period_days: parseInt(graceDays, 10) || 3,
+        minimum_wallet_reserve_usd: parseFloat(minReserve) || 0.0,
+        auto_pause_on_expiry: autoPause,
+        retry_schedule_days: retryDaysArray,
         quota_overflow_policy: overflowPolicy
       });
       if (res && res.success) {
@@ -83,6 +133,8 @@ export const AdminBillingCenter: React.FC = () => {
       }
     } catch (err: any) {
       alert(`Error saving settings: ${err.message}`);
+    } finally {
+      setIsSavingSettings(false);
     }
   };
 
@@ -91,301 +143,517 @@ export const AdminBillingCenter: React.FC = () => {
       setEditingPlan(p);
       setPlanName(p.name);
       setPlanSlug(p.slug);
+      setPlanDescription(p.description || '');
       setPlanPrice(String(p.price_usd));
       setPlanContacts(String(p.quota_contacts));
       setPlanBoards(String(p.quota_boards));
       setPlanSuperFields(String(p.quota_super_fields));
+      setPlanTags(String(p.quota_tags));
+      setPlanDuration(String(p.duration_days || 30));
     } else {
       setEditingPlan(null);
       setPlanName('');
       setPlanSlug('');
+      setPlanDescription('');
       setPlanPrice('49.0');
       setPlanContacts('25000');
-      setPlanBoards('15');
-      setPlanSuperFields('75');
+      setPlanBoards('25');
+      setPlanSuperFields('100');
+      setPlanTags('200');
+      setPlanDuration('30');
     }
-    setIsEditPlanModalOpen(true);
+    setIsPlanModalOpen(true);
   };
 
   const handleSavePlan = async () => {
-    if (!planName.trim()) return;
+    if (!planName.trim() || !planSlug.trim()) {
+      alert('Plan Name and Slug are required.');
+      return;
+    }
+
+    setIsSavingPlan(true);
     try {
-      await crmApi.saveBillingPlan({
+      const res = await crmApi.saveBillingPlan({
         id: editingPlan?.id,
-        name: planName,
-        slug: planSlug.trim() || planName.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-        price_usd: parseFloat(planPrice) || 0.0,
-        quota_contacts: parseInt(planContacts, 10) || 1000,
-        quota_boards: parseInt(planBoards, 10) || 5,
-        quota_super_fields: parseInt(planSuperFields, 10) || 25,
-        duration_days: 30,
-        is_active: true,
-        is_visible: true
+        name: planName.trim(),
+        slug: planSlug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
+        description: planDescription.trim(),
+        price_usd: parseFloat(planPrice) || 0,
+        duration_days: parseInt(planDuration, 10) || 30,
+        quota_contacts: parseInt(planContacts, 10),
+        quota_boards: parseInt(planBoards, 10),
+        quota_super_fields: parseInt(planSuperFields, 10),
+        quota_tags: parseInt(planTags, 10),
+        is_active: true
       });
-      setIsEditPlanModalOpen(false);
-      loadAdminData();
+
+      if (res && res.success) {
+        setIsPlanModalOpen(false);
+        loadAdminData();
+      }
     } catch (err: any) {
       alert(`Error saving plan: ${err.message}`);
+    } finally {
+      setIsSavingPlan(false);
     }
   };
 
+  const handleExecuteGrant = async () => {
+    if (!grantWorkspaceId.trim() || !grantPlanId || !grantReason.trim()) {
+      alert('Workspace ID, Target Plan, and Mandatory Audit Reason are required.');
+      return;
+    }
+
+    setIsGranting(true);
+    try {
+      const res = await crmApi.grantComplimentaryPlan({
+        workspace_id: grantWorkspaceId.trim(),
+        plan_id: grantPlanId,
+        duration_days: parseInt(grantDuration, 10) || 30,
+        reason: grantReason.trim()
+      });
+
+      if (res && res.success) {
+        alert(`Complimentary grant applied successfully!\n$0 Invoice: ${res.invoice?.invoice_number}`);
+        setIsGrantModalOpen(false);
+        setGrantReason('');
+        loadAdminData();
+      }
+    } catch (err: any) {
+      alert(`Grant failed: ${err.message}`);
+    } finally {
+      setIsGranting(false);
+    }
+  };
+
+  // Quick stats
+  const totalRevenueUsd = invoices.reduce((sum, i) => sum + (i.amount_usd || 0), 0);
+
+  if (loading) {
+    return (
+      <div className="p-8 space-y-6 max-w-7xl mx-auto">
+        <Skeleton className="h-10 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-purple-600 rounded-2xl text-white shadow-xs">
-            <ShieldAlert className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-slate-900 tracking-tight">Admin Billing Control Center</h2>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-50 text-purple-700">
-                Sovereign Wallet & Hard Limits
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium">
-              Configure global plan pricing, sequential GST invoicing, tax rates & overflow policies
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => handleOpenPlanModal()}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition"
-        >
-          <Plus className="w-4 h-4" />
-          Add Billing Plan
-        </button>
-      </div>
-
-      {/* Plans Catalog Management */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-200/60 flex items-center justify-between">
-          <h3 className="font-black text-sm text-slate-900">Configured Billing Plans</h3>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-200/60">
-                <th className="py-3 px-4">Plan Name</th>
-                <th className="py-3 px-4">Slug</th>
-                <th className="py-3 px-4">Price (USD)</th>
-                <th className="py-3 px-4">Contacts Limit</th>
-                <th className="py-3 px-4">Boards Limit</th>
-                <th className="py-3 px-4">Super Fields Limit</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {plans.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50/80 transition">
-                  <td className="py-3.5 px-4 font-bold text-slate-900">{p.name}</td>
-                  <td className="py-3.5 px-4 font-mono text-slate-500">{p.slug}</td>
-                  <td className="py-3.5 px-4 font-bold text-slate-800">${p.price_usd} / mo</td>
-                  <td className="py-3.5 px-4 font-mono font-semibold">{p.quota_contacts.toLocaleString()}</td>
-                  <td className="py-3.5 px-4 font-mono font-semibold">{p.quota_boards}</td>
-                  <td className="py-3.5 px-4 font-mono font-semibold">{p.quota_super_fields}</td>
-                  <td className="py-3.5 px-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenPlanModal(p)}
-                      className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Global Billing Configuration Settings */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-6">
+    <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto animate-in fade-in duration-200">
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
         <div>
-          <h3 className="font-black text-sm text-slate-900 mb-1">Global Tax & Invoicing Settings</h3>
-          <p className="text-xs text-slate-500">
-            These values appear on all downloadable/printable sequential invoice receipts
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-black text-slate-100 tracking-tight">Admin Billing Management</h1>
+            <Badge variant="rose" size="sm" dot>
+              Admin Authorized
+            </Badge>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Configure subscription tiers, wallet minimum reserves, tax rates, and issue complimentary grants.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div>
-            <label className="block font-bold text-slate-700 uppercase mb-1">GST / VAT Rate (%)</label>
-            <input
-              type="text"
-              value={taxPercent}
-              onChange={(e) => setTaxPercent(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-            />
-          </div>
-
-          <div>
-            <label className="block font-bold text-slate-700 uppercase mb-1">Company GSTIN / Tax ID</label>
-            <input
-              type="text"
-              value={companyGstin}
-              onChange={(e) => setCompanyGstin(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 font-mono font-medium"
-            />
-          </div>
-
-          <div>
-            <label className="block font-bold text-slate-700 uppercase mb-1">Company Legal Entity Name</label>
-            <input
-              type="text"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-            />
-          </div>
-
-          <div>
-            <label className="block font-bold text-slate-700 uppercase mb-1">Grace Period Days</label>
-            <input
-              type="text"
-              value={graceDays}
-              onChange={(e) => setGraceDays(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-            />
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="block font-bold text-slate-700 uppercase mb-1">Invoice Receipt Footer Note</label>
-            <input
-              type="text"
-              value={invoiceFooter}
-              onChange={(e) => setInvoiceFooter(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-            />
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="block font-bold text-slate-700 uppercase mb-1">Bulk Import Overflow Policy</label>
-            <select
-              value={overflowPolicy}
-              onChange={(e) => setOverflowPolicy(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 font-bold bg-white"
-            >
-              <option value="partial_accept">Partial Accept (Import up to quota, discard rest)</option>
-              <option value="reject_batch">Reject Entire Batch if Over Quota</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex justify-end pt-3 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={handleSaveSettings}
-            className="flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 text-white font-bold text-xs rounded-xl hover:bg-indigo-700 shadow-xs"
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Gift className="w-3.5 h-3.5 text-indigo-400" />}
+            onClick={() => {
+              if (plans.length > 0) setGrantPlanId(plans[0].id);
+              setIsGrantModalOpen(true);
+            }}
           >
-            <Check className="w-4 h-4" />
-            Save Configuration
-          </button>
+            Complimentary Grant
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => handleOpenPlanModal()}
+          >
+            Create Plan Tier
+          </Button>
         </div>
       </div>
 
-      {/* Plan Modal */}
-      {isEditPlanModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4">
-            <h3 className="font-bold text-base text-slate-900">
-              {editingPlan ? 'Edit Billing Plan' : 'Create Billing Plan'}
-            </h3>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Revenue"
+          value={`$${totalRevenueUsd.toFixed(2)}`}
+          subtitle="All-time settled wallet charges"
+          icon={<DollarSign className="w-4 h-4 text-emerald-400" />}
+          trend={{ value: 'Wallet Settled', positive: true }}
+        />
+        <StatCard
+          label="Active Invoices"
+          value={invoices.length}
+          subtitle="Tax invoices issued"
+          icon={<Receipt className="w-4 h-4 text-indigo-400" />}
+        />
+        <StatCard
+          label="Catalog Tiers"
+          value={plans.length}
+          subtitle="Configured subscription plans"
+          icon={<Layers className="w-4 h-4 text-cyan-400" />}
+        />
+        <StatCard
+          label="GST/VAT Rate"
+          value={`${settings?.gst_vat_rate_percent || 18}%`}
+          subtitle={`GSTIN: ${settings?.company_gstin || 'Configured'}`}
+          icon={<Percent className="w-4 h-4 text-purple-400" />}
+        />
+      </div>
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Plan Name</label>
-                <input
-                  type="text"
-                  value={planName}
-                  onChange={(e) => {
-                    setPlanName(e.target.value);
-                    if (!editingPlan) setPlanSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'));
-                  }}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-                />
-              </div>
+      {/* Tabs */}
+      <div className="flex border-b border-slate-800 gap-6 text-sm">
+        <button
+          onClick={() => setActiveTab('plans')}
+          className={`pb-3 font-semibold transition-all relative ${
+            activeTab === 'plans' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Subscription Catalog ({plans.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`pb-3 font-semibold transition-all relative ${
+            activeTab === 'settings' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Billing & Tax Policies
+        </button>
+      </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Plan Slug</label>
-                <input
-                  type="text"
-                  value={planSlug}
-                  onChange={(e) => setPlanSlug(e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 font-mono font-medium"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Price USD</label>
-                  <input
-                    type="text"
-                    value={planPrice}
-                    onChange={(e) => setPlanPrice(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Contacts Quota</label>
-                  <input
-                    type="text"
-                    value={planContacts}
-                    onChange={(e) => setPlanContacts(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Boards Limit</label>
-                  <input
-                    type="text"
-                    value={planBoards}
-                    onChange={(e) => setPlanBoards(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Super Fields Limit</label>
-                  <input
-                    type="text"
-                    value={planSuperFields}
-                    onChange={(e) => setPlanSuperFields(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsEditPlanModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
+      {/* TAB 1: Subscription Catalog */}
+      {activeTab === 'plans' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {plans.map((p) => (
+              <div
+                key={p.id}
+                className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between hover:border-slate-700 transition-all shadow-sm"
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSavePlan}
-                className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700"
-              >
-                Save Plan
-              </button>
-            </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-100 text-lg">{p.name}</span>
+                    <Badge variant={p.is_active ? 'emerald' : 'slate'} size="xs">
+                      {p.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-slate-400">{p.description || 'No description provided'}</p>
+
+                  <div className="pt-2">
+                    <div className="text-2xl font-black text-slate-100 font-mono">
+                      ${p.price_usd.toFixed(2)} USD
+                    </div>
+                    <div className="text-[11px] text-slate-500">Duration: {p.duration_days} days · Slug: {p.slug}</div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-800/80 space-y-1.5 text-xs text-slate-300">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Contacts Quota:</span>
+                      <strong className="font-mono text-slate-200">
+                        {p.quota_contacts === -1 ? 'Unlimited' : p.quota_contacts.toLocaleString()}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Boards Quota:</span>
+                      <strong className="font-mono text-slate-200">{p.quota_boards}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Super Fields:</span>
+                      <strong className="font-mono text-slate-200">{p.quota_super_fields}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Tags & Rules:</span>
+                      <strong className="font-mono text-slate-200">{p.quota_tags}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-slate-800 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    icon={<Edit2 className="w-3.5 h-3.5" />}
+                    onClick={() => handleOpenPlanModal(p)}
+                  >
+                    Edit Tier
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
+
+      {/* TAB 2: Billing & Tax Policies */}
+      {activeTab === 'settings' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-3xl space-y-6">
+          <div>
+            <h3 className="text-base font-bold text-slate-100">Tax & Invoicing Settings</h3>
+            <p className="text-xs text-slate-400 mt-0.5">These parameters are used to calculate invoices and receipts server-side.</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="GST / VAT Rate (%)"
+              type="number"
+              step="0.1"
+              value={taxPercent}
+              onChange={(e) => setTaxPercent(e.target.value)}
+              hint="Dynamically referenced in Super Field formulas & invoices"
+            />
+            <Input
+              label="Company GSTIN / Tax ID"
+              value={companyGstin}
+              onChange={(e) => setCompanyGstin(e.target.value)}
+            />
+            <Input
+              label="Company Legal Name"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+            />
+            <Input
+              label="Grace Period (Days)"
+              type="number"
+              value={graceDays}
+              onChange={(e) => setGraceDays(e.target.value)}
+              hint="Grace time before expired plans transition to read-only"
+            />
+            <Input
+              label="Minimum Wallet Reserve ($ USD)"
+              type="number"
+              step="1"
+              value={minReserve}
+              onChange={(e) => setMinReserve(e.target.value)}
+              hint="Minimum balance that must remain in user wallet after debit"
+            />
+            <Input
+              label="Renewal Retry Schedule (Days)"
+              value={retrySchedule}
+              onChange={(e) => setRetrySchedule(e.target.value)}
+              hint="Comma separated retry intervals (e.g. 1, 3, 5)"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300">Invoice Footer Note</label>
+            <textarea
+              rows={2}
+              value={invoiceFooter}
+              onChange={(e) => setInvoiceFooter(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+            <div>
+              <div className="text-xs font-bold text-slate-200">Auto-Pause Features on Expiry</div>
+              <div className="text-[11px] text-slate-400">Put workspace in read-only mode if renewal fails instead of deleting data.</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={autoPause}
+              onChange={(e) => setAutoPause(e.target.checked)}
+              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700"
+            />
+          </div>
+
+          <div className="flex justify-end pt-4 border-t border-slate-800">
+            <Button
+              variant="primary"
+              size="md"
+              loading={isSavingSettings}
+              onClick={handleSaveSettings}
+            >
+              Save Configuration
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Plan Editor with Live Customer Preview */}
+      <Modal
+        isOpen={isPlanModalOpen}
+        onClose={() => setIsPlanModalOpen(false)}
+        title={editingPlan ? `Edit Tier: ${editingPlan.name}` : 'Create Subscription Tier'}
+        maxWidth="2xl"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Form Fields */}
+          <div className="space-y-4">
+            <Input
+              label="Plan Display Name"
+              placeholder="e.g. Enterprise Automation"
+              value={planName}
+              onChange={(e) => setPlanName(e.target.value)}
+            />
+            <Input
+              label="Unique Slug"
+              placeholder="e.g. enterprise-automation"
+              value={planSlug}
+              onChange={(e) => setPlanSlug(e.target.value)}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Price (USD)"
+                type="number"
+                step="0.01"
+                value={planPrice}
+                onChange={(e) => setPlanPrice(e.target.value)}
+              />
+              <Input
+                label="Duration (Days)"
+                type="number"
+                value={planDuration}
+                onChange={(e) => setPlanDuration(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Contacts Quota"
+                type="number"
+                value={planContacts}
+                onChange={(e) => setPlanContacts(e.target.value)}
+                hint="-1 for unlimited"
+              />
+              <Input
+                label="Kanban Boards Quota"
+                type="number"
+                value={planBoards}
+                onChange={(e) => setPlanBoards(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Super Fields Quota"
+                type="number"
+                value={planSuperFields}
+                onChange={(e) => setPlanSuperFields(e.target.value)}
+              />
+              <Input
+                label="Tags Quota"
+                type="number"
+                value={planTags}
+                onChange={(e) => setPlanTags(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Live Customer Preview Card */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <Eye className="w-3.5 h-3.5 text-indigo-400" /> Live Customer Preview
+            </div>
+            <div className="bg-slate-950 border border-indigo-600/50 rounded-2xl p-5 shadow-lg relative">
+              <div className="space-y-3">
+                <span className="text-base font-bold text-slate-100">{planName || 'Plan Name'}</span>
+                <div className="text-2xl font-black text-slate-100 font-mono">
+                  ${parseFloat(planPrice || '0').toFixed(2)} <span className="text-xs text-slate-400 font-normal">/ mo</span>
+                </div>
+                <div className="pt-3 border-t border-slate-800 space-y-1.5 text-xs text-slate-300">
+                  <div>✓ <strong>{planContacts === '-1' ? 'Unlimited' : parseInt(planContacts || '0', 10).toLocaleString()}</strong> Contacts</div>
+                  <div>✓ <strong>{planBoards}</strong> Kanban Boards</div>
+                  <div>✓ <strong>{planSuperFields}</strong> Super Fields</div>
+                  <div>✓ <strong>{planTags}</strong> Workspace Tags</div>
+                </div>
+              </div>
+              <div className="mt-6 pt-3 border-t border-slate-800">
+                <div className="w-full py-2 text-center rounded-lg bg-indigo-600 text-white font-bold text-xs">
+                  Upgrade Now
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-6 mt-6 border-t border-slate-800">
+          <Button variant="ghost" size="sm" onClick={() => setIsPlanModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" loading={isSavingPlan} onClick={handleSavePlan}>
+            Save Tier
+          </Button>
+        </div>
+      </Modal>
+
+      {/* MODAL: Complimentary Grant */}
+      <Modal
+        isOpen={isGrantModalOpen}
+        onClose={() => setIsGrantModalOpen(false)}
+        title="Issue Complimentary Plan Grant"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-400">
+            Complimentary grants bypass payment gates legally by generating an official <strong>$0 audited tax invoice</strong> logged with your Admin ID and mandatory business reason.
+          </p>
+
+          <Input
+            label="Target Workspace ID"
+            placeholder="e.g. 6564a7c5-1fa6-4460-b06e-3c30551c6617"
+            value={grantWorkspaceId}
+            onChange={(e) => setGrantWorkspaceId(e.target.value)}
+          />
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300">Target Plan Tier</label>
+            <select
+              value={grantPlanId}
+              onChange={(e) => setGrantPlanId(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+            >
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} (${p.price_usd}/mo)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <Input
+            label="Grant Duration (Days)"
+            type="number"
+            value={grantDuration}
+            onChange={(e) => setGrantDuration(e.target.value)}
+          />
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300">Mandatory Audit Reason</label>
+            <textarea
+              rows={3}
+              placeholder="e.g. Strategic investor partnership agreement approved by executive team"
+              value={grantReason}
+              onChange={(e) => setGrantReason(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+            <Button variant="ghost" size="sm" onClick={() => setIsGrantModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={isGranting}
+              disabled={!grantReason.trim()}
+              onClick={handleExecuteGrant}
+            >
+              Issue $0 Grant
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
-

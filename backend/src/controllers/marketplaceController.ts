@@ -417,6 +417,61 @@ export class MarketplaceController {
   };
 
   /**
+   * DELETE /api/marketplace/jobs/:id
+   * Customer: delete/hide extraction job
+   */
+  public deleteUserJob = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const jobId = String(req.params.id);
+      const success = this.jobService.deleteUserJob(jobId, userId);
+      res.json({ success });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to delete job' });
+    }
+  };
+
+  /**
+   * GET /api/marketplace/privacy/policy
+   */
+  public getPrivacyPolicy = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const db = getDatabase();
+      const textRow = db.prepare("SELECT value FROM marketplace_settings WHERE key = 'privacy_policy_text'").get() as any;
+      const verRow = db.prepare("SELECT value FROM marketplace_settings WHERE key = 'privacy_terms_version'").get() as any;
+      res.json({
+        policyText: textRow?.value || 'Standard data retention policy.',
+        version: verRow?.value || '1.0'
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch privacy policy' });
+    }
+  };
+
+  /**
+   * POST /api/marketplace/privacy/consent
+   */
+  public recordPrivacyConsent = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const db = getDatabase();
+      const verRow = db.prepare("SELECT value FROM marketplace_settings WHERE key = 'privacy_terms_version'").get() as any;
+      const version = req.body.version || verRow?.value || '1.0';
+
+      db.prepare(`
+        UPDATE users
+        SET privacy_consent_at = datetime('now'),
+            privacy_consent_version = ?
+        WHERE id = ?
+      `).run(version, userId);
+
+      res.json({ success: true, consentAt: new Date().toISOString(), version });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to record privacy consent' });
+    }
+  };
+
+  /**
    * POST /api/marketplace/jobs/:id/abort
    * Customer / Admin: abort running extraction
    */

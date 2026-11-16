@@ -299,14 +299,14 @@ export class MarketplaceJobService {
       input_data: JSON.parse(row.input_json || '{}'),
       requested_items: Number(row.requested_items),
       status: row.status as JobStatus,
-      provider_type: row.provider_type,
-      provider_run_id: row.provider_run_id,
-      provider_dataset_id: row.provider_dataset_id,
+      provider_type: effectiveAdmin ? row.provider_type : undefined,
+      provider_run_id: effectiveAdmin ? row.provider_run_id : undefined,
+      provider_dataset_id: effectiveAdmin ? row.provider_dataset_id : undefined,
       items_delivered: Number(row.items_delivered || 0),
       reserved_amount: Number(row.reserved_amount || 0),
       charged_amount: Number(row.charged_amount || 0),
-      provider_cost_usd: Number(row.provider_cost_usd || 0),
-      provider_cost_converted: Number(row.provider_cost_converted || 0),
+      provider_cost_usd: effectiveAdmin ? Number(row.provider_cost_usd || 0) : undefined,
+      provider_cost_converted: effectiveAdmin ? Number(row.provider_cost_converted || 0) : undefined,
       currency: row.currency || 'INR',
       reservation_tx_id: row.reservation_tx_id,
       settle_tx_id: row.settle_tx_id,
@@ -317,6 +317,42 @@ export class MarketplaceJobService {
       created_at: row.created_at,
       updated_at: row.updated_at
     };
+  }
+
+  /**
+   * Delete a job from customer perspective (honors customer_delete_behavior setting)
+   */
+  public deleteUserJob(jobId: string, userId: string): boolean {
+    const db = getDatabase();
+    const job = db.prepare('SELECT * FROM marketplace_jobs WHERE id = ? AND user_id = ?').get(jobId, userId) as any;
+    if (!job) return false;
+
+    let behavior = 'hide_only';
+    try {
+      const row = db.prepare("SELECT value FROM marketplace_settings WHERE key = 'customer_delete_behavior'").get() as any;
+      if (row?.value) behavior = row.value;
+    } catch {}
+
+    if (behavior === 'hard_everywhere') {
+      const vRec = db.prepare('SELECT id FROM vault_records WHERE job_id = ?').get(jobId) as any;
+      if (vRec) {
+        import('./VaultService.js').then(({ VaultService }) => {
+          VaultService.getInstance().softDelete([vRec.id], { id: userId, username: 'customer' }, 'Customer initiated deletion');
+        }).catch(() => {});
+      }
+      db.prepare('DELETE FROM marketplace_job_results WHERE job_id = ?').run(jobId);
+      db.prepare('DELETE FROM marketplace_jobs WHERE id = ?').run(jobId);
+    } else {
+      // Default: hide_only (safely preserved in Data Vault)
+      db.prepare(`
+        UPDATE marketplace_jobs
+        SET deleted_at = datetime('now'),
+            customer_hidden = 1
+        WHERE id = ? AND user_id = ?
+      `).run(jobId, userId);
+    }
+
+    return true;
   }
 
   /**
@@ -331,7 +367,7 @@ export class MarketplaceJobService {
     const limit = Math.min(100, options?.limit || 20);
     const offset = (page - 1) * limit;
 
-    let whereClause = 'WHERE user_id = ?';
+    let whereClause = 'WHERE user_id = ? AND (deleted_at IS NULL AND (customer_hidden IS NULL OR customer_hidden = 0))';
     const params: any[] = [userId];
 
     if (options?.status && options.status !== 'all') {
@@ -467,7 +503,7 @@ export class MarketplaceJobService {
     const db = getDatabase();
     if (job.provider_run_id) {
       try {
-        const adapter = ProviderRegistry.getInstance().getAdapter(job.provider_type);
+        const adapter = ProviderRegistry.getInstance().getAdapter(job.provider_type || 'apify');
         await adapter.abortRun(job.provider_run_id);
       } catch (err) {
         console.warn(`[Marketplace] Warning aborting provider run ${job.provider_run_id}:`, err);
@@ -476,7 +512,7 @@ export class MarketplaceJobService {
 
     // Settle partial items or refund
     if (job.items_delivered > 0) {
-      this.chargingService.settleJob(jobId, job.items_delivered, job.provider_cost_usd);
+      this.chargingService.settleJob(jobId, job.items_delivered, job.provider_cost_usd || 0);
     } else {
       this.chargingService.refundFailedJob(jobId, 'User requested abort before completion.');
     }

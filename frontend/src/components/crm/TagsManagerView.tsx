@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Tag,
+  Tag as TagIcon,
   Plus,
   Trash2,
   GitMerge,
@@ -10,31 +10,58 @@ import {
   FolderPlus,
   Layers,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Search,
+  Users
 } from 'lucide-react';
 import { crmApi } from './crmApi';
+import {
+  Button,
+  Badge,
+  Input,
+  Modal,
+  Skeleton,
+  EmptyState
+} from './ui/CrmDesignSystem';
+
+const PRESET_COLORS = [
+  '#ef4444', // Red
+  '#f97316', // Orange
+  '#f59e0b', // Amber
+  '#10b981', // Emerald
+  '#06b6d4', // Cyan
+  '#3b82f6', // Blue
+  '#6366f1', // Indigo
+  '#8b5cf6', // Purple
+  '#ec4899', // Pink
+  '#64748b'  // Slate
+];
 
 export const TagsManagerView: React.FC = () => {
   const [tags, setTags] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [rules, setRules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tagSearch, setTagSearch] = useState('');
 
-  // New Tag
+  // New Tag Form
   const [newTagName, setNewTagName] = useState('');
-  const [newTagColor, setNewTagColor] = useState('#3b82f6');
+  const [newTagColor, setNewTagColor] = useState('#6366f1');
+  const [isCreatingTag, setIsCreatingTag] = useState(false);
 
   // Merge Tags Modal
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
   const [sourceTagId, setSourceTagId] = useState('');
   const [targetTagId, setTargetTagId] = useState('');
+  const [isMerging, setIsMerging] = useState(false);
 
-  // Auto Tag Rule Form
+  // Auto Tag Rule Modal
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [ruleName, setRuleName] = useState('');
   const [ruleTrigger, setRuleTrigger] = useState('score_threshold');
   const [conditionVal, setConditionVal] = useState('80');
-  const [targetRuleTag, setTargetRuleTag] = useState('Hot');
+  const [targetRuleTag, setTargetRuleTag] = useState('VIP Hot');
+  const [isSavingRule, setIsSavingRule] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -61,17 +88,20 @@ export const TagsManagerView: React.FC = () => {
 
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
+    setIsCreatingTag(true);
     try {
       await crmApi.createTag(newTagName.trim(), newTagColor);
       setNewTagName('');
       loadData();
     } catch (err: any) {
       alert(`Error creating tag: ${err.message}`);
+    } finally {
+      setIsCreatingTag(false);
     }
   };
 
-  const handleDeleteTag = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this tag? Contacts with this tag will retain other tags.')) return;
+  const handleDeleteTag = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete tag "${name}"? Contacts will be un-tagged safely.`)) return;
     try {
       await crmApi.deleteTag(id);
       loadData();
@@ -86,6 +116,7 @@ export const TagsManagerView: React.FC = () => {
       return;
     }
 
+    setIsMerging(true);
     try {
       const res = await crmApi.mergeTags(sourceTagId, targetTagId);
       alert(`Successfully merged tags! ${res.affected_contacts || 0} contacts updated.`);
@@ -95,307 +126,387 @@ export const TagsManagerView: React.FC = () => {
       loadData();
     } catch (err: any) {
       alert(`Merge failed: ${err.message}`);
+    } finally {
+      setIsMerging(false);
     }
   };
 
-  const handleCreateRule = async () => {
-    if (!ruleName.trim() || !targetRuleTag.trim()) return;
+  const handleSaveRule = async () => {
+    if (!ruleName.trim()) return;
+    setIsSavingRule(true);
     try {
       await crmApi.saveAutoTagRule({
-        name: ruleName,
+        name: ruleName.trim(),
         trigger: ruleTrigger,
-        condition_value: { value: conditionVal },
-        tag_name: targetRuleTag,
+        condition_value: { threshold: parseInt(conditionVal, 10) || 80 },
+        tag_name: targetRuleTag.trim(),
         is_active: true
       });
       setIsRuleModalOpen(false);
       setRuleName('');
       loadData();
     } catch (err: any) {
-      alert(`Failed to save auto-tag rule: ${err.message}`);
+      alert(`Error saving rule: ${err.message}`);
+    } finally {
+      setIsSavingRule(false);
     }
   };
 
+  const filteredTags = tags.filter((t) => t.name.toLowerCase().includes(tagSearch.toLowerCase()));
+  const selectedSourceTag = tags.find((t) => t.id === sourceTagId);
+
+  if (loading) {
+    return (
+      <div className="p-8 space-y-6 max-w-7xl mx-auto">
+        <Skeleton className="h-10 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Skeleton className="h-64 rounded-2xl" />
+          <Skeleton className="h-64 rounded-2xl col-span-2" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-xs">
-            <Tag className="w-5 h-5" />
+    <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto animate-in fade-in duration-200">
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-black text-slate-100 tracking-tight">Tag Directory & Automation</h1>
+            <Badge variant="indigo" size="sm" dot>
+              {tags.length} Workspace Tags
+            </Badge>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-slate-900 tracking-tight">Tags & Auto-Rules</h2>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">
-                Normalized + Fast Array
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium">
-              Manage workspace tags, 1-click merge tag consolidation, and auto-tagging triggers
-            </p>
-          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Organize contacts by source, lifecycle, or campaign. Combine duplicates with 1-click merge.
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsMergeModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<GitMerge className="w-3.5 h-3.5 text-indigo-400" />}
+            onClick={() => {
+              if (tags.length >= 2) {
+                setSourceTagId(tags[0].id);
+                setTargetTagId(tags[1].id);
+              }
+              setIsMergeModalOpen(true);
+            }}
           >
-            <GitMerge className="w-4 h-4 text-slate-500" />
-            Merge Tags
-          </button>
-
-          <button
-            type="button"
+            1-Click Merge Tags
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Zap className="w-3.5 h-3.5" />}
             onClick={() => setIsRuleModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition"
           >
-            <Zap className="w-4 h-4" />
             New Auto-Tag Rule
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* Add Quick Tag Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center gap-3">
-        <input
-          type="text"
-          value={newTagName}
-          onChange={(e) => setNewTagName(e.target.value)}
-          placeholder="New Tag Name..."
-          className="text-xs border border-slate-300 rounded-xl px-3 py-2 font-medium w-64"
-        />
-        <input
-          type="color"
-          value={newTagColor}
-          onChange={(e) => setNewTagColor(e.target.value)}
-          className="w-8 h-8 rounded-xl border border-slate-300 cursor-pointer bg-white"
-        />
-        <button
-          type="button"
-          onClick={handleCreateTag}
-          className="px-4 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-1"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Tag
-        </button>
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Create Tag Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5 h-fit shadow-sm">
+          <div>
+            <h3 className="text-base font-bold text-slate-100">Create Workspace Tag</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Assign tags manually or trigger them via automation.</p>
+          </div>
 
-      {/* Tags Cards Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {tags.map((t) => (
-          <div
-            key={t.id}
-            className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between group hover:border-indigo-300 transition"
-          >
-            <div className="flex items-center gap-2.5 truncate">
-              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: t.color || '#3b82f6' }} />
-              <div className="truncate">
-                <h4 className="text-xs font-bold text-slate-800 truncate">{t.name}</h4>
-                <span className="text-[10px] text-slate-400 font-semibold">
-                  {t.usage_count || 0} contacts
-                </span>
+          <div className="space-y-4">
+            <Input
+              label="Tag Label"
+              placeholder="e.g. Qualified Lead, Enterprise"
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+            />
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300">Badge Color Accent</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {PRESET_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setNewTagColor(c)}
+                    className={`w-6 h-6 rounded-full transition-transform flex items-center justify-center ${
+                      newTagColor === c ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-slate-900' : 'hover:scale-105'
+                    }`}
+                    style={{ backgroundColor: c }}
+                  >
+                    {newTagColor === c && <Check className="w-3.5 h-3.5 text-white" />}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => handleDeleteTag(t.id)}
-              className="p-1.5 text-slate-300 hover:text-rose-600 rounded-lg hover:bg-slate-50 opacity-0 group-hover:opacity-100 transition"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Auto Tagging Rules Section */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-200/60 flex items-center justify-between">
-          <div>
-            <h3 className="font-black text-sm text-slate-900">Active Auto-Tagging Rules</h3>
-            <p className="text-xs text-slate-500">Automatically assigns tags when contact criteria match</p>
-          </div>
-        </div>
-
-        <div className="p-4 space-y-3">
-          {rules.map((r) => (
-            <div
-              key={r.id}
-              className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                  <Zap className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-xs text-slate-900">{r.name}</h4>
-                  <p className="text-[11px] text-slate-500">
-                    When <span className="font-mono text-slate-700">{r.trigger}</span> matches, add tag{' '}
-                    <span className="font-bold text-indigo-700">"{r.tag_name}"</span>
-                  </p>
-                </div>
-              </div>
-
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
-                Active
+            {/* Live Tag Chip Preview */}
+            <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Live Preview</span>
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold text-white shadow-sm"
+                style={{ backgroundColor: newTagColor }}
+              >
+                <TagIcon className="w-3 h-3" />
+                {newTagName.trim() || 'Sample Tag'}
               </span>
             </div>
-          ))}
 
-          {rules.length === 0 && (
-            <p className="text-xs text-slate-400 text-center py-6">
-              No auto-tag rules configured. Click "New Auto-Tag Rule" to automate tagging based on lead scores.
-            </p>
-          )}
+            <Button
+              variant="primary"
+              size="md"
+              className="w-full"
+              loading={isCreatingTag}
+              disabled={!newTagName.trim()}
+              onClick={handleCreateTag}
+            >
+              Add Tag to Directory
+            </Button>
+          </div>
+        </div>
+
+        {/* Tags Directory & Auto-Tagging Rules (2 Cols) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Tag Directory Card */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-100">All Tags Directory</h3>
+                <p className="text-xs text-slate-400">Total active tags with contact usage counts.</p>
+              </div>
+              <div className="relative w-48 sm:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Filter tags..."
+                  value={tagSearch}
+                  onChange={(e) => setTagSearch(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              {filteredTags.map((t) => (
+                <div
+                  key={t.id}
+                  className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl flex items-center justify-between hover:border-slate-700 transition-all"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      className="w-3 h-3 rounded-full shrink-0 shadow-sm"
+                      style={{ backgroundColor: t.color || '#6366f1' }}
+                    />
+                    <div>
+                      <span className="font-bold text-xs text-slate-200">{t.name}</span>
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
+                        <Users className="w-3 h-3" />
+                        {t.usage_count ?? 0} contacts
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleDeleteTag(t.id, t.name)}
+                    className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+
+              {filteredTags.length === 0 && (
+                <div className="col-span-2 py-8 text-center text-slate-500 text-xs">
+                  {tagSearch ? 'No matching tags found.' : 'No tags created yet.'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Auto-Tagging Rules Card */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-100">Automated Tagging Rules</h3>
+                <p className="text-xs text-slate-400">Apply tags automatically when contact conditions are met.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-1">
+              {rules.map((rule) => (
+                <div
+                  key={rule.id}
+                  className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="font-bold text-xs text-slate-200">{rule.name}</span>
+                      <Badge variant="amber" size="xs">
+                        {rule.trigger}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      When lead score exceeds threshold → Assign tag <strong>"{rule.tag_name}"</strong>
+                    </p>
+                  </div>
+
+                  <Badge variant={rule.is_active ? 'emerald' : 'slate'} size="xs" dot>
+                    {rule.is_active ? 'Active' : 'Disabled'}
+                  </Badge>
+                </div>
+              ))}
+
+              {rules.length === 0 && (
+                <div className="py-6 text-center text-slate-500 text-xs">
+                  No auto-tagging rules configured.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Merge Tags Modal */}
-      {isMergeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-indigo-600 rounded-2xl text-white">
-                <GitMerge className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-base text-slate-900">Consolidate & Merge Tags</h3>
-                <p className="text-xs text-slate-500">
-                  Merge Source Tag into Target Tag and re-index all affected contacts
-                </p>
-              </div>
+      {/* ========================================================================= */}
+      {/* 3. 1-CLICK MERGE TAGS MODAL */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isMergeModalOpen}
+        onClose={() => setIsMergeModalOpen(false)}
+        title="1-Click Tag Consolidation & Merge"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-400">
+            Combine <strong>Source Tag</strong> into <strong>Target Tag</strong>. All contacts with the source tag will automatically be reassigned, and the source tag will be deleted safely.
+          </p>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-300">Source Tag (Will be merged and deleted)</label>
+              <select
+                value={sourceTagId}
+                onChange={(e) => setSourceTagId(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+              >
+                {tags.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.usage_count ?? 0} contacts)
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Source Tag (Will be deleted)</label>
-                <select
-                  value={sourceTagId}
-                  onChange={(e) => setSourceTagId(e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 font-bold bg-white"
-                >
-                  <option value="">Select source tag...</option>
-                  {tags.map((t) => (
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-300">Target Tag (Will absorb contacts and remain)</label>
+              <select
+                value={targetTagId}
+                onChange={(e) => setTargetTagId(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+              >
+                {tags
+                  .filter((t) => t.id !== sourceTagId)
+                  .map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name} ({t.usage_count || 0} contacts)
+                      {t.name} ({t.usage_count ?? 0} contacts)
                     </option>
                   ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Target Tag (Will be retained)</label>
-                <select
-                  value={targetTagId}
-                  onChange={(e) => setTargetTagId(e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 font-bold bg-white"
-                >
-                  <option value="">Select destination tag...</option>
-                  {tags.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              </select>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsMergeModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleMergeTags}
-                className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700"
-              >
-                Merge Tags
-              </button>
-            </div>
+            {selectedSourceTag && (
+              <div className="p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>
+                  <strong>{selectedSourceTag.usage_count ?? 0} contacts</strong> will be moved to the target tag.
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+            <Button variant="ghost" size="sm" onClick={() => setIsMergeModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={isMerging}
+              icon={<GitMerge className="w-3.5 h-3.5" />}
+              onClick={handleMergeTags}
+            >
+              Merge & Consolidate
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
 
-      {/* Auto Tag Rule Modal */}
-      {isRuleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4">
-            <h3 className="font-bold text-base text-slate-900">Create Auto-Tagging Rule</h3>
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Rule Name</label>
-                <input
-                  type="text"
-                  value={ruleName}
-                  onChange={(e) => setRuleName(e.target.value)}
-                  placeholder="e.g. Hot Leads Auto-Tag"
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-                />
-              </div>
+      {/* ========================================================================= */}
+      {/* 4. AUTO-TAG RULE MODAL */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isRuleModalOpen}
+        onClose={() => setIsRuleModalOpen(false)}
+        title="Create Auto-Tagging Rule"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <Input
+            label="Rule Name"
+            placeholder="e.g. High Score VIP"
+            value={ruleName}
+            onChange={(e) => setRuleName(e.target.value)}
+          />
 
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Trigger Condition</label>
-                <select
-                  value={ruleTrigger}
-                  onChange={(e) => setRuleTrigger(e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 font-bold bg-white"
-                >
-                  <option value="score_threshold">Lead Score Greater Than</option>
-                  <option value="inactivity_days">Inactivity Days Greater Than</option>
-                  <option value="extractor_import">On Extractor Import</option>
-                </select>
-              </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300">Trigger Event</label>
+            <select
+              value={ruleTrigger}
+              onChange={(e) => setRuleTrigger(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="score_threshold">When Lead Score Exceeds Threshold</option>
+              <option value="new_contact">On Every Newly Created Contact</option>
+              <option value="email_verified">When Contact Email is Verified</option>
+            </select>
+          </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Condition Value</label>
-                <input
-                  type="text"
-                  value={conditionVal}
-                  onChange={(e) => setConditionVal(e.target.value)}
-                  placeholder="80"
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-                />
-              </div>
+          {ruleTrigger === 'score_threshold' && (
+            <Input
+              label="Minimum Score Threshold"
+              type="number"
+              value={conditionVal}
+              onChange={(e) => setConditionVal(e.target.value)}
+            />
+          )}
 
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Tag to Apply</label>
-                <input
-                  type="text"
-                  value={targetRuleTag}
-                  onChange={(e) => setTargetRuleTag(e.target.value)}
-                  placeholder="Hot"
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 font-medium"
-                />
-              </div>
-            </div>
+          <Input
+            label="Tag Label to Assign"
+            placeholder="e.g. VIP Hot"
+            value={targetRuleTag}
+            onChange={(e) => setTargetRuleTag(e.target.value)}
+          />
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsRuleModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCreateRule}
-                className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700"
-              >
-                Save Rule
-              </button>
-            </div>
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+            <Button variant="ghost" size="sm" onClick={() => setIsRuleModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={isSavingRule}
+              disabled={!ruleName.trim()}
+              onClick={handleSaveRule}
+            >
+              Save Rule
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 };
-

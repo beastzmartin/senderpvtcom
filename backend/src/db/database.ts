@@ -876,6 +876,44 @@ export function initDatabase(): Database.Database {
       db.exec("ALTER TABLE user_wallets ADD COLUMN base_currency TEXT DEFAULT 'INR';");
     } catch {}
 
+    // CRM V2 Wallet Hardening: Idempotency, Reference Type, Minor Units & Exchange Rate
+    try {
+      db.exec("ALTER TABLE wallet_transactions ADD COLUMN idempotency_key TEXT;");
+    } catch {}
+    try {
+      db.exec("ALTER TABLE wallet_transactions ADD COLUMN reference_type TEXT;");
+    } catch {}
+    try {
+      db.exec("ALTER TABLE wallet_transactions ADD COLUMN amount_minor_units INTEGER;");
+    } catch {}
+    try {
+      db.exec("ALTER TABLE wallet_transactions ADD COLUMN exchange_rate REAL DEFAULT 1.0;");
+    } catch {}
+    try {
+      db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_tx_idempotency ON wallet_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL;");
+    } catch {}
+
+    // CRM V2 Database-Level Safety: Prevent negative balances at the SQLite storage level
+    try {
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS trg_user_wallets_prevent_negative_balance
+        BEFORE UPDATE OF balance ON user_wallets
+        FOR EACH ROW
+        WHEN NEW.balance < 0
+        BEGIN
+          SELECT RAISE(ABORT, 'INSUFFICIENT_FUNDS: Wallet balance cannot be negative');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_user_wallets_prevent_negative_balance_insert
+        BEFORE INSERT ON user_wallets
+        FOR EACH ROW
+        WHEN NEW.balance < 0
+        BEGIN
+          SELECT RAISE(ABORT, 'INSUFFICIENT_FUNDS: Wallet balance cannot be negative');
+        END;
+      `);
+    } catch {}
+
     // Initialize base_balance for any existing wallets without it
     try {
       db.exec(`

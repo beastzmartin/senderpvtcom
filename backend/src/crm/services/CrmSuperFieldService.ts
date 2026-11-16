@@ -129,14 +129,30 @@ export class CrmSuperFieldService {
   }
 
   /**
-   * Safe Formula evaluation (e.g. `{deal_value} * 0.18` or `{budget} - {spent}`)
+   * Safe Formula evaluation (e.g. `{deal_value} * ({tax_rate} / 100)` or `{budget} - {spent}`)
+   * Reads dynamic tax settings (never hardcoded) and custom fields
    */
-  public static evaluateFormula(expression: string, context: Record<string, any>): number | string | null {
+  public static evaluateFormula(
+    expression: string,
+    context: Record<string, any>,
+    settings?: any
+  ): number | string | null {
     if (!expression) return null;
     try {
-      // Replace tokens of form {field_slug} with context value
-      let expr = expression.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, fieldName) => {
-        const val = context[fieldName];
+      const currentTaxRate = settings?.gst_vat_rate_percent !== undefined ? Number(settings.gst_vat_rate_percent) : 18.0;
+
+      const mergedContext: Record<string, any> = {
+        ...context,
+        tax_rate: currentTaxRate,
+        gst_rate: currentTaxRate,
+        vat_rate: currentTaxRate,
+        'settings.tax_rate': currentTaxRate,
+        'settings.gst_vat_rate_percent': currentTaxRate
+      };
+
+      // Replace tokens of form {field_slug} or {settings.tax_rate} with context value
+      let expr = expression.replace(/\{([a-zA-Z0-9_.]+)\}/g, (match, fieldName) => {
+        const val = mergedContext[fieldName];
         if (val === undefined || val === null) return '0';
         return typeof val === 'number' ? String(val) : JSON.stringify(val);
       });

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { getDatabase } from '../db/database.js';
 import { getSocketIO } from '../socket/socketManager.js';
+import { CurrencyMinorUnits } from './currency/CurrencyMinorUnits.js';
 
 export type WalletTransactionType =
   | 'extension_activation'
@@ -42,10 +43,49 @@ export interface WalletTransactionRecord {
   previous_balance: number;
   new_balance: number;
   reference_id?: string | null;
+  reference_type?: string | null;
+  idempotency_key?: string | null;
+  amount_minor_units?: number | null;
+  exchange_rate?: number | null;
   description: string;
   status: 'pending' | 'completed' | 'failed' | 'refunded' | 'reversed';
   metadata?: any;
   created_at: string;
+}
+
+export interface DebitOptions<T = any> {
+  userId: string;
+  amountMinorUnits: number; // Integer minor units (e.g. cents, paise)
+  currency: string;         // e.g. 'USD', 'INR'
+  reason: string;           // Clear audit description
+  referenceType: string;    // e.g. 'crm_plan', 'crm_addon', 'crm_api', 'crm_enrichment', 'crm_renewal'
+  referenceId: string;      // Related ID (workspaceId, subscriptionId, addonId, etc.)
+  idempotencyKey?: string;  // Unique idempotency key
+  metadata?: Record<string, any>;
+  businessEffect?: (txRecord: WalletTransactionRecord) => Promise<T> | T;
+}
+
+export interface DebitResult<T = any> {
+  success: boolean;
+  transactionId: string;
+  previousBalance: number;
+  newBalance: number;
+  amountCharged: number;
+  amountMinorUnits: number;
+  currency: string;
+  idempotentReplay?: boolean;
+  businessResult?: T;
+}
+
+export interface RefundOptions {
+  userId: string;
+  amountMinorUnits: number;
+  currency: string;
+  reason: string;
+  referenceType: string;
+  referenceId: string;
+  idempotencyKey?: string;
+  metadata?: Record<string, any>;
 }
 
 export class WalletService {
@@ -281,6 +321,404 @@ export class WalletService {
   }
 
   /**
+   * CANONICAL CHOKE POINT: Debit funds atomically from user wallet
+   * Zero bypass paths, DB-level non-negative constraint, and idempotency protection
+   */
+  public async debit<T = any>(options: DebitOptions<T>): Promise<DebitResult<T>> {
+    const {
+      userId,
+      amountMinorUnits,
+      currency,
+      reason,
+      referenceType,
+      referenceId,
+      idempotencyKey,
+      metadata,
+      businessEffect
+    } = options;
+
+    if (!Number.isInteger(amountMinorUnits) || amountMinorUnits < 0) {
+      throw new Error(`amountMinorUnits must be a non-negative integer. Received: ${amountMinorUnits}`);
+    }
+
+    const db = getDatabase();
+
+    // 1. Check idempotency: Return existing transaction if already processed
+    if (idempotencyKey) {
+      const existingTx = db.prepare('SELECT * FROM wallet_transactions WHERE idempotency_key = ?').get(idempotencyKey) as any;
+      if (existingTx && existingTx.status === 'completed') {
+        return {
+          success: true,
+          transactionId: existingTx.id,
+          previousBalance: Number(existingTx.previous_balance),
+          newBalance: Number(existingTx.new_balance),
+          amountCharged: Number(existingTx.amount),
+          amountMinorUnits: Number(existingTx.amount_minor_units || 0),
+          currency: existingTx.currency,
+          idempotentReplay: true
+        };
+      }
+    }
+
+    // 2. Fetch current wallet
+    const currentWallet = this.getOrCreateWallet(userId);
+    const walletCurrency = currentWallet.currency || 'USD';
+
+    // 3. Handle zero-charge transaction
+    if (amountMinorUnits === 0) {
+      const txId = `free_tx_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+      let businessResult: T | undefined = undefined;
+
+      const dummyTxRecord: WalletTransactionRecord = {
+        id: txId,
+        user_id: userId,
+        transaction_type: 'module_activation',
+        amount: 0,
+        currency: walletCurrency,
+        previous_balance: currentWallet.balance,
+        new_balance: currentWallet.balance,
+        reference_id: referenceId,
+        reference_type: referenceType,
+        idempotency_key: idempotencyKey || null,
+        amount_minor_units: 0,
+        exchange_rate: 1.0,
+        description: reason,
+        status: 'completed',
+        metadata,
+        created_at: new Date().toISOString()
+      };
+
+      if (businessEffect) {
+        businessResult = await businessEffect(dummyTxRecord);
+      }
+
+      return {
+        success: true,
+        transactionId: txId,
+        previousBalance: currentWallet.balance,
+        newBalance: currentWallet.balance,
+        amountCharged: 0,
+        amountMinorUnits: 0,
+        currency: walletCurrency,
+        businessResult
+      };
+    }
+
+    // 4. Calculate amount in user's wallet currency
+    const chargedHumanAmount = CurrencyMinorUnits.fromMinorUnits(amountMinorUnits, currency);
+
+    let exchangeRate = 1.0;
+    let walletMinorUnits = amountMinorUnits;
+    let chargedAmountInWalletCurrency = chargedHumanAmount;
+
+    if (currency.toUpperCase() !== walletCurrency.toUpperCase()) {
+      exchangeRate = this.convertAmount(1.0, currency, walletCurrency);
+      chargedAmountInWalletCurrency = this.convertAmount(chargedHumanAmount, currency, walletCurrency);
+      walletMinorUnits = CurrencyMinorUnits.toMinorUnits(chargedAmountInWalletCurrency, walletCurrency);
+    }
+
+    const availableFloat = currentWallet.available_balance;
+    const availableMinor = CurrencyMinorUnits.toMinorUnits(availableFloat, walletCurrency);
+
+    // 5. Hard balance check: reject immediately if insufficient
+    if (availableMinor < walletMinorUnits) {
+      const shortfallMinor = walletMinorUnits - availableMinor;
+      const sym = walletCurrency === 'INR' ? '₹' : walletCurrency === 'USD' ? '$' : walletCurrency + ' ';
+      const reqStr = CurrencyMinorUnits.formatAmount(walletMinorUnits, walletCurrency);
+      const availStr = CurrencyMinorUnits.formatAmount(availableMinor, walletCurrency);
+      const shortStr = CurrencyMinorUnits.formatAmount(shortfallMinor, walletCurrency);
+
+      const err: any = new Error(
+        `Insufficient wallet balance. Required: ${sym}${reqStr}, Available: ${sym}${availStr}. Need ${sym}${shortStr} more. Please add funds to your wallet to continue.`
+      );
+      err.code = 'INSUFFICIENT_WALLET_BALANCE';
+      err.required = CurrencyMinorUnits.fromMinorUnits(walletMinorUnits, walletCurrency);
+      err.available = availableFloat;
+      err.shortfall = CurrencyMinorUnits.fromMinorUnits(shortfallMinor, walletCurrency);
+      err.currency = walletCurrency;
+      throw err;
+    }
+
+    // 6. Execute atomic deduction inside database transaction with row serialization
+    const txId = crypto.randomUUID();
+    const finalChargedFloat = CurrencyMinorUnits.fromMinorUnits(walletMinorUnits, walletCurrency);
+    let businessResult: T | undefined = undefined;
+    let newBalance = 0;
+    let previousBalance = currentWallet.balance;
+
+    const atomicTx = db.transaction(() => {
+      // Re-verify balance inside row-locked transaction
+      const lockedRow = db.prepare('SELECT balance, reserved_balance, base_balance, base_currency, total_spent FROM user_wallets WHERE user_id = ?').get(userId) as any;
+      if (!lockedRow) {
+        throw new Error('User wallet not found');
+      }
+
+      previousBalance = Number(lockedRow.balance);
+      const lockedAvailable = previousBalance - Number(lockedRow.reserved_balance || 0);
+      const lockedAvailableMinor = CurrencyMinorUnits.toMinorUnits(lockedAvailable, walletCurrency);
+
+      if (lockedAvailableMinor < walletMinorUnits) {
+        throw new Error('Insufficient wallet balance inside transaction lock');
+      }
+
+      newBalance = Number((previousBalance - finalChargedFloat).toFixed(CurrencyMinorUnits.getDecimals(walletCurrency)));
+      const baseCurrency = lockedRow.base_currency || 'INR';
+      const deductInBase = this.convertAmount(finalChargedFloat, walletCurrency, baseCurrency);
+      const newBaseBalance = Math.max(0, Number(((lockedRow.base_balance || previousBalance) - deductInBase).toFixed(4)));
+      const newSpent = Number((Number(lockedRow.total_spent || 0) + finalChargedFloat).toFixed(2));
+
+      // Update user wallet balance
+      db.prepare(`
+        UPDATE user_wallets
+        SET balance = ?, base_balance = ?, total_spent = ?, updated_at = datetime('now')
+        WHERE user_id = ?
+      `).run(newBalance, newBaseBalance, newSpent, userId);
+
+      // Append immutable ledger entry
+      db.prepare(`
+        INSERT INTO wallet_transactions (
+          id, user_id, transaction_type, amount, currency,
+          previous_balance, new_balance, reference_id, reference_type,
+          idempotency_key, amount_minor_units, exchange_rate,
+          description, status, metadata, created_at
+        ) VALUES (
+          ?, ?, 'module_activation', ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, 'completed', ?, datetime('now')
+        )
+      `).run(
+        txId,
+        userId,
+        finalChargedFloat,
+        walletCurrency,
+        previousBalance,
+        newBalance,
+        referenceId,
+        referenceType,
+        idempotencyKey || null,
+        walletMinorUnits,
+        exchangeRate,
+        reason,
+        metadata ? JSON.stringify(metadata) : null
+      );
+
+      const txRecord: WalletTransactionRecord = {
+        id: txId,
+        user_id: userId,
+        transaction_type: 'module_activation',
+        amount: finalChargedFloat,
+        currency: walletCurrency,
+        previous_balance: previousBalance,
+        new_balance: newBalance,
+        reference_id: referenceId,
+        reference_type: referenceType,
+        idempotency_key: idempotencyKey || null,
+        amount_minor_units: walletMinorUnits,
+        exchange_rate: exchangeRate,
+        description: reason,
+        status: 'completed',
+        metadata,
+        created_at: new Date().toISOString()
+      };
+
+      // Execute side-effect callback if provided (e.g. invoice creation, sub creation)
+      if (businessEffect) {
+        businessResult = businessEffect(txRecord) as any;
+      }
+    });
+
+    // Execute atomic transaction (auto-rolls back on any error)
+    atomicTx();
+
+    try {
+      getSocketIO()?.to(`user:${userId}`).emit('wallet:updated', {
+        balance: newBalance,
+        currency: walletCurrency,
+        change: -finalChargedFloat,
+        type: 'module_activation',
+        referenceType,
+        txId
+      });
+    } catch {}
+
+    return {
+      success: true,
+      transactionId: txId,
+      previousBalance,
+      newBalance,
+      amountCharged: finalChargedFloat,
+      amountMinorUnits: walletMinorUnits,
+      currency: walletCurrency,
+      businessResult
+    };
+  }
+
+  /**
+   * Refund funds back to user wallet as an append-only counter-entry
+   * Supports either RefundOptions (minor units) or legacy parameters (float amount)
+   */
+  public refund(options: RefundOptions): { success: boolean; transactionId: string; newBalance: number };
+  public refund(userId: string, amount: number, reason: string, originalTxId?: string): { success: boolean; transactionId: string; newBalance: number };
+  public refund(
+    optionsOrUserId: RefundOptions | string,
+    maybeAmount?: number,
+    maybeReason?: string,
+    maybeOriginalTxId?: string
+  ): { success: boolean; transactionId: string; newBalance: number } {
+    let userId: string;
+    let amountMinorUnits: number;
+    let currency: string;
+    let reason: string;
+    let referenceType: string;
+    let referenceId: string;
+    let idempotencyKey: string | undefined = undefined;
+    let metadata: any = undefined;
+
+    if (typeof optionsOrUserId === 'object') {
+      userId = optionsOrUserId.userId;
+      amountMinorUnits = optionsOrUserId.amountMinorUnits;
+      currency = optionsOrUserId.currency;
+      reason = optionsOrUserId.reason;
+      referenceType = optionsOrUserId.referenceType;
+      referenceId = optionsOrUserId.referenceId;
+      idempotencyKey = optionsOrUserId.idempotencyKey;
+      metadata = optionsOrUserId.metadata;
+    } else {
+      userId = optionsOrUserId;
+      const current = this.getOrCreateWallet(userId);
+      currency = current.currency || 'INR';
+      const humanAmt = maybeAmount || 0;
+      amountMinorUnits = CurrencyMinorUnits.toMinorUnits(humanAmt, currency);
+      reason = maybeReason || 'Manual Refund';
+      referenceType = 'legacy_refund';
+      referenceId = maybeOriginalTxId || 'legacy';
+    }
+
+    if (!Number.isInteger(amountMinorUnits) || amountMinorUnits <= 0) {
+      return { success: true, transactionId: 'zero_refund', newBalance: this.getOrCreateWallet(userId).balance };
+    }
+
+    const db = getDatabase();
+    const current = this.getOrCreateWallet(userId);
+    const walletCurrency = current.currency || 'USD';
+
+    let exchangeRate = 1.0;
+    let creditFloat = CurrencyMinorUnits.fromMinorUnits(amountMinorUnits, currency);
+    if (currency.toUpperCase() !== walletCurrency.toUpperCase()) {
+      exchangeRate = this.convertAmount(1.0, currency, walletCurrency);
+      creditFloat = this.convertAmount(creditFloat, currency, walletCurrency);
+    }
+
+    const txId = crypto.randomUUID();
+    let newBalance = 0;
+
+    const refundTx = db.transaction(() => {
+      const lockedRow = db.prepare('SELECT balance, base_balance, base_currency FROM user_wallets WHERE user_id = ?').get(userId) as any;
+      const prev = Number(lockedRow.balance);
+      newBalance = Number((prev + creditFloat).toFixed(CurrencyMinorUnits.getDecimals(walletCurrency)));
+
+      const baseCurrency = lockedRow.base_currency || 'INR';
+      const creditInBase = this.convertAmount(creditFloat, walletCurrency, baseCurrency);
+      const newBase = Number(((lockedRow.base_balance || prev) + creditInBase).toFixed(4));
+
+      db.prepare(`
+        UPDATE user_wallets
+        SET balance = ?, base_balance = ?, updated_at = datetime('now')
+        WHERE user_id = ?
+      `).run(newBalance, newBase, userId);
+
+      db.prepare(`
+        INSERT INTO wallet_transactions (
+          id, user_id, transaction_type, amount, currency,
+          previous_balance, new_balance, reference_id, reference_type,
+          idempotency_key, amount_minor_units, exchange_rate,
+          description, status, metadata, created_at
+        ) VALUES (
+          ?, ?, 'usage_refund', ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, 'completed', ?, datetime('now')
+        )
+      `).run(
+        txId,
+        userId,
+        creditFloat,
+        walletCurrency,
+        prev,
+        newBalance,
+        referenceId,
+        referenceType,
+        idempotencyKey || null,
+        CurrencyMinorUnits.toMinorUnits(creditFloat, walletCurrency),
+        exchangeRate,
+        reason,
+        metadata ? JSON.stringify(metadata) : null
+      );
+    });
+
+    refundTx();
+
+    try {
+      getSocketIO()?.to(`user:${userId}`).emit('wallet:updated', {
+        balance: newBalance,
+        currency: walletCurrency,
+        change: creditFloat,
+        type: 'usage_refund',
+        txId
+      });
+    } catch {}
+
+    return { success: true, transactionId: txId, newBalance };
+  }
+
+  /**
+   * Reconcile sum of immutable ledger entries against user wallet stored balance
+   */
+  public auditLedgerBalance(userId: string): {
+    matches: boolean;
+    walletBalance: number;
+    ledgerBalance: number;
+    delta: number;
+    creditsSum: number;
+    debitsSum: number;
+  } {
+    const db = getDatabase();
+    const wallet = this.getOrCreateWallet(userId);
+
+    const rows = db.prepare(`
+      SELECT transaction_type, amount
+      FROM wallet_transactions
+      WHERE user_id = ? AND status = 'completed'
+    `).all(userId) as Array<{ transaction_type: string; amount: number }>;
+
+    let creditsSum = 0;
+    let debitsSum = 0;
+
+    for (const r of rows) {
+      const amt = Number(r.amount);
+      if (['wallet_topup', 'promotional_credit', 'usage_refund', 'admin_adjustment', 'reservation_release'].includes(r.transaction_type)) {
+        creditsSum += amt;
+      } else if (['module_activation', 'extension_activation', 'usage_deduction', 'renewal_charge', 'usage_reservation'].includes(r.transaction_type)) {
+        debitsSum += amt;
+      }
+    }
+
+    const ledgerBalance = Number((creditsSum - debitsSum).toFixed(2));
+    const walletBalance = Number(wallet.balance.toFixed(2));
+    const delta = Number(Math.abs(walletBalance - ledgerBalance).toFixed(2));
+
+    return {
+      matches: delta <= 0.05, // Tolerates minor floating display adjustments from currency conversions
+      walletBalance,
+      ledgerBalance,
+      delta,
+      creditsSum: Number(creditsSum.toFixed(2)),
+      debitsSum: Number(debitsSum.toFixed(2))
+    };
+  }
+
+  /**
    * Atomically reserve funds in user wallet (e.g. before an outbound API purchase call)
    */
   public reserveFunds(
@@ -512,55 +950,6 @@ export class WalletService {
     } catch {}
 
     return { success: true, availableBalance: newAvailable };
-  }
-
-  /**
-   * Refund a previous deduction
-   */
-  public refund(
-    userId: string,
-    amount: number,
-    reason: string,
-    originalTxId?: string
-  ): { success: boolean; newBalance: number } {
-    if (amount <= 0) return { success: true, newBalance: this.getOrCreateWallet(userId).balance };
-
-    const db = getDatabase();
-    const current = this.getOrCreateWallet(userId);
-    const baseCurrency = current.base_currency || 'INR';
-    const refundInBase = this.convertAmount(amount, current.currency, baseCurrency);
-
-    const newBaseBalance = Number(((current.base_balance || current.balance) + refundInBase).toFixed(4));
-    const newBalance = Number((current.balance + amount).toFixed(2));
-    const txId = crypto.randomUUID();
-
-    db.prepare(`
-      UPDATE user_wallets
-      SET balance = ?, base_balance = ?, updated_at = datetime('now')
-      WHERE user_id = ?
-    `).run(newBalance, newBaseBalance, userId);
-
-    db.prepare(`
-      INSERT INTO wallet_transactions (
-        id, user_id, transaction_type, amount, currency,
-        previous_balance, new_balance, reference_id, description, status
-      ) VALUES (
-        ?, ?, 'usage_refund', ?, ?,
-        ?, ?, ?, ?, 'completed'
-      )
-    `).run(txId, userId, amount, current.currency, current.balance, newBalance, originalTxId || null, `Refund: ${reason}`);
-
-    try {
-      getSocketIO()?.to(`user:${userId}`).emit('wallet:updated', {
-        balance: newBalance,
-        currency: current.currency,
-        change: amount,
-        type: 'usage_refund',
-        txId
-      });
-    } catch {}
-
-    return { success: true, newBalance };
   }
 
   /**

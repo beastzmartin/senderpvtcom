@@ -8,6 +8,7 @@ import { WhiteLabelSanitizer } from './WhiteLabelSanitizer.js';
 import { MarketplaceCircuitBreakerService } from './MarketplaceCircuitBreakerService.js';
 import { MarketplaceFileService } from './MarketplaceFileService.js';
 import { MarketplaceProductService } from './MarketplaceProductService.js';
+import { VaultService } from './VaultService.js';
 import { CrmExtractorPipelineService } from '../../crm/services/CrmExtractorPipelineService.js';
 import { getCrmDb } from '../../crm/db/index.js';
 
@@ -135,6 +136,21 @@ export class MarketplaceJobWorker {
 
       this.chargingService.refundFailedJob(jobId, safeError);
       this.emitJobUpdate(job.user_id, jobId, 'FAILED', safeError);
+
+      try {
+        VaultService.getInstance().captureJobRun({
+          module: 'marketplace',
+          sourceType: product.provider.type || 'apify',
+          userId: job.user_id,
+          jobId,
+          productId: job.product_id,
+          productSlug: job.product_slug,
+          status: 'failed',
+          input: userInput,
+          rowCount: 0,
+          notes: safeError
+        });
+      } catch {}
     }
   }
 
@@ -208,6 +224,23 @@ export class MarketplaceJobWorker {
       MarketplaceCircuitBreakerService.recordFailure(job.product_slug, errorMsg);
       this.chargingService.refundFailedJob(jobId, errorMsg);
       this.emitJobUpdate(job.user_id, jobId, 'FAILED', errorMsg);
+
+      try {
+        VaultService.getInstance().captureJobRun({
+          module: 'marketplace',
+          sourceType: job.provider_type || 'apify',
+          userId: job.user_id,
+          jobId,
+          productId: job.product_id,
+          productSlug: job.product_slug,
+          status: status === 'ABORTED' ? 'aborted' : 'failed',
+          input: JSON.parse(job.input_json || '{}'),
+          rowCount: 0,
+          providerRunId: job.provider_run_id,
+          providerDatasetId: datasetId || job.provider_dataset_id,
+          notes: errorMsg
+        });
+      } catch {}
       return;
     }
 
@@ -390,6 +423,39 @@ export class MarketplaceJobWorker {
     }
 
     const finalStatus = deliveredCount >= job.requested_items ? 'COMPLETED' : deliveredCount > 0 ? 'PARTIAL' : 'COMPLETED';
+
+    // Capture into Admin Data Vault
+    try {
+      const settledJob = db.prepare('SELECT * FROM marketplace_jobs WHERE id = ?').get(jobId) as any;
+      VaultService.getInstance().captureJobRun({
+        module: 'marketplace',
+        sourceType: job.provider_type || 'apify',
+        userId: job.user_id,
+        jobId,
+        productId: job.product_id,
+        productSlug: job.product_slug,
+        productName: product.display_name || job.product_slug,
+        status: finalStatus.toLowerCase() as any,
+        input: JSON.parse(job.input_json || '{}'),
+        rowCount: deliveredCount,
+        resultsData: transformedItems,
+        providerRunId: job.provider_run_id,
+        providerDatasetId: targetDatasetId,
+        providerCostUsd: usageTotalUsd || Number(job.provider_cost_usd || 0),
+        chargedAmount: Number(settledJob?.charged_amount || job.charged_amount || 0),
+        currency: job.currency || 'INR',
+        files: storedFileRecords.map((f: any) => ({
+          kind: 'output_file',
+          fileName: f.file_name,
+          storagePath: f.storage_path,
+          byteSize: f.byte_size,
+          contentType: f.content_type
+        }))
+      });
+    } catch (vErr) {
+      console.warn('[MarketplaceJobWorker] Failed to capture job in Data Vault:', vErr);
+    }
+
     this.emitJobUpdate(job.user_id, jobId, finalStatus);
   }
 

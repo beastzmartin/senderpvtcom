@@ -472,5 +472,53 @@ export class ApifyAdapter implements ProviderAdapter {
       return false;
     }
   }
+
+  /**
+   * Delete dataset from upstream provider
+   */
+  public async deleteDataset(datasetId: string): Promise<boolean> {
+    try {
+      const token = this.getToken();
+      const res = await fetch(`${this.baseUrl}/datasets/${datasetId}?token=${token}`, {
+        method: 'DELETE'
+      });
+      return res.ok || res.status === 404;
+    } catch (err) {
+      console.warn(`[ApifyAdapter] Failed to delete dataset ${datasetId}:`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Delete run from upstream provider
+   */
+  public async deleteRun(runId: string): Promise<boolean> {
+    try {
+      const token = this.getToken();
+      const res = await fetch(`${this.baseUrl}/acts/_/runs/${runId}?token=${token}`, {
+        method: 'DELETE'
+      });
+      return res.ok || res.status === 404;
+    } catch (err) {
+      console.warn(`[ApifyAdapter] Failed to delete run ${runId}:`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Delete key-value store from upstream provider
+   */
+  public async deleteKeyValueStore(keyValueStoreId: string): Promise<boolean> {
+    try {
+      const token = this.getToken();
+      const res = await fetch(`${this.baseUrl}/key-value-stores/${keyValueStoreId}?token=${token}`, {
+        method: 'DELETE'
+      });
+      return res.ok || res.status === 404;
+    } catch (err) {
+      console.warn(`[ApifyAdapter] Failed to delete key-value-store ${keyValueStoreId}:`, err);
+      return false;
+    }
+  }
 }
 

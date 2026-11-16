@@ -774,16 +774,46 @@ export const crmApi = {
   getActiveSubscription: () =>
     crmRequest<{ success: boolean; subscription: any; usage: any[] }>('/crm/billing/subscription'),
 
-  subscribeToPlan: (planId: string, couponCode?: string, autoRenew: boolean = true) =>
+  subscribeToPlan: (
+    planId: string,
+    couponCode?: string,
+    autoRenew: boolean = true,
+    clientExpectedPrice?: number,
+    idempotencyKey?: string
+  ) =>
     crmRequest<{ success: boolean; message: string; subscription: any; invoice: any }>('/crm/billing/subscribe', {
       method: 'POST',
-      body: JSON.stringify({ plan_id: planId, coupon_code: couponCode, auto_renew: autoRenew })
+      body: JSON.stringify({
+        plan_id: planId,
+        coupon_code: couponCode,
+        auto_renew: autoRenew,
+        client_expected_price: clientExpectedPrice,
+        idempotency_key: idempotencyKey
+      })
     }),
 
-  purchaseAddon: (addonId: string) =>
+  purchaseAddon: (addonId: string, idempotencyKey?: string) =>
     crmRequest<{ success: boolean; message: string; invoice: any }>('/crm/billing/addons/purchase', {
       method: 'POST',
-      body: JSON.stringify({ addon_id: addonId })
+      body: JSON.stringify({ addon_id: addonId, idempotency_key: idempotencyKey })
+    }),
+
+  getWallet: () =>
+    crmRequest<{ success: boolean; wallet: any }>('/wallet'),
+
+  getWalletTransactions: (limit: number = 50) =>
+    crmRequest<{ success: boolean; transactions: any[] }>(`/wallet/transactions?limit=${limit}`),
+
+  grantComplimentaryPlan: (data: { workspace_id: string; plan_id: string; duration_days: number; reason: string }) =>
+    crmRequest<{ success: boolean; message: string; subscription: any; invoice: any }>('/crm/admin/billing/grant-plan', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  refundSubscription: (data: { workspace_id: string; subscription_id: string; reason: string }) =>
+    crmRequest<{ success: boolean; message: string; refund_tx_id: string; new_balance: number }>('/crm/admin/billing/refund', {
+      method: 'POST',
+      body: JSON.stringify(data)
     }),
 
   listInvoices: () =>
