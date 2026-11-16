@@ -9,6 +9,7 @@ import { DeviceManagerModal } from './components/devices/DeviceManagerModal';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { DedicatedSenderView } from './components/sender/DedicatedSenderView';
 import { BulkLidSenderView } from './components/sender/BulkLidSenderView';
+import { LidLinkGeneratorView } from './components/tools/LidLinkGeneratorView';
 import { GroupExtractorView } from './components/extractor/GroupExtractorView';
 import { GroupJoinerView } from './components/joiner/GroupJoinerView';
 import { ContactsView } from './components/contacts/ContactsView';
@@ -63,6 +64,12 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
 
   const handleLaunchBulkLid = (lids: string[]) => {
     setBulkLidsQueue(lids);
+    setActiveTab('bulk');
+  };
+
+  const handleLaunchBulkFromLidLinks = (lids: string[], template?: string) => {
+    setBulkLidsQueue(lids);
+    if (template) setSelectedTemplateText(template);
     setActiveTab('bulk');
   };
 
@@ -130,6 +137,13 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
             onNavigateToConversation={handleNavigateToConversation}
             onScheduleAudience={handleScheduleFromBulk}
             onNavigateToSubscription={() => setActiveTab('subscription')}
+          />
+        )}
+
+        {activeTab === 'lid-links' && (
+          <LidLinkGeneratorView
+            onNavigateToBulkLidSender={handleLaunchBulkFromLidLinks}
+            onNavigateToConversation={handleNavigateToConversation}
           />
         )}
 

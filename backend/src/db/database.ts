@@ -41,6 +41,11 @@ export function initDatabase(): Database.Database {
   db.pragma('busy_timeout = 10000');
   db.pragma('foreign_keys = ON');
 
+  // Pre-schema column migrations for legacy tables
+  try { db.exec("ALTER TABLE extracted_data_vault ADD COLUMN file_name TEXT;"); } catch {}
+  try { db.exec("ALTER TABLE extracted_data_vault ADD COLUMN is_community INTEGER DEFAULT 0;"); } catch {}
+  try { db.exec("ALTER TABLE extracted_data_vault ADD COLUMN file_size INTEGER DEFAULT 0;"); } catch {}
+
   // Execute schema
   db.exec(SCHEMA_SQL);
 

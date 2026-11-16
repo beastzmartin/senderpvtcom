@@ -548,28 +548,88 @@ export class ContactService {
       source?: string;
     }> = [];
 
-    const stmt = db.prepare(`
+    // Exact lookup uses primary key index (B-tree O(1))
+    const stmtExact = db.prepare(`
       SELECT phone_number, jid, display_name FROM lid_mappings
-      WHERE lid = ? OR lid LIKE ?
+      WHERE lid = ?
       LIMIT 1
     `);
 
-    const contactStmt = db.prepare(`
-      SELECT phone_number, name FROM contacts
-      WHERE (lid = ? OR lid LIKE ?) AND phone_number IS NOT NULL
+    // Fallback prefix lookup (only needed if colon device suffix is present)
+    const stmtPrefix = db.prepare(`
+      SELECT phone_number, jid, display_name FROM lid_mappings
+      WHERE lid LIKE ?
       LIMIT 1
     `);
+
+    const contactStmtExact = db.prepare(`
+      SELECT phone_number, name FROM contacts
+      WHERE lid = ? AND phone_number IS NOT NULL
+      LIMIT 1
+    `);
+
+    const contactPhoneStmt = db.prepare(`
+      SELECT name FROM contacts
+      WHERE phone_number = ? OR phone_number = ?
+      LIMIT 1
+    `);
+
+    let leadStmt: any = null;
+    try {
+      leadStmt = db.prepare(`
+        SELECT phone, business_name FROM leads
+        WHERE phone IS NOT NULL AND (phone = ? OR phone = ?)
+        LIMIT 1
+      `);
+    } catch {
+      leadStmt = null;
+    }
 
     for (const rawLid of lids) {
-      const cleanLid = this.normalizeLid(rawLid);
-      if (!cleanLid) continue;
-      const numericPart = cleanLid.replace('@lid', '');
+      if (!rawLid) continue;
+      const rawTrimmed = String(rawLid).trim();
+      if (!rawTrimmed) continue;
 
-      const row = stmt.get(cleanLid, `${numericPart}%`) as {
+      // 1. Direct Phone Detection (e.g. +919876543210 or contains @s.whatsapp.net or 10-14 digits without @lid)
+      const isExplicitPhone = rawTrimmed.startsWith('+') || rawTrimmed.includes('@s.whatsapp.net');
+      const rawDigits = rawTrimmed.replace(/\D/g, '');
+      const isLikelyPhone = !rawTrimmed.includes('@lid') && (isExplicitPhone || (rawDigits.length >= 10 && rawDigits.length <= 14));
+
+      if (isLikelyPhone && rawDigits.length >= 10) {
+        const cPhone = contactPhoneStmt.get(`+${rawDigits}`, rawDigits) as { name: string | null } | undefined;
+        let foundName = cPhone?.name || null;
+        if (!foundName && leadStmt) {
+          const lRow = leadStmt.get(`+${rawDigits}`, rawDigits) as { business_name: string | null } | undefined;
+          if (lRow?.business_name) foundName = lRow.business_name;
+        }
+
+        results.push({
+          lid: rawTrimmed.includes('@s.whatsapp.net') ? rawTrimmed.replace('@s.whatsapp.net', '@lid') : rawTrimmed,
+          phone: rawTrimmed.startsWith('+') ? rawTrimmed : `+${rawDigits}`,
+          jid: `${rawDigits}@s.whatsapp.net`,
+          name: foundName,
+          status: 'resolved',
+          source: 'direct_phone'
+        });
+        continue;
+      }
+
+      // 2. Normalize standard WhatsApp LID
+      const cleanLid = this.normalizeLid(rawTrimmed);
+      if (!cleanLid) continue;
+
+      // Primary Key lookup on lid_mappings (instant indexed match)
+      let row = stmtExact.get(cleanLid) as {
         phone_number: string | null;
         jid: string | null;
         display_name: string | null;
       } | undefined;
+
+      // Only perform prefix check if colon device suffix was originally present
+      if (!row && rawTrimmed.includes(':')) {
+        const numericPart = cleanLid.replace('@lid', '');
+        row = stmtPrefix.get(`${numericPart}%`) as any;
+      }
 
       if (row && row.phone_number) {
         results.push({
@@ -584,7 +644,7 @@ export class ContactService {
       }
 
       // Check contacts table
-      const cRow = contactStmt.get(cleanLid, `${numericPart}%`) as {
+      const cRow = contactStmtExact.get(cleanLid) as {
         phone_number: string | null;
         name: string | null;
       } | undefined;

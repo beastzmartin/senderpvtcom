@@ -41,13 +41,15 @@ import {
   Boxes,
   Wallet,
   Globe,
-  Database
+  Database,
+  Link2
 } from 'lucide-react';
 
 export type AppTab =
   | 'dashboard'
   | 'sender'
   | 'bulk'
+  | 'lid-links'
   | 'scheduler'
   | 'templates'
   | 'leads'
@@ -114,6 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       items: [
         { id: 'sender' as AppTab, label: 'Direct Sender', icon: Send },
         { id: 'bulk' as AppTab, label: 'Bulk LID Sender', icon: Hash, badge: 'Anti-Ban' },
+        { id: 'lid-links' as AppTab, label: 'LID Link Generator', icon: Link2, badge: 'New' },
         { id: 'scheduler' as AppTab, label: 'Broadcast Scheduler', icon: Calendar, badge: 'Drip' },
         { id: 'templates' as AppTab, label: 'Template Library', icon: FileText }
       ]
