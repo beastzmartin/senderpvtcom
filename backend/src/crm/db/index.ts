@@ -1,6 +1,5 @@
 import { CrmStorageAdapter } from './CrmStorageAdapter.js';
 import { CrmSqliteAdapter } from './CrmSqliteAdapter.js';
-import { CrmPgAdapter } from './CrmPgAdapter.js';
 
 let adapterInstance: CrmStorageAdapter | null = null;
 
@@ -14,6 +13,7 @@ export async function initCrmDatabase(): Promise<CrmStorageAdapter> {
   if (databaseUrl) {
     try {
       console.log('🐘 Initializing PostgreSQL CRM Connection Pool...');
+      const { CrmPgAdapter } = await import('./CrmPgAdapter.js');
       const pgAdapter = new CrmPgAdapter(databaseUrl);
       await pgAdapter.initialize();
       adapterInstance = pgAdapter;
