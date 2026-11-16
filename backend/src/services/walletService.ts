@@ -62,10 +62,10 @@ export class WalletService {
       return amount;
     }
     const db = getDatabase();
-    const fromRow = db.prepare('SELECT rate_from_5sim_base FROM currency_rates WHERE UPPER(code) = ?').get(fromCurrency.toUpperCase()) as any;
-    const toRow = db.prepare('SELECT rate_from_5sim_base FROM currency_rates WHERE UPPER(code) = ?').get(toCurrency.toUpperCase()) as any;
-    const fromRate = Number(fromRow?.rate_from_5sim_base || 1.0);
-    const toRate = Number(toRow?.rate_from_5sim_base || 1.0);
+    const fromRow = db.prepare('SELECT rate_from_usd, rate_from_5sim_base FROM currency_rates WHERE UPPER(code) = ?').get(fromCurrency.toUpperCase()) as any;
+    const toRow = db.prepare('SELECT rate_from_usd, rate_from_5sim_base FROM currency_rates WHERE UPPER(code) = ?').get(toCurrency.toUpperCase()) as any;
+    const fromRate = Number(fromRow?.rate_from_usd ?? fromRow?.rate_from_5sim_base ?? 1.0);
+    const toRate = Number(toRow?.rate_from_usd ?? toRow?.rate_from_5sim_base ?? 1.0);
     const inBase = amount / fromRate;
     return Number((inBase * toRate).toFixed(4));
   }

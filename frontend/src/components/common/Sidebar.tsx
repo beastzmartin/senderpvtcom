@@ -51,6 +51,7 @@ export type AppTab =
   | 'scheduler'
   | 'templates'
   | 'leads'
+  | 'crm'
   | 'extractors'
   | 'marketplace'
   | 'extensions'
@@ -104,6 +105,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       items: [
         { id: 'marketplace' as AppTab, label: 'Marketplace', icon: ShoppingBag, badge: 'Studio' },
         { id: 'extractors' as AppTab, label: 'Google Maps Extractor', icon: MapPin, badge: 'Live Scraper' },
+        { id: 'crm' as AppTab, label: 'Enterprise CRM', icon: Database, badge: '100M+ Scale' },
         { id: 'leads' as AppTab, label: 'Extracted Leads CRM', icon: Building2, badge: 'Prospects' }
       ]
     },

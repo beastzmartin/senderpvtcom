@@ -36,8 +36,9 @@ export function initDatabase(): Database.Database {
   fs.mkdirSync(config.dataDir, { recursive: true });
   fs.mkdirSync(config.sessionsDir, { recursive: true });
 
-  const db = new Database(config.dbPath);
+  const db = new Database(config.dbPath, { timeout: 10000 });
   db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 10000');
   db.pragma('foreign_keys = ON');
 
   // Execute schema

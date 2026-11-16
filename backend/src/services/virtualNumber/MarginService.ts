@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { getDatabase } from '../../db/database.js';
 import { CurrencyService } from './CurrencyService.js';
 
-export type MarginScope = 'global' | 'country' | 'product' | 'country_product' | 'country_product_operator';
+export type MarginScope = 'global' | 'provider' | 'country' | 'product' | 'country_product' | 'country_product_operator';
 export type MarginType = 'percent' | 'fixed' | 'percent_plus_fixed';
 export type RoundingMode = 'none' | '2_decimals' | 'nearest_1' | '99_cents';
 
@@ -15,6 +15,10 @@ export interface MarginRule {
   type: MarginType;
   percent_value: number;
   fixed_value: number;
+  min_price: number;
+  max_price: number;
+  custom_override_price: number;
+  description?: string | null;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -22,12 +26,17 @@ export interface MarginRule {
 
 export interface PricingSettings {
   id: string;
+  provider_currency: string;
+  provider_currency_to_usd_rate: number;
   fx_rate: number;
   min_margin: number;
   min_sell_price: number;
   rounding_mode: RoundingMode;
   low_balance_threshold: number;
   display_currency: string;
+  ban_refund_policy: 'auto' | 'manual';
+  auto_refund_on_ban: number;
+  sync_interval_seconds: number;
   updated_at: string;
 }
 
@@ -39,24 +48,54 @@ export interface HiddenItem {
 }
 
 export interface CalculatedPrice {
-  originalCostInRub: number;
-  costPrice: number;
-  sellPrice: number;
-  profit: number;
+  rawProviderCost: number;
+  providerCostUsd: number;
+  finalPriceUsd: number;
+  marginUsd: number;
+  sellPrice: number; // In user's active currency
+  costPrice: number; // In user's active currency
+  profit: number; // In user's active currency
   displayCurrency: string;
+  displaySymbol: string;
+  exchangeRate: number; // USD to target currency rate
   appliedRule: MarginRule | null;
   matchedScope: MarginScope | 'fallback';
   formula: string;
 }
 
+export interface MarginAuditLogRecord {
+  id: string;
+  admin_user_id: string;
+  action: string;
+  entity_type: string;
+  entity_id?: string | null;
+  before_state?: any;
+  after_state?: any;
+  undone: boolean;
+  created_at: string;
+}
+
 export class MarginService {
   private static instance: MarginService | null = null;
+  private cacheInvalidationCallbacks: Array<() => void> = [];
 
   public static getInstance(): MarginService {
     if (!MarginService.instance) {
       MarginService.instance = new MarginService();
     }
     return MarginService.instance;
+  }
+
+  public registerCacheInvalidation(callback: () => void): void {
+    this.cacheInvalidationCallbacks.push(callback);
+  }
+
+  private invalidateCache(): void {
+    for (const cb of this.cacheInvalidationCallbacks) {
+      try {
+        cb();
+      } catch {}
+    }
   }
 
   /**
@@ -68,49 +107,93 @@ export class MarginService {
     if (!row) {
       return {
         id: 'default',
+        provider_currency: 'USD',
+        provider_currency_to_usd_rate: 1.0,
         fx_rate: 1.0,
         min_margin: 0.0,
         min_sell_price: 0.0,
         rounding_mode: '2_decimals',
         low_balance_threshold: 50.0,
-        display_currency: 'INR',
+        display_currency: 'USD',
+        ban_refund_policy: 'auto',
+        auto_refund_on_ban: 1,
+        sync_interval_seconds: 60,
         updated_at: new Date().toISOString()
       };
     }
 
     return {
       id: row.id,
+      provider_currency: row.provider_currency || 'USD',
+      provider_currency_to_usd_rate: Number(row.provider_currency_to_usd_rate || 1.0),
       fx_rate: Number(row.fx_rate || 1.0),
       min_margin: Number(row.min_margin || 0.0),
       min_sell_price: Number(row.min_sell_price || 0.0),
       rounding_mode: (row.rounding_mode || '2_decimals') as RoundingMode,
       low_balance_threshold: Number(row.low_balance_threshold || 50.0),
-      display_currency: row.display_currency || 'INR',
+      display_currency: row.display_currency || 'USD',
+      ban_refund_policy: (row.ban_refund_policy || 'auto') as 'auto' | 'manual',
+      auto_refund_on_ban: row.auto_refund_on_ban !== undefined ? Number(row.auto_refund_on_ban) : 1,
+      sync_interval_seconds: Number(row.sync_interval_seconds || 60),
       updated_at: row.updated_at || new Date().toISOString()
     };
   }
 
   /**
-   * Updates global pricing settings
+   * Updates global pricing settings (Admin)
    */
-  public updatePricingSettings(data: Partial<Omit<PricingSettings, 'id' | 'updated_at'>>): PricingSettings {
+  public updatePricingSettings(
+    data: Partial<Omit<PricingSettings, 'id' | 'updated_at'>>,
+    adminUserId: string = 'system'
+  ): PricingSettings {
     const db = getDatabase();
     const current = this.getPricingSettings();
 
+    const provider_currency = data.provider_currency || current.provider_currency;
+    const provider_currency_to_usd_rate = data.provider_currency_to_usd_rate !== undefined
+      ? Number(data.provider_currency_to_usd_rate)
+      : current.provider_currency_to_usd_rate;
     const fx_rate = data.fx_rate !== undefined ? Number(data.fx_rate) : current.fx_rate;
     const min_margin = data.min_margin !== undefined ? Number(data.min_margin) : current.min_margin;
     const min_sell_price = data.min_sell_price !== undefined ? Number(data.min_sell_price) : current.min_sell_price;
     const rounding_mode = data.rounding_mode || current.rounding_mode;
-    const low_balance_threshold = data.low_balance_threshold !== undefined ? Number(data.low_balance_threshold) : current.low_balance_threshold;
+    const low_balance_threshold = data.low_balance_threshold !== undefined
+      ? Number(data.low_balance_threshold)
+      : current.low_balance_threshold;
     const display_currency = data.display_currency || current.display_currency;
+    const ban_refund_policy = data.ban_refund_policy || current.ban_refund_policy;
+    const auto_refund_on_ban = data.auto_refund_on_ban !== undefined
+      ? (data.auto_refund_on_ban ? 1 : 0)
+      : current.auto_refund_on_ban;
+    const sync_interval_seconds = data.sync_interval_seconds !== undefined
+      ? Number(data.sync_interval_seconds)
+      : current.sync_interval_seconds;
 
     db.prepare(`
       UPDATE pricing_settings
-      SET fx_rate = ?, min_margin = ?, min_sell_price = ?, rounding_mode = ?, low_balance_threshold = ?, display_currency = ?, updated_at = datetime('now')
+      SET provider_currency = ?, provider_currency_to_usd_rate = ?, fx_rate = ?,
+          min_margin = ?, min_sell_price = ?, rounding_mode = ?, low_balance_threshold = ?,
+          display_currency = ?, ban_refund_policy = ?, auto_refund_on_ban = ?,
+          sync_interval_seconds = ?, updated_at = datetime('now')
       WHERE id = 'default'
-    `).run(fx_rate, min_margin, min_sell_price, rounding_mode, low_balance_threshold, display_currency);
+    `).run(
+      provider_currency,
+      provider_currency_to_usd_rate,
+      fx_rate,
+      min_margin,
+      min_sell_price,
+      rounding_mode,
+      low_balance_threshold,
+      display_currency,
+      ban_refund_policy,
+      auto_refund_on_ban,
+      sync_interval_seconds
+    );
 
-    return this.getPricingSettings();
+    const updated = this.getPricingSettings();
+    this.recordAuditLog(adminUserId, 'update_settings', 'pricing_settings', 'default', current, updated);
+    this.invalidateCache();
+    return updated;
   }
 
   /**
@@ -133,9 +216,10 @@ export class MarginService {
     query += ' ORDER BY CASE scope ' +
       "WHEN 'country_product_operator' THEN 1 " +
       "WHEN 'country_product' THEN 2 " +
-      "WHEN 'product' THEN 3 " +
-      "WHEN 'country' THEN 4 " +
-      "WHEN 'global' THEN 5 ELSE 6 END, created_at DESC";
+      "WHEN 'country' THEN 3 " +
+      "WHEN 'product' THEN 4 " +
+      "WHEN 'provider' THEN 5 " +
+      "WHEN 'global' THEN 6 ELSE 7 END, created_at DESC";
 
     const rows = db.prepare(query).all(...params) as any[];
     return rows.map((r) => this.mapMarginRule(r));
@@ -153,16 +237,23 @@ export class MarginService {
   /**
    * Create a new margin rule
    */
-  public createMarginRule(data: {
-    scope: MarginScope;
-    country?: string | null;
-    product?: string | null;
-    operator?: string | null;
-    type: MarginType;
-    percent_value?: number;
-    fixed_value?: number;
-    enabled?: boolean;
-  }): MarginRule {
+  public createMarginRule(
+    data: {
+      scope: MarginScope;
+      country?: string | null;
+      product?: string | null;
+      operator?: string | null;
+      type: MarginType;
+      percent_value?: number;
+      fixed_value?: number;
+      min_price?: number;
+      max_price?: number;
+      custom_override_price?: number;
+      description?: string | null;
+      enabled?: boolean;
+    },
+    adminUserId: string = 'system'
+  ): MarginRule {
     const db = getDatabase();
     const id = crypto.randomUUID();
     const country = data.country ? data.country.trim().toLowerCase() : null;
@@ -170,14 +261,37 @@ export class MarginService {
     const operator = data.operator ? data.operator.trim().toLowerCase() : null;
     const percent_value = Number(data.percent_value || 0.0);
     const fixed_value = Number(data.fixed_value || 0.0);
+    const min_price = Number(data.min_price || 0.0);
+    const max_price = Number(data.max_price || 0.0);
+    const custom_override_price = Number(data.custom_override_price || 0.0);
+    const description = data.description || null;
     const enabled = data.enabled !== false ? 1 : 0;
 
     db.prepare(`
-      INSERT INTO margin_rules (id, scope, country, product, operator, type, percent_value, fixed_value, enabled)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.scope, country, product, operator, data.type, percent_value, fixed_value, enabled);
+      INSERT INTO margin_rules (
+        id, scope, country, product, operator, type, percent_value, fixed_value,
+        min_price, max_price, custom_override_price, description, enabled, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      id,
+      data.scope,
+      country,
+      product,
+      operator,
+      data.type,
+      percent_value,
+      fixed_value,
+      min_price,
+      max_price,
+      custom_override_price,
+      description,
+      enabled
+    );
 
-    return this.getMarginRuleById(id)!;
+    const created = this.getMarginRuleById(id)!;
+    this.recordAuditLog(adminUserId, 'create_rule', 'margin_rules', id, null, created);
+    this.invalidateCache();
+    return created;
   }
 
   /**
@@ -193,8 +307,13 @@ export class MarginService {
       type?: MarginType;
       percent_value?: number;
       fixed_value?: number;
+      min_price?: number;
+      max_price?: number;
+      custom_override_price?: number;
+      description?: string | null;
       enabled?: boolean;
-    }
+    },
+    adminUserId: string = 'system'
   ): MarginRule {
     const current = this.getMarginRuleById(id);
     if (!current) {
@@ -209,34 +328,112 @@ export class MarginService {
     const type = data.type || current.type;
     const percent_value = data.percent_value !== undefined ? Number(data.percent_value) : current.percent_value;
     const fixed_value = data.fixed_value !== undefined ? Number(data.fixed_value) : current.fixed_value;
+    const min_price = data.min_price !== undefined ? Number(data.min_price) : current.min_price;
+    const max_price = data.max_price !== undefined ? Number(data.max_price) : current.max_price;
+    const custom_override_price = data.custom_override_price !== undefined ? Number(data.custom_override_price) : current.custom_override_price;
+    const description = data.description !== undefined ? data.description : current.description;
     const enabled = data.enabled !== undefined ? (data.enabled ? 1 : 0) : (current.enabled ? 1 : 0);
 
     db.prepare(`
       UPDATE margin_rules
-      SET scope = ?, country = ?, product = ?, operator = ?, type = ?, percent_value = ?, fixed_value = ?, enabled = ?, updated_at = datetime('now')
+      SET scope = ?, country = ?, product = ?, operator = ?, type = ?, percent_value = ?, fixed_value = ?,
+          min_price = ?, max_price = ?, custom_override_price = ?, description = ?, enabled = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(scope, country, product, operator, type, percent_value, fixed_value, enabled, id);
+    `).run(
+      scope,
+      country,
+      product,
+      operator,
+      type,
+      percent_value,
+      fixed_value,
+      min_price,
+      max_price,
+      custom_override_price,
+      description,
+      enabled,
+      id
+    );
 
-    return this.getMarginRuleById(id)!;
+    const updated = this.getMarginRuleById(id)!;
+    this.recordAuditLog(adminUserId, 'update_rule', 'margin_rules', id, current, updated);
+    this.invalidateCache();
+    return updated;
   }
 
   /**
    * Delete a margin rule
    */
-  public deleteMarginRule(id: string): boolean {
+  public deleteMarginRule(id: string, adminUserId: string = 'system'): boolean {
+    const current = this.getMarginRuleById(id);
+    if (!current) return false;
+
     const db = getDatabase();
     const res = db.prepare('DELETE FROM margin_rules WHERE id = ?').run(id);
-    return res.changes > 0;
+    if (res.changes > 0) {
+      this.recordAuditLog(adminUserId, 'delete_rule', 'margin_rules', id, current, null);
+      this.invalidateCache();
+      return true;
+    }
+    return false;
   }
 
   /**
-   * Central Resolution Algorithm: Resolves which margin rule applies based on 5 strict priority levels.
+   * Bulk update rules (enable/disable, mass percentage update)
+   */
+  public bulkUpdateRules(
+    ruleIds: string[],
+    updates: {
+      enabled?: boolean;
+      percent_delta?: number;
+      fixed_delta?: number;
+    },
+    adminUserId: string = 'system'
+  ): { updatedCount: number } {
+    if (!ruleIds || ruleIds.length === 0) return { updatedCount: 0 };
+
+    const db = getDatabase();
+    const beforeRules = ruleIds.map((id) => this.getMarginRuleById(id)).filter(Boolean);
+
+    const tx = db.transaction(() => {
+      for (const id of ruleIds) {
+        if (updates.enabled !== undefined) {
+          db.prepare('UPDATE margin_rules SET enabled = ?, updated_at = datetime(\'now\') WHERE id = ?').run(
+            updates.enabled ? 1 : 0,
+            id
+          );
+        }
+        if (updates.percent_delta !== undefined && updates.percent_delta !== 0) {
+          db.prepare('UPDATE margin_rules SET percent_value = MAX(0, percent_value + ?), updated_at = datetime(\'now\') WHERE id = ?').run(
+            Number(updates.percent_delta),
+            id
+          );
+        }
+        if (updates.fixed_delta !== undefined && updates.fixed_delta !== 0) {
+          db.prepare('UPDATE margin_rules SET fixed_value = MAX(0, fixed_value + ?), updated_at = datetime(\'now\') WHERE id = ?').run(
+            Number(updates.fixed_delta),
+            id
+          );
+        }
+      }
+    });
+
+    tx();
+    const afterRules = ruleIds.map((id) => this.getMarginRuleById(id)).filter(Boolean);
+    this.recordAuditLog(adminUserId, 'bulk_update', 'margin_rules', ruleIds.join(','), beforeRules, afterRules);
+    this.invalidateCache();
+    return { updatedCount: afterRules.length };
+  }
+
+  /**
+   * Central Precedence Resolution Algorithm (STEP 3 Specification)
    * Priority:
-   * 1. Country + Product + Operator specific rule
-   * 2. Country + Product rule
-   * 3. Product rule
-   * 4. Country rule
-   * 5. Global default margin
+   * 1. country_product_operator (Country + Product + Operator specific)
+   * 2. country_product (Country + Product override)
+   * 3. country (Country override)
+   * 4. product (Product override)
+   * 5. provider (Provider default e.g. 5sim)
+   * 6. global (Global default margin)
    */
   public resolveMarginRule(country?: string, product?: string, operator?: string): MarginRule | null {
     const db = getDatabase();
@@ -244,7 +441,7 @@ export class MarginService {
     const p = product ? product.trim().toLowerCase() : null;
     const o = operator && operator !== 'any' ? operator.trim().toLowerCase() : null;
 
-    // Level 1: Country + Product + Operator
+    // 1. Level 1: Country + Product + Operator
     if (c && p && o) {
       const row = db.prepare(`
         SELECT * FROM margin_rules
@@ -254,7 +451,7 @@ export class MarginService {
       if (row) return this.mapMarginRule(row);
     }
 
-    // Level 2: Country + Product
+    // 2. Level 2: Country + Product
     if (c && p) {
       const row = db.prepare(`
         SELECT * FROM margin_rules
@@ -264,17 +461,7 @@ export class MarginService {
       if (row) return this.mapMarginRule(row);
     }
 
-    // Level 3: Product
-    if (p) {
-      const row = db.prepare(`
-        SELECT * FROM margin_rules
-        WHERE scope = 'product' AND product = ? AND enabled = 1
-        LIMIT 1
-      `).get(p) as any;
-      if (row) return this.mapMarginRule(row);
-    }
-
-    // Level 4: Country
+    // 3. Level 3: Country
     if (c) {
       const row = db.prepare(`
         SELECT * FROM margin_rules
@@ -284,7 +471,25 @@ export class MarginService {
       if (row) return this.mapMarginRule(row);
     }
 
-    // Level 5: Global default margin
+    // 4. Level 4: Product
+    if (p) {
+      const row = db.prepare(`
+        SELECT * FROM margin_rules
+        WHERE scope = 'product' AND product = ? AND enabled = 1
+        LIMIT 1
+      `).get(p) as any;
+      if (row) return this.mapMarginRule(row);
+    }
+
+    // 5. Level 5: Provider Default
+    const providerRow = db.prepare(`
+      SELECT * FROM margin_rules
+      WHERE scope = 'provider' AND enabled = 1
+      LIMIT 1
+    `).get() as any;
+    if (providerRow) return this.mapMarginRule(providerRow);
+
+    // 6. Level 6: Global Default
     const globalRow = db.prepare(`
       SELECT * FROM margin_rules
       WHERE scope = 'global' AND enabled = 1
@@ -293,24 +498,6 @@ export class MarginService {
     if (globalRow) return this.mapMarginRule(globalRow);
 
     return null;
-  }
-
-  /**
-   * Applies the resolved rule margin onto base cost
-   */
-  public applyMargin(cost: number, rule: MarginRule | null): number {
-    if (!rule) return cost;
-
-    switch (rule.type) {
-      case 'percent':
-        return cost * (1 + rule.percent_value / 100);
-      case 'fixed':
-        return cost + rule.fixed_value;
-      case 'percent_plus_fixed':
-        return cost * (1 + rule.percent_value / 100) + rule.fixed_value;
-      default:
-        return cost;
-    }
   }
 
   /**
@@ -327,7 +514,6 @@ export class MarginService {
       case 'nearest_1':
         return Math.ceil(amount);
       case '99_cents': {
-        // e.g. 23.40 -> 23.99. If amount is exactly on .00, round to .99
         const integerPart = Math.floor(amount);
         const rounded = integerPart + 0.99;
         return rounded < amount ? Math.ceil(amount) + 0.99 : rounded;
@@ -337,91 +523,490 @@ export class MarginService {
     }
   }
 
+  public roundSellPrice(amount: number, mode: RoundingMode): number {
+    return this.applyRounding(amount, mode);
+  }
+
   /**
-   * Central Calculation Pipeline (Part A3 Specification):
-   * 1. cost = 5sim_cost * fx_rate
+   * Central Pricing Pipeline:
+   * 1. provider_cost_usd = raw_provider_cost * provider_currency_to_usd_rate
    * 2. rule = resolveMarginRule(country, product, operator)
-   * 3. sell = applyMargin(cost, rule)
-   * 4. sell = max(sell, cost + min_margin)
-   * 5. sell = max(sell, min_sell_price)
-   * 6. sell = applyRounding(sell)
+   * 3. margin = percentage / fixed / both
+   * 4. final_usd = round(max(min_price, provider_cost_usd + margin))
+   * 5. user_price = final_usd * target_currency_rate
    */
   public calculateSellPrice(
-    costIn5SimCurrency: number,
+    rawProviderCost: number,
     country?: string,
     product?: string,
     operator?: string,
     targetCurrency?: string
   ): CalculatedPrice {
     const settings = this.getPricingSettings();
-    const rawCost = Math.max(0, Number(costIn5SimCurrency || 0));
-
-    // Determine target currency and FX rate dynamically
     const currencyService = CurrencyService.getInstance();
-    let chosenCurrency = (targetCurrency || settings.display_currency || 'INR').toUpperCase();
-    let fxRate = settings.fx_rate || 1.0;
+    const rawCost = Math.max(0, Number(rawProviderCost || 0));
 
-    if (targetCurrency) {
-      const currRecord = currencyService.getCurrency(targetCurrency);
-      if (currRecord) {
-        chosenCurrency = currRecord.code;
-        fxRate = currRecord.rate_from_5sim_base;
-      }
-    }
+    // Step 0: Convert provider raw cost to sovereign USD base
+    const providerCostUsd = currencyService.convertProviderToUsd(rawCost);
 
-    // Scale min_margin and min_sell_price relative to default base currency (INR)
-    const baseCurr = currencyService.getDefaultCurrency();
-    const baseRate = baseCurr?.rate_from_5sim_base || 1.0;
-    const ratio = targetCurrency ? (fxRate / baseRate) : 1.0;
-    const scaledMinMargin = settings.min_margin > 0 ? Number((settings.min_margin * ratio).toFixed(2)) : 0;
-    const scaledMinSellPrice = settings.min_sell_price > 0 ? Number((settings.min_sell_price * ratio).toFixed(2)) : 0;
-
-    // 1. Convert cost via exchange rate multiplier
-    const convertedCost = Number((rawCost * fxRate).toFixed(4));
-
-    // 2. Resolve matching rule by strict priority
+    // Step 3: Resolve matching rule by strict priority
     const rule = this.resolveMarginRule(country, product, operator);
     const matchedScope: MarginScope | 'fallback' = rule ? rule.scope : 'fallback';
 
-    // 3. Apply margin formula
-    let sell = this.applyMargin(convertedCost, rule);
-    let formulaDesc = rule
-      ? rule.type === 'percent'
-        ? `cost * (1 + ${rule.percent_value}%)`
-        : rule.type === 'fixed'
-        ? `cost + ${rule.fixed_value}`
-        : `cost * (1 + ${rule.percent_value}%) + ${rule.fixed_value}`
-      : 'cost (no rule applied)';
+    let finalUsd: number;
+    let marginUsd: number;
+    let formulaDesc = '';
 
-    // 4. Floor: minimum profit margin (only applied if configured > 0)
-    if (scaledMinMargin > 0 && sell < convertedCost + scaledMinMargin) {
-      sell = convertedCost + scaledMinMargin;
-      formulaDesc += ` → floor min_margin (+${scaledMinMargin})`;
+    if (rule?.custom_override_price && rule.custom_override_price > 0) {
+      finalUsd = rule.custom_override_price;
+      marginUsd = Number((finalUsd - providerCostUsd).toFixed(4));
+      formulaDesc = `custom_override_price ($${rule.custom_override_price.toFixed(2)})`;
+    } else {
+      let margin = 0;
+      if (rule) {
+        if (rule.type === 'percent') {
+          margin = providerCostUsd * (rule.percent_value / 100);
+          formulaDesc = `cost ($${providerCostUsd.toFixed(2)}) + ${rule.percent_value}%`;
+        } else if (rule.type === 'fixed') {
+          margin = rule.fixed_value;
+          formulaDesc = `cost ($${providerCostUsd.toFixed(2)}) + $${rule.fixed_value.toFixed(2)}`;
+        } else if (rule.type === 'percent_plus_fixed') {
+          margin = providerCostUsd * (rule.percent_value / 100) + rule.fixed_value;
+          formulaDesc = `cost ($${providerCostUsd.toFixed(2)}) + ${rule.percent_value}% + $${rule.fixed_value.toFixed(2)}`;
+        }
+      } else {
+        formulaDesc = `cost ($${providerCostUsd.toFixed(2)}) (no margin)`;
+      }
+
+      marginUsd = margin;
+      finalUsd = providerCostUsd + margin;
+
+      // Floor 1: minimum profit margin in USD
+      if (settings.min_margin > 0 && finalUsd < providerCostUsd + settings.min_margin) {
+        finalUsd = providerCostUsd + settings.min_margin;
+        marginUsd = settings.min_margin;
+        formulaDesc += ` → floor min_margin (+$${settings.min_margin})`;
+      }
+
+      // Floor 2: minimum sell price in USD (from rule or global)
+      const minPrice = Math.max(rule?.min_price || 0, settings.min_sell_price || 0);
+      if (minPrice > 0 && finalUsd < minPrice) {
+        finalUsd = minPrice;
+        marginUsd = Number((finalUsd - providerCostUsd).toFixed(4));
+        formulaDesc += ` → floor min_sell_price ($${minPrice})`;
+      }
+
+      // Ceiling: max sell price in USD
+      if (rule?.max_price && rule.max_price > 0 && finalUsd > rule.max_price) {
+        finalUsd = rule.max_price;
+        marginUsd = Number((finalUsd - providerCostUsd).toFixed(4));
+        formulaDesc += ` → capped max_price ($${rule.max_price})`;
+      }
+
+      // Rounding in USD
+      finalUsd = this.applyRounding(finalUsd, settings.rounding_mode);
     }
 
-    // 5. Floor: absolute minimum sell price (only applied if configured > 0)
-    if (scaledMinSellPrice > 0 && sell < scaledMinSellPrice) {
-      sell = scaledMinSellPrice;
-      formulaDesc += ` → floor min_sell_price (${scaledMinSellPrice})`;
-    }
-
-    // 6. Rounding
-    const finalSell = this.applyRounding(sell, settings.rounding_mode);
-    const profit = Number((finalSell - convertedCost).toFixed(2));
+    // Step 4: Multi-currency conversion from sovereign USD base
+    const chosenCurrency = (targetCurrency || settings.display_currency || 'USD').toUpperCase();
+    const currConv = currencyService.convertUsdToCurrency(finalUsd, chosenCurrency);
+    const costConv = currencyService.convertUsdToCurrency(providerCostUsd, chosenCurrency);
+    const profitConv = Number(Math.max(0, currConv.amount - costConv.amount).toFixed(2));
 
     return {
-      originalCostInRub: rawCost,
-      costPrice: Number(convertedCost.toFixed(2)),
-      sellPrice: finalSell,
-      profit: Math.max(0, profit),
-      displayCurrency: chosenCurrency,
+      rawProviderCost: rawCost,
+      providerCostUsd,
+      finalPriceUsd: finalUsd,
+      marginUsd,
+      sellPrice: currConv.amount,
+      costPrice: costConv.amount,
+      profit: profitConv,
+      displayCurrency: currConv.currency,
+      displaySymbol: currConv.symbol,
+      exchangeRate: currConv.rate,
       appliedRule: rule,
       matchedScope,
       formula: formulaDesc
     };
   }
 
-  // --- Hidden Catalog Items Management ---
+  /**
+   * Live preview calculator tool (Provider cost -> Final USD -> 3 currencies)
+   */
+  public calculatePreview(
+    rawProviderCost: number,
+    country?: string,
+    product?: string,
+    operator?: string,
+    previewCurrencies: string[] = ['USD', 'INR', 'EUR']
+  ): {
+    rawProviderCost: number;
+    providerCurrency: string;
+    providerCostUsd: number;
+    finalPriceUsd: number;
+    marginUsd: number;
+    appliedRule: MarginRule | null;
+    matchedScope: string;
+    formula: string;
+    previews: Array<{
+      currency: string;
+      symbol: string;
+      rate: number;
+      sellPrice: number;
+      costPrice: number;
+      profit: number;
+      formattedSell: string;
+    }>;
+  } {
+    const settings = this.getPricingSettings();
+    const baseCalc = this.calculateSellPrice(rawProviderCost, country, product, operator, 'USD');
+    const currencyService = CurrencyService.getInstance();
+
+    const previews = previewCurrencies.map((c) => {
+      const calc = this.calculateSellPrice(rawProviderCost, country, product, operator, c);
+      return {
+        currency: calc.displayCurrency,
+        symbol: calc.displaySymbol,
+        rate: calc.exchangeRate,
+        sellPrice: calc.sellPrice,
+        costPrice: calc.costPrice,
+        profit: calc.profit,
+        formattedSell: currencyService.formatPrice(calc.sellPrice, calc.displayCurrency)
+      };
+    });
+
+    return {
+      rawProviderCost: baseCalc.rawProviderCost,
+      providerCurrency: settings.provider_currency,
+      providerCostUsd: baseCalc.providerCostUsd,
+      finalPriceUsd: baseCalc.finalPriceUsd,
+      marginUsd: baseCalc.marginUsd,
+      appliedRule: baseCalc.appliedRule,
+      matchedScope: baseCalc.matchedScope,
+      formula: baseCalc.formula,
+      previews
+    };
+  }
+
+  /**
+   * Export all margin rules to CSV format
+   */
+  public exportRulesCsv(): string {
+    const rules = this.getMarginRules();
+    const headers = [
+      'id',
+      'scope',
+      'country',
+      'product',
+      'operator',
+      'type',
+      'percent_value',
+      'fixed_value',
+      'min_price',
+      'max_price',
+      'custom_override_price',
+      'enabled',
+      'description'
+    ];
+
+    const lines = [headers.join(',')];
+    for (const r of rules) {
+      const row = [
+        `"${r.id}"`,
+        `"${r.scope}"`,
+        `"${r.country || ''}"`,
+        `"${r.product || ''}"`,
+        `"${r.operator || ''}"`,
+        `"${r.type}"`,
+        r.percent_value,
+        r.fixed_value,
+        r.min_price,
+        r.max_price,
+        r.custom_override_price,
+        r.enabled ? '1' : '0',
+        `"${(r.description || '').replace(/"/g, '""')}"`
+      ];
+      lines.push(row.join(','));
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Import rules from CSV with validation and audit logging
+   */
+  public importRulesCsv(csvContent: string, adminUserId: string = 'system'): { imported: number; errors: string[] } {
+    const lines = csvContent.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    if (lines.length < 2) {
+      return { imported: 0, errors: ['CSV content is empty or missing data rows.'] };
+    }
+
+    const errors: string[] = [];
+    const validRows: any[] = [];
+
+    // Parse header
+    const headers = lines[0].split(',').map((h) => h.replace(/^"|"$/g, '').trim().toLowerCase());
+    const scopeIdx = headers.indexOf('scope');
+    const typeIdx = headers.indexOf('type');
+
+    if (scopeIdx === -1 || typeIdx === -1) {
+      return { imported: 0, errors: ['Required columns "scope" and "type" are missing from CSV header.'] };
+    }
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      // Simple regex CSV splitter supporting quoted strings
+      const parts = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
+      const cleanParts = parts.map((p) => p.replace(/^"|"$/g, '').replace(/""/g, '"').trim());
+
+      const getVal = (col: string): string => {
+        const idx = headers.indexOf(col);
+        return idx !== -1 && cleanParts[idx] !== undefined ? cleanParts[idx] : '';
+      };
+
+      const scope = getVal('scope') as MarginScope;
+      const type = getVal('type') as MarginType;
+
+      if (!['global', 'provider', 'country', 'product', 'country_product', 'country_product_operator'].includes(scope)) {
+        errors.push(`Line ${i + 1}: Invalid scope "${scope}".`);
+        continue;
+      }
+
+      if (!['percent', 'fixed', 'percent_plus_fixed'].includes(type)) {
+        errors.push(`Line ${i + 1}: Invalid margin type "${type}".`);
+        continue;
+      }
+
+      validRows.push({
+        id: getVal('id') || crypto.randomUUID(),
+        scope,
+        country: getVal('country') || null,
+        product: getVal('product') || null,
+        operator: getVal('operator') || null,
+        type,
+        percent_value: Number(getVal('percent_value') || 0),
+        fixed_value: Number(getVal('fixed_value') || 0),
+        min_price: Number(getVal('min_price') || 0),
+        max_price: Number(getVal('max_price') || 0),
+        custom_override_price: Number(getVal('custom_override_price') || 0),
+        enabled: getVal('enabled') !== '0',
+        description: getVal('description') || null
+      });
+    }
+
+    if (validRows.length > 0) {
+      const db = getDatabase();
+      const tx = db.transaction(() => {
+        const insertStmt = db.prepare(`
+          INSERT INTO margin_rules (
+            id, scope, country, product, operator, type, percent_value, fixed_value,
+            min_price, max_price, custom_override_price, description, enabled, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(id) DO UPDATE SET
+            scope = excluded.scope,
+            country = excluded.country,
+            product = excluded.product,
+            operator = excluded.operator,
+            type = excluded.type,
+            percent_value = excluded.percent_value,
+            fixed_value = excluded.fixed_value,
+            min_price = excluded.min_price,
+            max_price = excluded.max_price,
+            custom_override_price = excluded.custom_override_price,
+            description = excluded.description,
+            enabled = excluded.enabled,
+            updated_at = datetime('now')
+        `);
+
+        for (const r of validRows) {
+          insertStmt.run(
+            r.id,
+            r.scope,
+            r.country ? r.country.toLowerCase() : null,
+            r.product ? r.product.toLowerCase() : null,
+            r.operator ? r.operator.toLowerCase() : null,
+            r.type,
+            r.percent_value,
+            r.fixed_value,
+            r.min_price,
+            r.max_price,
+            r.custom_override_price,
+            r.description,
+            r.enabled ? 1 : 0
+          );
+        }
+      });
+
+      tx();
+      this.recordAuditLog(adminUserId, 'import_rules', 'margin_rules', null, null, { importedCount: validRows.length });
+      this.invalidateCache();
+    }
+
+    return { imported: validRows.length, errors };
+  }
+
+  /**
+   * Reset margin rules to default baseline (Admin)
+   */
+  public resetDefaultRules(adminUserId: string = 'system'): void {
+    const db = getDatabase();
+    const currentRules = this.getMarginRules();
+
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM margin_rules').run();
+      db.prepare(`
+        INSERT INTO margin_rules (
+          id, scope, country, product, operator, type, percent_value, fixed_value, min_price, max_price, enabled
+        ) VALUES ('default_global_margin', 'global', NULL, NULL, NULL, 'percent', 25.0, 0.0, 0.0, 0.0, 1)
+      `).run();
+    });
+
+    tx();
+    this.recordAuditLog(adminUserId, 'reset_rules', 'margin_rules', 'all', currentRules, [{ id: 'default_global_margin', scope: 'global', percent_value: 25 }]);
+    this.invalidateCache();
+  }
+
+  // --- Audit Logging & Undo ---
+
+  private recordAuditLog(
+    adminUserId: string,
+    action: string,
+    entityType: string,
+    entityId: string | null,
+    beforeState: any,
+    afterState: any
+  ): void {
+    try {
+      const db = getDatabase();
+      db.prepare(`
+        INSERT INTO margin_audit_logs (id, admin_user_id, action, entity_type, entity_id, before_state, after_state, undone, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))
+      `).run(
+        crypto.randomUUID(),
+        adminUserId,
+        action,
+        entityType,
+        entityId || null,
+        beforeState ? JSON.stringify(beforeState) : null,
+        afterState ? JSON.stringify(afterState) : null
+      );
+    } catch (err) {
+      console.error('[MarginService] Failed to record audit log:', err);
+    }
+  }
+
+  public getAuditLogs(limit: number = 50): MarginAuditLogRecord[] {
+    const db = getDatabase();
+    const rows = db.prepare(`
+      SELECT * FROM margin_audit_logs
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(limit) as any[];
+
+    return rows.map((r) => ({
+      id: r.id,
+      admin_user_id: r.admin_user_id,
+      action: r.action,
+      entity_type: r.entity_type,
+      entity_id: r.entity_id,
+      before_state: r.before_state ? JSON.parse(r.before_state) : null,
+      after_state: r.after_state ? JSON.parse(r.after_state) : null,
+      undone: Boolean(r.undone),
+      created_at: r.created_at
+    }));
+  }
+
+  public undoAuditLog(logId: string, adminUserId: string = 'system'): { success: boolean; message: string } {
+    const db = getDatabase();
+    const log = db.prepare('SELECT * FROM margin_audit_logs WHERE id = ?').get(logId) as any;
+    if (!log) {
+      throw new Error('Audit log entry not found.');
+    }
+    if (log.undone) {
+      throw new Error('This action has already been undone.');
+    }
+
+    const before = log.before_state ? JSON.parse(log.before_state) : null;
+    const after = log.after_state ? JSON.parse(log.after_state) : null;
+    const action = log.action;
+
+    const tx = db.transaction(() => {
+      if (action === 'create_rule' && log.entity_id) {
+        db.prepare('DELETE FROM margin_rules WHERE id = ?').run(log.entity_id);
+      } else if (action === 'delete_rule' && before) {
+        db.prepare(`
+          INSERT INTO margin_rules (
+            id, scope, country, product, operator, type, percent_value, fixed_value, min_price, max_price, custom_override_price, description, enabled
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          before.id,
+          before.scope,
+          before.country,
+          before.product,
+          before.operator,
+          before.type,
+          before.percent_value,
+          before.fixed_value,
+          before.min_price || 0,
+          before.max_price || 0,
+          before.custom_override_price || 0,
+          before.description || null,
+          before.enabled ? 1 : 0
+        );
+      } else if (action === 'update_rule' && before && log.entity_id) {
+        db.prepare(`
+          UPDATE margin_rules
+          SET scope = ?, country = ?, product = ?, operator = ?, type = ?, percent_value = ?, fixed_value = ?,
+              min_price = ?, max_price = ?, custom_override_price = ?, description = ?, enabled = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).run(
+          before.scope,
+          before.country,
+          before.product,
+          before.operator,
+          before.type,
+          before.percent_value,
+          before.fixed_value,
+          before.min_price || 0,
+          before.max_price || 0,
+          before.custom_override_price || 0,
+          before.description || null,
+          before.enabled ? 1 : 0,
+          log.entity_id
+        );
+      } else if (action === 'update_settings' && before) {
+        db.prepare(`
+          UPDATE pricing_settings
+          SET provider_currency = ?, provider_currency_to_usd_rate = ?, fx_rate = ?,
+              min_margin = ?, min_sell_price = ?, rounding_mode = ?, low_balance_threshold = ?,
+              display_currency = ?, ban_refund_policy = ?, auto_refund_on_ban = ?, updated_at = datetime('now')
+          WHERE id = 'default'
+        `).run(
+          before.provider_currency,
+          before.provider_currency_to_usd_rate,
+          before.fx_rate,
+          before.min_margin,
+          before.min_sell_price,
+          before.rounding_mode,
+          before.low_balance_threshold,
+          before.display_currency,
+          before.ban_refund_policy,
+          before.auto_refund_on_ban
+        );
+      }
+
+      db.prepare('UPDATE margin_audit_logs SET undone = 1 WHERE id = ?').run(logId);
+    });
+
+    tx();
+    this.recordAuditLog(adminUserId, 'undo', log.entity_type, log.entity_id, after, before);
+    this.invalidateCache();
+
+    return { success: true, message: `Successfully reversed action "${action}".` };
+  }
+
+  // --- Hidden Items Management ---
+
   public getHiddenItems(): HiddenItem[] {
     const db = getDatabase();
     const rows = db.prepare('SELECT * FROM hidden_items ORDER BY type, value').all() as any[];
@@ -443,6 +1028,7 @@ export class MarginService {
       VALUES (?, ?, ?)
     `).run(id, type, cleanVal);
 
+    this.invalidateCache();
     const row = db.prepare('SELECT * FROM hidden_items WHERE type = ? AND value = ?').get(type, cleanVal) as any;
     return {
       id: row.id,
@@ -455,7 +1041,11 @@ export class MarginService {
   public removeHiddenItem(id: string): boolean {
     const db = getDatabase();
     const res = db.prepare('DELETE FROM hidden_items WHERE id = ?').run(id);
-    return res.changes > 0;
+    if (res.changes > 0) {
+      this.invalidateCache();
+      return true;
+    }
+    return false;
   }
 
   public isItemHidden(type: 'country' | 'product', value: string): boolean {
@@ -475,10 +1065,13 @@ export class MarginService {
       type: r.type as MarginType,
       percent_value: Number(r.percent_value || 0),
       fixed_value: Number(r.fixed_value || 0),
+      min_price: Number(r.min_price || 0),
+      max_price: Number(r.max_price || 0),
+      custom_override_price: Number(r.custom_override_price || 0),
+      description: r.description || null,
       enabled: r.enabled === 1 || r.enabled === true,
       created_at: r.created_at,
       updated_at: r.updated_at
     };
   }
 }
-

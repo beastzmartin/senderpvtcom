@@ -16,12 +16,21 @@ export interface NumberOrderRecord {
   product: string;
   phone: string | null;
   status: 'PENDING_PURCHASE' | 'PENDING' | 'RECEIVED' | 'CANCELED' | 'TIMEOUT' | 'FINISHED' | 'BANNED';
+  provider_cost_raw: number;
+  provider_cost_usd: number;
+  margin_applied: number;
+  margin_rule_id: string | null;
+  final_price_usd: number;
+  user_currency: string;
+  final_price_user_currency: number;
+  exchange_rate_at_purchase: number;
   cost_price: number;
   sell_price: number;
   profit: number;
   currency: string;
   otp_code: string | null;
   sms_text: string | null;
+  sms_history: Array<{ sender?: string; date?: string; text?: string; code?: string }>;
   expires_at: string | null;
   created_at: string;
   finished_at: string | null;
@@ -29,6 +38,8 @@ export interface NumberOrderRecord {
   refund_at: string | null;
   wallet_transaction_id: string | null;
   refund_transaction_id: string | null;
+  reservation_id: string | null;
+  locked_price_usd: number;
   user_email?: string;
   user_name?: string;
 }
@@ -36,7 +47,9 @@ export interface NumberOrderRecord {
 export interface OperatorRateItem {
   operator: string;
   sell_price: number;
-  raw_cost_rub?: number; // Only exposed for admin preview
+  final_price_usd: number;
+  raw_cost: number;
+  cost_usd: number;
   count: number;
   rate: number;
   is_available: boolean;
@@ -44,6 +57,7 @@ export interface OperatorRateItem {
 
 interface CacheEntry<T> {
   data: T;
+  timestamp: number;
   expiresAt: number;
 }
 
@@ -52,8 +66,9 @@ export class NumberPurchaseService {
   private configService: FiveSimConfigService;
   private walletService: WalletService;
   private marginService: MarginService;
+  private currencyService: CurrencyService;
 
-  // In-memory caching for catalog requests (30-60s for prices, 15-30m for metadata)
+  // Server-side cache with short TTL (45s for prices, 15m for countries) & stale-while-revalidate
   private countriesCache: CacheEntry<any[]> | null = null;
   private productsCache: Map<string, CacheEntry<any[]>> = new Map();
   private pricesCache: Map<string, CacheEntry<any>> = new Map();
@@ -73,15 +88,37 @@ export class NumberPurchaseService {
     this.configService = FiveSimConfigService.getInstance();
     this.walletService = WalletService.getInstance();
     this.marginService = MarginService.getInstance();
+    this.currencyService = CurrencyService.getInstance();
+
+    // Register cache invalidation hook on margin or settings update
+    this.marginService.registerCacheInvalidation(() => this.clearPricesCache());
+
     this.startBackgroundPoller();
   }
 
+  public clearPricesCache(): void {
+    this.pricesCache.clear();
+  }
+
   /**
-   * Get cached list of supported countries, filtering hidden items
+   * Admin "Sync now" trigger: invalidates all caches and pre-fetches fresh countries
    */
-  public async getCountries(): Promise<any[]> {
+  public async syncCatalogNow(): Promise<{ countriesCount: number; clearedCaches: number }> {
+    const cleared = this.pricesCache.size + this.productsCache.size + (this.countriesCache ? 1 : 0);
+    this.pricesCache.clear();
+    this.productsCache.clear();
+    this.countriesCache = null;
+
+    const countries = await this.getCountries(true);
+    return { countriesCount: countries.length, clearedCaches: cleared };
+  }
+
+  /**
+   * Get cached list of supported countries dynamically from guest endpoint
+   */
+  public async getCountries(forceRefresh: boolean = false): Promise<any[]> {
     const now = Date.now();
-    if (this.countriesCache && this.countriesCache.expiresAt > now) {
+    if (!forceRefresh && this.countriesCache && this.countriesCache.expiresAt > now) {
       return this.filterHiddenCountries(this.countriesCache.data);
     }
 
@@ -101,88 +138,88 @@ export class NumberPurchaseService {
         });
       }
 
-      // Sort alphabetically
       list.sort((a, b) => a.name.localeCompare(b.name));
 
       this.countriesCache = {
         data: list,
-        expiresAt: now + 20 * 60 * 1000 // 20 minutes TTL
+        timestamp: now,
+        expiresAt: now + 15 * 60 * 1000 // 15 mins TTL
       };
 
       return this.filterHiddenCountries(list);
     } catch (err: any) {
-      if (this.countriesCache) {
+      if (this.countriesCache?.data) {
         return this.filterHiddenCountries(this.countriesCache.data);
       }
-      throw new Error(`Failed to load countries: ${err.message}`);
+      throw new Error(`Failed to load countries from 5SIM: ${err.message}`);
     }
   }
 
   /**
-   * Get cached list of supported products for a country, filtering hidden items
+   * Get products list for a given country and operator
    */
-  public async getProducts(country = 'any'): Promise<any[]> {
-    const cSlug = country ? country.trim().toLowerCase() : 'any';
+  public async getProducts(country = 'any', operator = 'any'): Promise<any[]> {
+    const c = country.trim().toLowerCase();
+    const op = operator.trim().toLowerCase();
+    const cacheKey = `${c}:${op}`;
     const now = Date.now();
-    const cached = this.productsCache.get(cSlug);
+
+    const cached = this.productsCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
       return this.filterHiddenProducts(cached.data);
     }
 
     try {
       const client = this.configService.getClient();
-      const raw = await client.getGuestProducts(cSlug, 'any');
+      const raw = await client.getGuestProducts(c, op);
       const list: any[] = [];
 
       for (const [slug, data] of Object.entries(raw || {})) {
         const d = data as any;
+        const price = Number(d?.Price || d?.cost || 0);
+        const qty = Number(d?.Qty || d?.count || 0);
         list.push({
           slug,
-          name: d?.Name || d?.text_en || slug,
-          category: d?.Category || 'general',
-          quantity: d?.Quantity || 0,
-          price: d?.Price || 0
+          name: slug,
+          category: d?.Category || 'activation',
+          qty,
+          price
         });
       }
 
-      // Prioritize popular items
-      const popularSlugs = ['whatsapp', 'telegram', 'google', 'openai', 'instagram', 'facebook', 'twitter', 'tiktok', 'amazon', 'tinder'];
-      list.sort((a, b) => {
-        const aPop = popularSlugs.indexOf(a.slug);
-        const bPop = popularSlugs.indexOf(b.slug);
-        if (aPop !== -1 && bPop !== -1) return aPop - bPop;
-        if (aPop !== -1) return -1;
-        if (bPop !== -1) return 1;
-        return a.name.localeCompare(b.name);
-      });
+      list.sort((a, b) => b.qty - a.qty);
 
-      this.productsCache.set(cSlug, {
+      this.productsCache.set(cacheKey, {
         data: list,
-        expiresAt: now + 20 * 60 * 1000 // 20 mins TTL
+        timestamp: now,
+        expiresAt: now + 10 * 60 * 1000 // 10 mins TTL
       });
 
       return this.filterHiddenProducts(list);
     } catch (err: any) {
-      if (cached) {
+      if (cached?.data) {
         return this.filterHiddenProducts(cached.data);
       }
-      throw new Error(`Failed to load products: ${err.message}`);
+      throw new Error(`Failed to load services for ${c}: ${err.message}`);
     }
   }
 
   /**
-   * Get operator options with calculated sell prices and stock (cost price is hidden for users)
+   * Get exact operator prices with server-side caching (30-60s TTL, stale-while-revalidate)
    */
   public async getPrices(
     country: string,
     product: string,
-    isAdmin = false,
+    isAdmin: boolean = false,
     requestedCurrency?: string
   ): Promise<{
     country: string;
     product: string;
     currency: string;
     currency_symbol: string;
+    exchange_rate: number;
+    is_stale: boolean;
+    last_updated_at: string;
     operators: OperatorRateItem[];
     bestOperator: OperatorRateItem | null;
   }> {
@@ -191,66 +228,69 @@ export class NumberPurchaseService {
     const cacheKey = `${c}:${p}`;
     const now = Date.now();
 
-    let rawData: any = null;
     const cached = this.pricesCache.get(cacheKey);
+    let rawData: any = null;
+    let isStale = false;
+    let lastUpdatedAt = new Date().toISOString();
 
     if (cached && cached.expiresAt > now) {
       rawData = cached.data;
+      lastUpdatedAt = new Date(cached.timestamp).toISOString();
     } else {
       try {
         const client = this.configService.getClient();
         rawData = await client.getGuestPrices({ country: c, product: p });
         this.pricesCache.set(cacheKey, {
           data: rawData,
+          timestamp: now,
           expiresAt: now + 45 * 1000 // 45 seconds TTL
         });
+        lastUpdatedAt = new Date(now).toISOString();
       } catch (err: any) {
         if (cached) {
           rawData = cached.data;
+          isStale = true;
+          lastUpdatedAt = new Date(cached.timestamp).toISOString();
+          console.warn(`[NumberPurchaseService] Serving stale prices for ${cacheKey} due to provider error: ${err.message}`);
         } else {
           throw new Error(`Failed to fetch live operator rates: ${err.message}`);
         }
       }
     }
 
-    // In 5SIM response: rawData[country][product] contains operator keys
     const countryData = rawData?.[c] || rawData;
     const productData = countryData?.[p] || countryData;
 
     const operators: OperatorRateItem[] = [];
     const settings = this.marginService.getPricingSettings();
-    const currencyService = CurrencyService.getInstance();
-    const chosenCurrency = (requestedCurrency || settings.display_currency || 'INR').toUpperCase();
-    const currRecord = currencyService.getCurrency(chosenCurrency) || currencyService.getDefaultCurrency();
+    const chosenCurrency = (requestedCurrency || settings.display_currency || 'USD').toUpperCase();
+    const currRecord = this.currencyService.getCurrency(chosenCurrency) || this.currencyService.getDefaultCurrency();
 
     if (productData && typeof productData === 'object') {
       for (const [operatorName, opDetails] of Object.entries(productData)) {
         if (!opDetails || typeof opDetails !== 'object') continue;
         const op = opDetails as any;
-        const costRub = Number(op.cost || 0);
-        const count = Number(op.count || 0);
+        const rawCost = Number(op.cost || op.Price || 0);
+        const count = Number(op.count || op.Qty || 0);
         const rate = Number(op.rate || 0);
 
-        // Apply central margin formula with user's selected currency
-        const calc: CalculatedPrice = this.marginService.calculateSellPrice(costRub, c, p, operatorName, currRecord.code);
+        // Apply central margin formula with sovereign USD base and user currency
+        const calc: CalculatedPrice = this.marginService.calculateSellPrice(rawCost, c, p, operatorName, currRecord.code);
 
-        const item: OperatorRateItem = {
+        operators.push({
           operator: operatorName,
           sell_price: calc.sellPrice,
+          final_price_usd: calc.finalPriceUsd,
+          raw_cost: rawCost,
+          cost_usd: calc.providerCostUsd,
           count,
           rate,
           is_available: count > 0
-        };
-
-        if (isAdmin) {
-          item.raw_cost_rub = costRub;
-        }
-
-        operators.push(item);
+        });
       }
     }
 
-    // Sort: available operators with stock first, highest success rate, lowest sell price
+    // Sort: Available (count > 0) first, then delivery success rate descending, then price ascending
     operators.sort((a, b) => {
       if (a.is_available && !b.is_available) return -1;
       if (!a.is_available && b.is_available) return 1;
@@ -265,13 +305,16 @@ export class NumberPurchaseService {
       product: p,
       currency: currRecord.code,
       currency_symbol: currRecord.symbol,
+      exchange_rate: currRecord.rate_from_usd,
+      is_stale: isStale,
+      last_updated_at: lastUpdatedAt,
       operators,
       bestOperator
     };
   }
 
   /**
-   * Executes number purchase flow (Part B2 Specification)
+   * Executes number purchase flow with server balance reservation and idempotency (STEP 2)
    */
   public async buyNumber(
     userId: string,
@@ -280,18 +323,25 @@ export class NumberPurchaseService {
       operator?: string;
       product: string;
       idempotencyKey?: string;
+      clientExpectedPrice?: number;
+      clientExpectedPriceUsd?: number;
+      confirmedPriceShift?: boolean;
     }
   ): Promise<{
     success: boolean;
-    order: NumberOrderRecord;
+    requiresConfirmation?: boolean;
+    order?: NumberOrderRecord;
     message: string;
+    currentPrice?: number;
+    expectedPrice?: number;
+    currency?: string;
   }> {
     const db = getDatabase();
     const c = params.country.trim().toLowerCase();
     const p = params.product.trim().toLowerCase();
     const requestedOp = params.operator ? params.operator.trim().toLowerCase() : 'any';
 
-    // 1. Check if country or product is hidden
+    // 1. Check if jurisdiction or product is hidden
     if (this.marginService.isItemHidden('country', c)) {
       throw new Error(`Jurisdiction "${c}" is currently disabled for purchase.`);
     }
@@ -305,7 +355,6 @@ export class NumberPurchaseService {
       throw new Error(`No available operators found for ${p} in ${c}.`);
     }
 
-    // Resolve target operator
     let chosenOperator: OperatorRateItem;
     if (requestedOp === 'any') {
       const best = priceInfo.operators.find((o) => o.is_available);
@@ -324,48 +373,77 @@ export class NumberPurchaseService {
       chosenOperator = found;
     }
 
-    // 3. Determine user's currency from wallet and calculate sell price & cost price
+    // 3. Determine user's active wallet currency & calculate price strictly on server
     const wallet = this.walletService.getOrCreateWallet(userId);
-    const userCurrency = (wallet.currency || 'INR').toUpperCase();
-    const currencyService = CurrencyService.getInstance();
-    const currRecord = currencyService.getCurrency(userCurrency) || currencyService.getDefaultCurrency();
+    const userCurrency = (wallet.currency || 'USD').toUpperCase();
+    const currRecord = this.currencyService.getCurrency(userCurrency) || this.currencyService.getDefaultCurrency();
 
-    const rawCostRub = chosenOperator.raw_cost_rub || 0;
-    const calc = this.marginService.calculateSellPrice(rawCostRub, c, p, chosenOperator.operator, currRecord.code);
-    const sellPrice = calc.sellPrice;
-    const orderCurrency = currRecord.code;
+    const rawCost = chosenOperator.raw_cost;
+    const calc = this.marginService.calculateSellPrice(rawCost, c, p, chosenOperator.operator, currRecord.code);
+    const sellPriceInUserCurrency = calc.sellPrice;
+    const finalPriceUsd = calc.finalPriceUsd;
 
-    // 4. Check user wallet balance in user's active currency
-    if (wallet.balance < sellPrice) {
+    // Price change safety check: if client passed an expected price that changed by > 1% and hasn't confirmed
+    if (
+      params.clientExpectedPrice &&
+      !params.confirmedPriceShift &&
+      Math.abs(sellPriceInUserCurrency - params.clientExpectedPrice) / params.clientExpectedPrice > 0.01
+    ) {
+      return {
+        success: false,
+        requiresConfirmation: true,
+        currentPrice: sellPriceInUserCurrency,
+        expectedPrice: params.clientExpectedPrice,
+        currency: currRecord.code,
+        message: `Price has changed from ${currRecord.symbol}${params.clientExpectedPrice.toFixed(2)} to ${currRecord.symbol}${sellPriceInUserCurrency.toFixed(2)}. Please confirm to proceed.`
+      };
+    }
+
+    // 4. Check user balance in active wallet currency
+    const availableBalance = Number((wallet.balance - wallet.reserved_balance).toFixed(2));
+    if (availableBalance < sellPriceInUserCurrency) {
       throw new Error(
-        `Insufficient wallet balance. Required: ${currRecord.symbol}${sellPrice.toFixed(2)}, Available: ${currRecord.symbol}${wallet.balance.toFixed(2)}. Please add funds to your wallet to continue.`
+        `Insufficient available wallet balance. Required: ${currRecord.symbol}${sellPriceInUserCurrency.toFixed(2)}, Available: ${currRecord.symbol}${availableBalance.toFixed(2)}. Please top up your wallet to continue.`
       );
     }
 
-    // 5. Create local order record with PENDING_PURCHASE in DB transaction
+    // 5. Reserve balance in DB transaction with row lock before calling outbound 5SIM API
     const orderId = crypto.randomUUID();
-    let deductTxId: string;
+    let reservationId: string;
 
     try {
-      const deductRes = this.walletService.deduct(
+      const reserveResult = this.walletService.reserveFunds(
         userId,
-        sellPrice,
-        'usage_deduction',
-        `Virtual Number Purchase: ${p.toUpperCase()} (${c})`,
-        { referenceId: orderId, customData: { country: c, product: p, operator: chosenOperator.operator, currency: orderCurrency } }
+        sellPriceInUserCurrency,
+        `Virtual Number Reservation: ${p.toUpperCase()} (${c})`,
+        orderId,
+        {
+          currency: currRecord.code,
+          country: c,
+          product: p,
+          operator: chosenOperator.operator,
+          finalPriceUsd
+        }
       );
-      deductTxId = deductRes.transactionId;
+      reservationId = reserveResult.reservationId;
     } catch (err: any) {
-      throw new Error(`Wallet deduction failed: ${err.message}`);
+      throw new Error(`Wallet reservation failed: ${err.message}`);
     }
 
+    // Record initial order state as PENDING_PURCHASE
     db.prepare(`
       INSERT INTO number_orders (
         id, user_id, fivesim_order_id, country, operator, product, phone,
-        status, cost_price, sell_price, profit, currency, wallet_transaction_id, created_at
+        status, provider_cost_raw, provider_cost_usd, margin_applied, margin_rule_id,
+        final_price_usd, user_currency, final_price_user_currency, exchange_rate_at_purchase,
+        cost_price, sell_price, profit, currency, wallet_transaction_id, reservation_id,
+        locked_price_usd, created_at
       ) VALUES (
         ?, ?, NULL, ?, ?, ?, NULL,
-        'PENDING_PURCHASE', ?, ?, ?, ?, ?, datetime('now')
+        'PENDING_PURCHASE', ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, NULL, ?,
+        ?, datetime('now')
       )
     `).run(
       orderId,
@@ -373,81 +451,115 @@ export class NumberPurchaseService {
       c,
       chosenOperator.operator,
       p,
+      rawCost,
+      calc.providerCostUsd,
+      calc.marginUsd,
+      calc.appliedRule?.id || null,
+      finalPriceUsd,
+      currRecord.code,
+      sellPriceInUserCurrency,
+      calc.exchangeRate,
       calc.costPrice,
-      sellPrice,
+      sellPriceInUserCurrency,
       calc.profit,
-      orderCurrency,
-      deductTxId
+      currRecord.code,
+      reservationId,
+      finalPriceUsd
     );
 
-    // 6. Call 5SIM API to acquire number
+    // 6. Outbound API Call to 5SIM gateway
     const client = this.configService.getClient();
     let fiveSimOrder: any;
 
     try {
-      // Calculate max price ceiling in 5SIM's currency (RUB)
-      // When operator is 'any', maxPrice prevents 5SIM from picking an expensive operator that destroys margin
-      const costCeiling = Math.ceil(rawCostRub * 1.05);
+      // If operator is 'any', set maxPrice ceiling in provider currency to prevent unexpectedly expensive lines
+      const costCeiling = requestedOp === 'any' ? Number((rawCost * 1.05).toFixed(2)) : undefined;
 
       fiveSimOrder = await client.buyActivation({
         country: c,
         operator: chosenOperator.operator,
         product: p,
-        maxPrice: requestedOp === 'any' ? costCeiling : undefined
+        maxPrice: costCeiling
       });
     } catch (err: any) {
-      // 7. Auto-Refund on failure (plain-text 'no free phones', 400 bad operator, low 5SIM balance, etc.)
-      const errMsg = err.message || '';
-      console.warn(`[NumberPurchaseService] 5SIM purchase failed for order ${orderId}: ${errMsg}. Issuing immediate wallet refund.`);
+      // 7. Auto-Release reservation immediately on outbound failure
+      console.warn(`[NumberPurchaseService] 5SIM purchase failed for order ${orderId}: ${err.message}. Releasing reserved funds.`);
+      this.walletService.releaseReservation(userId, sellPriceInUserCurrency, reservationId, `Outbound 5SIM Failure: ${err.message}`);
 
-      this.refundOrderInternal(orderId, `5SIM Purchase Failure: ${errMsg}`);
+      db.prepare(`
+        UPDATE number_orders
+        SET status = 'CANCELED', finished_at = datetime('now')
+        WHERE id = ?
+      `).run(orderId);
 
-      if (errMsg.toLowerCase().includes('no free phones') || errMsg.toLowerCase().includes('stock')) {
-        throw new Error('No virtual numbers are currently free for this operator. Please select another operator or try a different country.');
+      if (err.code === 'NO_FREE_PHONES' || err.message.toLowerCase().includes('no free phones')) {
+        throw new Error('No phone numbers are currently available for this operator. Please select another operator or country.');
       }
-      if (errMsg.toLowerCase().includes('not enough user balance')) {
-        console.error('🚨 [ADMIN ALERT] 5SIM Master Account balance is depleted! Urgent top-up needed.');
-        throw new Error('Telecom gateway temporarily undergoing maintenance. Your wallet balance has been fully refunded.');
+      if (err.code === 'NOT_ENOUGH_PROVIDER_BALANCE') {
+        console.error('🚨 [ADMIN ALERT] 5SIM Master Provider balance is depleted! Urgent deposit required.');
+        throw new Error('Telecom gateway temporarily undergoing maintenance. Your reserved funds have been completely released.');
       }
-      throw new Error(`Purchase unsuccessful: ${errMsg}. Your wallet balance has been fully refunded.`);
+      throw new Error(`Number allocation failed: ${err.message}. Your reserved funds have been completely released.`);
     }
 
-    // 8. Update local order record with active 5SIM order details
-    const actualCostRub = Number(fiveSimOrder.price || rawCostRub);
-    const actualCalc = this.marginService.calculateSellPrice(actualCostRub, c, p, chosenOperator.operator, orderCurrency);
-    const actualCostConverted = actualCalc.costPrice;
-    const finalProfit = Number((sellPrice - actualCostConverted).toFixed(2));
+    // 8. Commit reservation upon verified outbound 5SIM response
+    let commitTxId: string;
+    try {
+      const commitRes = this.walletService.commitReservation(
+        userId,
+        sellPriceInUserCurrency,
+        reservationId,
+        `Virtual Number Purchase: ${p.toUpperCase()} (${c}) #${fiveSimOrder.phone || fiveSimOrder.id}`,
+        {
+          orderId,
+          fivesimOrderId: fiveSimOrder.id,
+          phone: fiveSimOrder.phone,
+          country: c,
+          product: p,
+          operator: fiveSimOrder.operator || chosenOperator.operator
+        }
+      );
+      commitTxId = commitRes.transactionId;
+    } catch (commitErr: any) {
+      commitTxId = reservationId;
+    }
+
+    // Recompute actual cost and profit based on provider price returned
+    const actualCostRaw = Number(fiveSimOrder.price || rawCost);
+    const actualCalc = this.marginService.calculateSellPrice(actualCostRaw, c, p, chosenOperator.operator, currRecord.code);
 
     db.prepare(`
       UPDATE number_orders
-      SET fivesim_order_id = ?, phone = ?, operator = ?, cost_price = ?, profit = ?, expires_at = ?, status = 'PENDING'
+      SET fivesim_order_id = ?, phone = ?, operator = ?, provider_cost_raw = ?, provider_cost_usd = ?,
+          cost_price = ?, profit = ?, expires_at = ?, status = 'PENDING', wallet_transaction_id = ?
       WHERE id = ?
     `).run(
       fiveSimOrder.id,
       fiveSimOrder.phone,
       fiveSimOrder.operator || chosenOperator.operator,
-      actualCostConverted,
-      Math.max(0, finalProfit),
+      actualCostRaw,
+      actualCalc.providerCostUsd,
+      actualCalc.costPrice,
+      Math.max(0, Number((sellPriceInUserCurrency - actualCalc.costPrice).toFixed(2))),
       fiveSimOrder.expires || new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      commitTxId,
       orderId
     );
 
-    const updated = this.getOrderById(orderId)!;
+    const updatedOrder = this.getOrderById(orderId)!;
 
     // Invalidate prices cache for fresh stock count
     this.pricesCache.delete(`${c}:${p}`);
 
     // Emit real-time Socket.IO notification to user
     try {
-      getSocketIO()?.to(`user:${userId}`).emit('number:order_created', {
-        order: updated
-      });
+      getSocketIO()?.to(`user:${userId}`).emit('number:order_created', { order: updatedOrder });
     } catch {}
 
     return {
       success: true,
-      order: updated,
-      message: `Virtual line ${updated.phone} activated successfully! Waiting for SMS verification code.`
+      order: updatedOrder,
+      message: `Virtual line ${updatedOrder.phone} activated successfully! Waiting for SMS verification code.`
     };
   }
 
@@ -467,18 +579,13 @@ export class NumberPurchaseService {
   }
 
   /**
-   * Check single order status, fetching latest data from 5SIM if still active
+   * Check single order status, fetching latest data from 5SIM if active
    */
   public async getOrderStatus(orderId: string, userId: string): Promise<NumberOrderRecord> {
     const order = this.getOrderById(orderId);
-    if (!order) {
-      throw new Error('Order not found.');
-    }
-    if (order.user_id !== userId) {
-      throw new Error('Access denied to this order.');
-    }
+    if (!order) throw new Error('Order not found.');
+    if (order.user_id !== userId) throw new Error('Access denied to this order.');
 
-    // If order is still in active state, sync live with 5SIM
     if ((order.status === 'PENDING' || order.status === 'RECEIVED') && order.fivesim_order_id) {
       try {
         await this.syncOrderWith5Sim(order);
@@ -503,7 +610,6 @@ export class NumberPurchaseService {
       throw new Error(`Order is already in ${order.status} state.`);
     }
 
-    // 5SIM rule: Cannot cancel if SMS has already arrived
     if (order.otp_code || order.sms_text) {
       throw new Error('Cannot cancel order after an SMS verification code has been delivered. Please finish the order.');
     }
@@ -517,7 +623,7 @@ export class NumberPurchaseService {
       }
     }
 
-    // Process idempotent refund to user wallet
+    // Auto-refund user balance using the locked price snapshot
     this.refundOrderInternal(orderId, `User Cancellation: Virtual Number #${order.phone || orderId}`);
 
     const updated = this.getOrderById(orderId)!;
@@ -529,7 +635,7 @@ export class NumberPurchaseService {
   }
 
   /**
-   * User action: Finish order after SMS is received (rating +0.5 points)
+   * User action: Finish order after SMS is received (rewards provider rating +0.5)
    */
   public async finishOrder(orderId: string, userId: string): Promise<{ success: boolean; message: string; order: NumberOrderRecord }> {
     const db = getDatabase();
@@ -569,7 +675,7 @@ export class NumberPurchaseService {
   }
 
   /**
-   * User action: Ban / report number as already registered (with refund)
+   * User action: Ban / report number as already registered
    */
   public async banOrder(orderId: string, userId: string): Promise<{ success: boolean; message: string; order: NumberOrderRecord }> {
     const order = this.getOrderById(orderId);
@@ -589,26 +695,228 @@ export class NumberPurchaseService {
       }
     }
 
-    this.refundOrderInternal(orderId, `Number Banned/Registered Report: #${order.phone || orderId}`);
+    const settings = this.marginService.getPricingSettings();
+    const shouldAutoRefund = settings.auto_refund_on_ban === 1 && settings.ban_refund_policy === 'auto';
+
+    if (shouldAutoRefund) {
+      this.refundOrderInternal(orderId, `Number Banned/Registered Report: #${order.phone || orderId}`);
+    }
 
     const db = getDatabase();
-    db.prepare("UPDATE number_orders SET status = 'BANNED' WHERE id = ?").run(orderId);
+    db.prepare("UPDATE number_orders SET status = 'BANNED', finished_at = datetime('now') WHERE id = ?").run(orderId);
 
     const updated = this.getOrderById(orderId)!;
     return {
       success: true,
-      message: 'Number reported as invalid/registered. Full refund has been credited to your wallet.',
+      message: shouldAutoRefund
+        ? 'Number reported as invalid/registered. Full refund has been credited to your wallet.'
+        : 'Number reported as invalid/registered. Order marked as BANNED for administrator review.',
       order: updated
     };
   }
 
   /**
-   * Get user order history (never leaks cost_price or profit)
+   * Admin manual refund handler
+   */
+  public async adminRefundOrder(
+    orderId: string,
+    adminUserId: string,
+    reason: string
+  ): Promise<{ success: boolean; message: string; order: NumberOrderRecord }> {
+    const order = this.getOrderById(orderId);
+    if (!order) throw new Error('Order not found.');
+
+    if (order.refunded) {
+      throw new Error('This order has already been refunded.');
+    }
+
+    const success = this.refundOrderInternal(orderId, `Admin Manual Refund by @${adminUserId}: ${reason}`);
+    if (!success) {
+      throw new Error('Failed to process wallet refund.');
+    }
+
+    const updated = this.getOrderById(orderId)!;
+    return {
+      success: true,
+      message: `Order #${orderId} refunded successfully (${updated.currency} ${updated.final_price_user_currency.toFixed(2)}).`,
+      order: updated
+    };
+  }
+
+  /**
+   * Idempotent internal wallet refund handler using locked price snapshot
+   */
+  public refundOrderInternal(orderId: string, reason: string): boolean {
+    const db = getDatabase();
+    const order = this.getOrderById(orderId);
+    if (!order) return false;
+
+    if (order.refunded) {
+      return true;
+    }
+
+    try {
+      const refundTxId = crypto.randomUUID();
+      const refundAmount = order.final_price_user_currency || order.sell_price;
+
+      this.walletService.refund(
+        order.user_id,
+        refundAmount,
+        reason,
+        order.wallet_transaction_id || undefined
+      );
+
+      db.prepare(`
+        UPDATE number_orders
+        SET refunded = 1, refund_at = datetime('now'), refund_transaction_id = ?,
+            status = CASE WHEN status = 'PENDING' OR status = 'PENDING_PURCHASE' THEN 'CANCELED' ELSE status END
+        WHERE id = ?
+      `).run(refundTxId, orderId);
+
+      const updated = this.getOrderById(orderId);
+      try {
+        getSocketIO()?.to(`user:${order.user_id}`).emit('number:order_updated', { order: updated });
+      } catch {}
+
+      return true;
+    } catch (err: any) {
+      console.error(`[NumberPurchaseService] Failed to issue wallet refund for order ${orderId}: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Sync active order with 5SIM gateway
+   */
+  private async syncOrderWith5Sim(order: NumberOrderRecord): Promise<void> {
+    if (!order.fivesim_order_id) return;
+    const db = getDatabase();
+    const client = this.configService.getClient();
+
+    const remoteOrder = await client.checkOrder(order.fivesim_order_id);
+    if (!remoteOrder) return;
+
+    let newStatus = order.status;
+    let extractedOtp = order.otp_code;
+    let fullSmsText = order.sms_text;
+    const smsHistory = Array.isArray(remoteOrder.sms) ? remoteOrder.sms : order.sms_history || [];
+
+    // Check SMS array
+    if (smsHistory.length > 0) {
+      const latestSms = smsHistory[smsHistory.length - 1];
+      fullSmsText = latestSms.text || fullSmsText;
+      extractedOtp = latestSms.code || FiveSimOrderService.extractOtpFromText(fullSmsText || '') || extractedOtp;
+      newStatus = 'RECEIVED';
+    }
+
+    // Map remote status
+    if (remoteOrder.status === 'FINISHED') newStatus = 'FINISHED';
+    else if (remoteOrder.status === 'CANCELED') newStatus = 'CANCELED';
+    else if (remoteOrder.status === 'TIMEOUT') newStatus = 'TIMEOUT';
+    else if (remoteOrder.status === 'BANNED') newStatus = 'BANNED';
+
+    db.prepare(`
+      UPDATE number_orders
+      SET status = ?, otp_code = ?, sms_text = ?, sms_history = ?, phone = COALESCE(?, phone)
+      WHERE id = ?
+    `).run(
+      newStatus,
+      extractedOtp,
+      fullSmsText,
+      JSON.stringify(smsHistory),
+      remoteOrder.phone || null,
+      order.id
+    );
+
+    // If order was canceled or timed out remotely without SMS, auto-refund
+    if ((newStatus === 'CANCELED' || newStatus === 'TIMEOUT') && !order.refunded && !extractedOtp) {
+      this.refundOrderInternal(order.id, `5SIM Remote Status Reconciled: ${newStatus}`);
+    }
+
+    // Emit Socket.IO notification if status or OTP changed
+    if (newStatus !== order.status || extractedOtp !== order.otp_code) {
+      const updated = this.getOrderById(order.id);
+      try {
+        if (extractedOtp && !order.otp_code) {
+          getSocketIO()?.to(`user:${order.user_id}`).emit('number:sms_received', {
+            orderId: order.id,
+            phone: order.phone,
+            code: extractedOtp,
+            smsText: fullSmsText,
+            smsHistory
+          });
+        }
+        getSocketIO()?.to(`user:${order.user_id}`).emit('number:order_updated', { order: updated });
+      } catch {}
+    }
+  }
+
+  /**
+   * Background Poller: runs every 3.5s with 14-Minute Auto-Cancellation Shield (STEP 2)
+   */
+  private startBackgroundPoller(): void {
+    if (this.pollerInterval) return;
+
+    this.pollerInterval = setInterval(async () => {
+      if (this.isPolling) return;
+      this.isPolling = true;
+
+      try {
+        const db = getDatabase();
+        const activeRows = db.prepare(`
+          SELECT * FROM number_orders
+          WHERE status IN ('PENDING', 'RECEIVED') AND fivesim_order_id IS NOT NULL
+          ORDER BY created_at ASC
+          LIMIT 25
+        `).all() as any[];
+
+        const now = Date.now();
+
+        for (const r of activeRows) {
+          const order = this.mapOrderRecord(r);
+
+          // 14-Minute Auto-Cancellation Shield:
+          // If order is PENDING without SMS and > 14 minutes old (within 1 min of 15m timeout),
+          // cancel proactively to protect account rating from -0.15 timeout penalty!
+          const createdAtMs = new Date(order.created_at).getTime();
+          const ageMs = now - createdAtMs;
+          const isNearTimeout = ageMs >= 14 * 60 * 1000 && !order.otp_code && order.status === 'PENDING';
+
+          if (isNearTimeout && order.fivesim_order_id) {
+            console.log(`[NumberPurchaseService] 🛡️ 14-Minute Shield triggered for order #${order.fivesim_order_id} (${order.phone}). Cancelling before provider timeout penalty.`);
+            try {
+              const client = this.configService.getClient();
+              await client.cancelOrder(order.fivesim_order_id);
+            } catch (err: any) {
+              console.warn(`[NumberPurchaseService] Shield cancel error: ${err.message}`);
+            }
+
+            this.refundOrderInternal(order.id, '14-Minute Auto-Cancellation Shield (No SMS arrived)');
+            db.prepare("UPDATE number_orders SET status = 'CANCELED', finished_at = datetime('now') WHERE id = ?").run(order.id);
+            continue;
+          }
+
+          await this.syncOrderWith5Sim(order);
+        }
+      } catch {
+        // Suppress poller loop errors
+      } finally {
+        this.isPolling = false;
+      }
+    }, 3500);
+
+    if (this.pollerInterval?.unref) {
+      this.pollerInterval.unref();
+    }
+  }
+
+  /**
+   * User order history (safe view without leaking provider cost or margin)
    */
   public getUserOrders(
     userId: string,
     params?: { limit?: number; offset?: number; status?: string }
-  ): { orders: Omit<NumberOrderRecord, 'cost_price' | 'profit'>[]; total: number } {
+  ): { orders: Omit<NumberOrderRecord, 'provider_cost_raw' | 'provider_cost_usd' | 'margin_applied' | 'cost_price' | 'profit'>[]; total: number } {
     const db = getDatabase();
     const limit = Math.min(100, Math.max(1, Number(params?.limit || 20)));
     const offset = Math.max(0, Number(params?.offset || 0));
@@ -616,7 +924,7 @@ export class NumberPurchaseService {
     let query = 'SELECT * FROM number_orders WHERE user_id = ?';
     const queryParams: any[] = [userId];
 
-    if (params?.status) {
+    if (params?.status && params.status !== 'all') {
       query += ' AND status = ?';
       queryParams.push(params.status);
     }
@@ -630,7 +938,7 @@ export class NumberPurchaseService {
     const rows = db.prepare(query).all(...queryParams) as any[];
     const safeOrders = rows.map((r) => {
       const full = this.mapOrderRecord(r);
-      const { cost_price, profit, ...safe } = full;
+      const { provider_cost_raw, provider_cost_usd, margin_applied, cost_price, profit, ...safe } = full;
       return safe;
     });
 
@@ -638,7 +946,7 @@ export class NumberPurchaseService {
   }
 
   /**
-   * Get all orders for Admin console with cost, sell, profit, and user details
+   * Admin orders list with complete financial details & margin breakdown
    */
   public getAdminOrders(params?: {
     limit?: number;
@@ -660,7 +968,7 @@ export class NumberPurchaseService {
     `;
     const queryParams: any[] = [];
 
-    if (params?.status) {
+    if (params?.status && params.status !== 'all') {
       query += ' AND o.status = ?';
       queryParams.push(params.status);
     }
@@ -704,9 +1012,7 @@ export class NumberPurchaseService {
     topCountries: any[];
   } {
     const db = getDatabase();
-    const settings = this.marginService.getPricingSettings();
 
-    // Summary query
     const summaryRow = db.prepare(`
       SELECT
         COUNT(*) as total_orders,
@@ -726,7 +1032,6 @@ export class NumberPurchaseService {
     const completedOrders = Number(summaryRow?.completed_orders || 0);
     const successRatePercent = totalOrders > 0 ? Number(((completedOrders / totalOrders) * 100).toFixed(1)) : 100;
 
-    // Top products
     const topProducts = db.prepare(`
       SELECT product, COUNT(*) as orders_count, SUM(profit) as total_profit
       FROM number_orders
@@ -736,7 +1041,6 @@ export class NumberPurchaseService {
       LIMIT 5
     `).all() as any[];
 
-    // Top countries
     const topCountries = db.prepare(`
       SELECT country, COUNT(*) as orders_count, SUM(profit) as total_profit
       FROM number_orders
@@ -746,7 +1050,6 @@ export class NumberPurchaseService {
       LIMIT 5
     `).all() as any[];
 
-    // Periodic breakdown
     let dateFormat = "%Y-%m-%d";
     if (period === 'monthly') dateFormat = "%Y-%m";
     else if (period === 'weekly') dateFormat = "%Y-W%W";
@@ -780,164 +1083,6 @@ export class NumberPurchaseService {
     };
   }
 
-  /**
-   * Idempotent internal wallet refund handler
-   */
-  public refundOrderInternal(orderId: string, reason: string): boolean {
-    const db = getDatabase();
-    const order = this.getOrderById(orderId);
-    if (!order) return false;
-
-    if (order.refunded) {
-      console.log(`[NumberPurchaseService] Order ${orderId} is already refunded. Skipping duplicate refund.`);
-      return true;
-    }
-
-    try {
-      const refundTxId = crypto.randomUUID();
-      this.walletService.refund(
-        order.user_id,
-        order.sell_price,
-        reason,
-        order.wallet_transaction_id || undefined
-      );
-
-      db.prepare(`
-        UPDATE number_orders
-        SET refunded = 1, refund_at = datetime('now'), refund_transaction_id = ?, status = CASE WHEN status = 'PENDING' OR status = 'PENDING_PURCHASE' THEN 'CANCELED' ELSE status END
-        WHERE id = ?
-      `).run(refundTxId, orderId);
-
-      const updated = this.getOrderById(orderId);
-      try {
-        getSocketIO()?.to(`user:${order.user_id}`).emit('number:order_updated', { order: updated });
-      } catch {}
-
-      return true;
-    } catch (err: any) {
-      console.error(`[NumberPurchaseService] CRITICAL: Failed to issue wallet refund for order ${orderId}: ${err.message}`);
-      return false;
-    }
-  }
-
-  /**
-   * Syncs active order with 5SIM gateway
-   */
-  private async syncOrderWith5Sim(order: NumberOrderRecord): Promise<void> {
-    if (!order.fivesim_order_id) return;
-    const db = getDatabase();
-    const client = this.configService.getClient();
-
-    const remoteOrder = await client.checkOrder(order.fivesim_order_id);
-    if (!remoteOrder) return;
-
-    let newStatus = order.status;
-    let extractedOtp = order.otp_code;
-    let fullSmsText = order.sms_text;
-
-    // Check SMS array
-    if (remoteOrder.sms && remoteOrder.sms.length > 0) {
-      const latestSms = remoteOrder.sms[remoteOrder.sms.length - 1];
-      fullSmsText = latestSms.text || fullSmsText;
-      extractedOtp = latestSms.code || FiveSimOrderService.extractOtpFromText(fullSmsText || '') || extractedOtp;
-      newStatus = 'RECEIVED';
-    }
-
-    // Map remote status
-    if (remoteOrder.status === 'FINISHED') newStatus = 'FINISHED';
-    else if (remoteOrder.status === 'CANCELED') newStatus = 'CANCELED';
-    else if (remoteOrder.status === 'TIMEOUT') newStatus = 'TIMEOUT';
-    else if (remoteOrder.status === 'BANNED') newStatus = 'BANNED';
-
-    db.prepare(`
-      UPDATE number_orders
-      SET status = ?, otp_code = ?, sms_text = ?, phone = COALESCE(?, phone)
-      WHERE id = ?
-    `).run(newStatus, extractedOtp, fullSmsText, remoteOrder.phone || null, order.id);
-
-    // If order was canceled or timed out remotely without SMS, auto-refund
-    if ((newStatus === 'CANCELED' || newStatus === 'TIMEOUT' || newStatus === 'BANNED') && !order.refunded && !extractedOtp) {
-      this.refundOrderInternal(order.id, `5SIM Remote Status Reconciled: ${newStatus}`);
-    }
-
-    // Emit Socket.IO notification if status or OTP changed
-    if (newStatus !== order.status || extractedOtp !== order.otp_code) {
-      const updated = this.getOrderById(order.id);
-      try {
-        if (extractedOtp && !order.otp_code) {
-          getSocketIO()?.to(`user:${order.user_id}`).emit('number:sms_received', {
-            orderId: order.id,
-            phone: order.phone,
-            code: extractedOtp,
-            smsText: fullSmsText
-          });
-        }
-        getSocketIO()?.to(`user:${order.user_id}`).emit('number:order_updated', { order: updated });
-      } catch {}
-    }
-  }
-
-  /**
-   * Background Poller (every 4 seconds) with 14-Minute Auto-Cancellation Shield (Part 6.3 & B4)
-   */
-  private startBackgroundPoller(): void {
-    if (this.pollerInterval) return;
-
-    this.pollerInterval = setInterval(async () => {
-      if (this.isPolling) return;
-      this.isPolling = true;
-
-      try {
-        const db = getDatabase();
-        // Fetch active orders requiring SMS check
-        const activeRows = db.prepare(`
-          SELECT * FROM number_orders
-          WHERE status IN ('PENDING', 'RECEIVED') AND fivesim_order_id IS NOT NULL
-          ORDER BY created_at ASC
-          LIMIT 25
-        `).all() as any[];
-
-        const now = Date.now();
-
-        for (const r of activeRows) {
-          const order = this.mapOrderRecord(r);
-
-          // 14-Minute Auto-Cancellation Shield:
-          // If order is PENDING without SMS and is within 1 minute of expiring (or > 14 minutes old),
-          // proactively cancel on 5SIM to avoid the -0.15 rating timeout penalty!
-          const createdAtMs = new Date(order.created_at).getTime();
-          const ageMs = now - createdAtMs;
-          const isNearTimeout = ageMs >= 14 * 60 * 1000 && !order.otp_code && order.status === 'PENDING';
-
-          if (isNearTimeout && order.fivesim_order_id) {
-            console.log(`[NumberPurchaseService] 🛡️ 14-Minute Shield triggered for order #${order.fivesim_order_id} (${order.phone}). Canceling before timeout penalty.`);
-            try {
-              const client = this.configService.getClient();
-              await client.cancelOrder(order.fivesim_order_id);
-            } catch (err: any) {
-              console.warn(`[NumberPurchaseService] Shield cancel error: ${err.message}`);
-            }
-
-            this.refundOrderInternal(order.id, '14-Minute Auto-Cancellation Shield (No SMS arrived)');
-            db.prepare("UPDATE number_orders SET status = 'CANCELED' WHERE id = ?").run(order.id);
-            continue;
-          }
-
-          // Otherwise, sync with 5SIM
-          await this.syncOrderWith5Sim(order);
-        }
-      } catch (err: any) {
-        // Suppress poller loop errors
-      } finally {
-        this.isPolling = false;
-      }
-    }, 4000);
-
-    if (this.pollerInterval?.unref) {
-      this.pollerInterval.unref();
-    }
-  }
-
   private filterHiddenCountries(list: any[]): any[] {
     return list.filter((c) => !this.marginService.isItemHidden('country', c.slug));
   }
@@ -947,6 +1092,14 @@ export class NumberPurchaseService {
   }
 
   private mapOrderRecord(r: any): NumberOrderRecord {
+    let smsHistory: any[] = [];
+    try {
+      if (r.sms_history) smsHistory = JSON.parse(r.sms_history);
+    } catch {}
+
+    const finalPriceUsd = Number(r.final_price_usd ?? r.locked_price_usd ?? 0);
+    const finalPriceUserCurrency = Number(r.final_price_user_currency ?? r.sell_price ?? 0);
+
     return {
       id: r.id,
       user_id: r.user_id,
@@ -956,12 +1109,21 @@ export class NumberPurchaseService {
       product: r.product,
       phone: r.phone || null,
       status: r.status,
+      provider_cost_raw: Number(r.provider_cost_raw || 0),
+      provider_cost_usd: Number(r.provider_cost_usd || 0),
+      margin_applied: Number(r.margin_applied || 0),
+      margin_rule_id: r.margin_rule_id || null,
+      final_price_usd: finalPriceUsd,
+      user_currency: r.user_currency || r.currency || 'USD',
+      final_price_user_currency: finalPriceUserCurrency,
+      exchange_rate_at_purchase: Number(r.exchange_rate_at_purchase || 1.0),
       cost_price: Number(r.cost_price || 0),
-      sell_price: Number(r.sell_price || 0),
+      sell_price: finalPriceUserCurrency,
       profit: Number(r.profit || 0),
-      currency: r.currency || 'INR',
+      currency: r.currency || 'USD',
       otp_code: r.otp_code || null,
       sms_text: r.sms_text || null,
+      sms_history: smsHistory,
       expires_at: r.expires_at || null,
       created_at: r.created_at,
       finished_at: r.finished_at || null,
@@ -969,6 +1131,8 @@ export class NumberPurchaseService {
       refund_at: r.refund_at || null,
       wallet_transaction_id: r.wallet_transaction_id || null,
       refund_transaction_id: r.refund_transaction_id || null,
+      reservation_id: r.reservation_id || null,
+      locked_price_usd: finalPriceUsd,
       user_email: r.user_email || undefined,
       user_name: r.user_name || undefined
     };

@@ -82,7 +82,8 @@ import {
   ProfitReport,
   HiddenItem,
   CurrencyRecord,
-  CustomCommissionRule
+  CustomCommissionRule,
+  MarginAuditLogRecord
 } from '../types';
 
 const getApiBase = (): string => {
@@ -1848,8 +1849,29 @@ export const api = {
       }>(`/numbers/prices?${q.toString()}`);
     },
 
-    buyNumber: (data: { country: string; operator?: string; product: string; idempotencyKey?: string }) =>
-      request<{ success: boolean; message: string; order: NumberOrder }>('/numbers/buy', {
+    sync: () =>
+      request<{ success: boolean; message: string; countriesCount: number }>('/numbers/sync', {
+        method: 'POST'
+      }),
+
+    buyNumber: (data: {
+      country: string;
+      operator?: string;
+      product: string;
+      idempotencyKey?: string;
+      clientExpectedPrice?: number;
+      clientExpectedPriceUsd?: number;
+      confirmedPriceShift?: boolean;
+    }) =>
+      request<{
+        success: boolean;
+        requiresConfirmation?: boolean;
+        currentPrice?: number;
+        expectedPrice?: number;
+        currency?: string;
+        message: string;
+        order?: NumberOrder;
+      }>('/numbers/buy', {
         method: 'POST',
         body: JSON.stringify(data)
       }),
@@ -1870,6 +1892,12 @@ export const api = {
     banOrder: (orderId: string) =>
       request<{ success: boolean; message: string; order: NumberOrder }>(`/numbers/orders/${orderId}/ban`, {
         method: 'POST'
+      }),
+
+    adminRefund: (orderId: string, reason: string) =>
+      request<{ success: boolean; message: string; order: NumberOrder }>(`/numbers/orders/${orderId}/admin-refund`, {
+        method: 'POST',
+        body: JSON.stringify({ reason })
       }),
 
     getUserOrders: (params?: { limit?: number; offset?: number; status?: string }) => {
@@ -1893,13 +1921,17 @@ export const api = {
     },
 
     createRule: (data: {
-      scope: 'global' | 'country' | 'product' | 'country_product' | 'country_product_operator';
+      scope: 'global' | 'provider' | 'country' | 'product' | 'country_product' | 'country_product_operator';
       country?: string | null;
       product?: string | null;
       operator?: string | null;
       type: 'percent' | 'fixed' | 'percent_plus_fixed';
       percent_value?: number;
       fixed_value?: number;
+      min_price?: number;
+      max_price?: number;
+      custom_override_price?: number;
+      description?: string | null;
       enabled?: boolean;
     }) =>
       request<{ success: boolean; rule: MarginRule }>('/admin/margin/rules', {
@@ -1910,13 +1942,17 @@ export const api = {
     updateRule: (
       id: string,
       data: {
-        scope?: 'global' | 'country' | 'product' | 'country_product' | 'country_product_operator';
+        scope?: 'global' | 'provider' | 'country' | 'product' | 'country_product' | 'country_product_operator';
         country?: string | null;
         product?: string | null;
         operator?: string | null;
         type?: 'percent' | 'fixed' | 'percent_plus_fixed';
         percent_value?: number;
         fixed_value?: number;
+        min_price?: number;
+        max_price?: number;
+        custom_override_price?: number;
+        description?: string | null;
         enabled?: boolean;
       }
     ) =>
@@ -1930,6 +1966,55 @@ export const api = {
         method: 'DELETE'
       }),
 
+    bulkUpdate: (
+      arg1: string[] | { rule_ids: string[]; enabled?: boolean; percent_delta?: number; fixed_delta?: number },
+      arg2?: { enabled?: boolean; percent_delta?: number; fixed_delta?: number }
+    ) => {
+      let ruleIds: string[] = [];
+      let updates: any = {};
+      if (Array.isArray(arg1)) {
+        ruleIds = arg1;
+        updates = arg2 || {};
+      } else {
+        ruleIds = arg1.rule_ids || [];
+        updates = {
+          enabled: arg1.enabled,
+          percent_delta: arg1.percent_delta,
+          fixed_delta: arg1.fixed_delta
+        };
+      }
+      return request<{ success: boolean; updatedCount: number }>('/admin/margin/rules/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ rule_ids: ruleIds, ruleIds, updates, ...updates })
+      });
+    },
+
+    exportCsv: async () => {
+      window.open('/api/admin/margin/rules/export', '_blank');
+      return { success: true, csv: '' };
+    },
+
+    importCsv: (csv: string) =>
+      request<{ success: boolean; imported: number; importedCount?: number; errors: string[] }>('/admin/margin/rules/import', {
+        method: 'POST',
+        body: JSON.stringify({ csv })
+      }),
+
+    resetDefaults: () =>
+      request<{ success: boolean; message: string }>('/admin/margin/rules/reset', {
+        method: 'POST'
+      }),
+
+    getAuditLogs: (paramsOrLimit: number | { limit?: number } = 50) => {
+      const limit = typeof paramsOrLimit === 'number' ? paramsOrLimit : paramsOrLimit?.limit || 50;
+      return request<{ success: boolean; count: number; logs: MarginAuditLogRecord[]; auditLogs?: MarginAuditLogRecord[] }>(`/admin/margin/audit-logs?limit=${limit}`);
+    },
+
+    undoAuditLog: (id: string) =>
+      request<{ success: boolean; message: string }>(`/admin/margin/audit-logs/${id}/undo`, {
+        method: 'POST'
+      }),
+
     getSettings: () =>
       request<{ success: boolean; settings: PricingSettings }>('/admin/margin/settings'),
 
@@ -1939,7 +2024,7 @@ export const api = {
         body: JSON.stringify(data)
       }),
 
-    pricePreview: (data: { cost: number; country?: string; product?: string; operator?: string }) =>
+    pricePreview: (data: { cost: number; country?: string; product?: string; operator?: string; previewCurrencies?: string[] }) =>
       request<{ success: boolean; preview: any }>('/admin/margin/price-preview', {
         method: 'POST',
         body: JSON.stringify(data)
@@ -2009,7 +2094,8 @@ export const api = {
         code: string;
         name: string;
         symbol: string;
-        rate_from_5sim_base: number;
+        rate_from_5sim_base?: number;
+        rate_from_usd?: number;
         is_default?: boolean;
         is_active?: boolean;
       }) =>
@@ -2024,6 +2110,8 @@ export const api = {
           name: string;
           symbol: string;
           rate_from_5sim_base: number;
+          rate_from_usd: number;
+          manual_override: number;
           is_default: boolean;
           is_active: boolean;
         }>

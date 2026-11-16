@@ -3,6 +3,8 @@ import { getDatabase } from '../db/database.js';
 import { getSocketIO } from '../socket/socketManager.js';
 import { ConnectorRegistry } from './connectors/ConnectorRegistry.js';
 import { LeadRecord, LeadStatus, LeadFilterOptions } from './connectors/types.js';
+import { CrmExtractorPipelineService } from '../crm/services/CrmExtractorPipelineService.js';
+import { getCrmDb } from '../crm/db/index.js';
 
 export class LeadService {
   private static instance: LeadService | null = null;
@@ -220,6 +222,23 @@ export class LeadService {
           failed,
           jobId
         });
+      } catch {}
+
+      // Flow leads into CRM workspace
+      try {
+        const crmDb = getCrmDb();
+        crmDb.getUserDefaultWorkspace(userId).then((ws) => {
+          if (ws) {
+            CrmExtractorPipelineService.getInstance().ingestExtractorResults(
+              ws.id,
+              null,
+              created,
+              'extractor:google_maps',
+              jobId,
+              'update'
+            );
+          }
+        }).catch(() => {});
       } catch {}
     }
 

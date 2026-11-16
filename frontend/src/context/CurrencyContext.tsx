@@ -8,9 +8,11 @@ interface CurrencyContextType {
   currentCurrency: CurrencyRecord | null;
   currencyCode: string;
   currencySymbol: string;
-  activeRate: number;
+  activeRate: number; // Rate from USD
   isLoading: boolean;
   switchCurrency: (code: string) => Promise<boolean>;
+  convertFromUsd: (usdAmount: number) => number;
+  formatUsdAsCurrency: (usdAmount: number) => string;
   convertFromBaseRub: (rubAmount: number) => number;
   formatPrice: (amount: number, overrideSymbol?: string) => string;
   formatRubAsCurrency: (rubAmount: number) => string;
@@ -18,10 +20,11 @@ interface CurrencyContextType {
 }
 
 const DEFAULT_CURRENCY: CurrencyRecord = {
-  code: 'INR',
-  name: 'Indian Rupee',
-  symbol: '₹',
-  rate_from_5sim_base: 1.05,
+  code: 'USD',
+  name: 'US Dollar',
+  symbol: '$',
+  rate_from_usd: 1.0,
+  rate_from_5sim_base: 1.0,
   is_default: 1,
   is_active: 1
 };
@@ -88,11 +91,12 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const target = currencies.find((c) => c.code.toUpperCase() === code.toUpperCase());
     if (!target) return false;
 
+    // Instant client-side state update (no page reload)
     setCurrentCurrency(target);
     localStorage.setItem('preferred_currency', target.code);
 
     try {
-      // Sync with backend if user is authenticated
+      // Sync with backend asynchronously
       if (user) {
         await api.currency.switch(target.code);
       }
@@ -101,20 +105,52 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (err) {
       console.warn('[CurrencyContext] Failed to sync currency switch with backend:', err);
       window.dispatchEvent(new CustomEvent('currency:switched', { detail: { code: target.code } }));
-      return true; // Still update client state
+      return true;
     }
   };
 
-  const convertFromBaseRub = (rubAmount: number): number => {
-    const rate = currentCurrency?.rate_from_5sim_base || 1.0;
-    return Math.round(rubAmount * rate * 100) / 100;
+  /**
+   * Convert sovereign USD base amount to current active currency
+   */
+  const convertFromUsd = (usdAmount: number): number => {
+    const rate = currentCurrency?.rate_from_usd ?? currentCurrency?.rate_from_5sim_base ?? 1.0;
+    return Math.round(Number(usdAmount || 0) * rate * 100) / 100;
   };
 
+  /**
+   * Format a USD base price as localized string in user's active currency
+   */
+  const formatUsdAsCurrency = (usdAmount: number): string => {
+    const converted = convertFromUsd(usdAmount);
+    return formatPrice(converted);
+  };
+
+  /**
+   * Backward-compatible ruble converter
+   */
+  const convertFromBaseRub = (rubAmount: number): number => {
+    const rate = currentCurrency?.rate_from_5sim_base || 1.0;
+    return Math.round(Number(rubAmount || 0) * rate * 100) / 100;
+  };
+
+  /**
+   * Format localized price using standard Intl.NumberFormat
+   */
   const formatPrice = (amount: number, overrideSymbol?: string): string => {
-    const sym = overrideSymbol || currentCurrency?.symbol || '₹';
     const num = Number(amount) || 0;
-    // If integer, don't show trailing .00 for compact presentation, or show 2 decimals
-    return `${sym}${num % 1 === 0 ? num : num.toFixed(2)}`;
+    const code = currentCurrency?.code || 'USD';
+
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: code,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(num);
+    } catch {
+      const sym = overrideSymbol || currentCurrency?.symbol || '$';
+      return `${sym}${num % 1 === 0 ? num : num.toFixed(2)}`;
+    }
   };
 
   const formatRubAsCurrency = (rubAmount: number): string => {
@@ -122,16 +158,20 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return formatPrice(converted);
   };
 
+  const activeRate = currentCurrency?.rate_from_usd ?? currentCurrency?.rate_from_5sim_base ?? 1.0;
+
   return (
     <CurrencyContext.Provider
       value={{
         currencies,
         currentCurrency,
-        currencyCode: currentCurrency?.code || 'INR',
-        currencySymbol: currentCurrency?.symbol || '₹',
-        activeRate: currentCurrency?.rate_from_5sim_base || 1.0,
+        currencyCode: currentCurrency?.code || 'USD',
+        currencySymbol: currentCurrency?.symbol || '$',
+        activeRate,
         isLoading,
         switchCurrency,
+        convertFromUsd,
+        formatUsdAsCurrency,
         convertFromBaseRub,
         formatPrice,
         formatRubAsCurrency,

@@ -30,12 +30,16 @@ import marginAdminRoutes from './routes/marginAdminRoutes.js';
 import currencyRoutes from './routes/currencyRoutes.js';
 import currencyAdminRoutes from './routes/currencyAdminRoutes.js';
 import commissionRoutes from './routes/commissionRoutes.js';
+import crmInternalRoutes from './crm/routes/crmInternalRoutes.js';
+import crmExternalRoutes from './crm/routes/crmExternalRoutes.js';
+import { initCrmDatabase } from './crm/db/index.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
 
 // Initialize SQLite database
 initDatabase();
+initCrmDatabase().catch((err) => console.error('CRM DB initialization failed:', err));
 
 const app = express();
 app.set('trust proxy', 1); // Crucial when running behind Cloudflare Tunnel / Nginx / Docker reverse proxies
@@ -85,6 +89,8 @@ app.use('/api/admin/margin', marginAdminRoutes);
 app.use('/api/currency', currencyRoutes);
 app.use('/api/admin/currency', currencyAdminRoutes);
 app.use('/api/commissions', commissionRoutes);
+app.use('/api/crm', crmInternalRoutes);
+app.use('/v1', crmExternalRoutes);
 
 // Dashboard stats endpoint
 const messageController = new MessageController();

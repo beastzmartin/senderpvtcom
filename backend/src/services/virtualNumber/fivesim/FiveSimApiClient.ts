@@ -32,7 +32,22 @@ export class FiveSimApiClient {
   private baseUrl: string;
   private timeoutMs: number;
   private lastRequestTime = 0;
-  private readonly minIntervalMs = 20; // Throttling safeguard (~50 req/sec max to stay safely under 100 limit)
+  private readonly minIntervalMs = 25; // Safe ~40 req/sec ceiling (below 100 req/s limit)
+
+  // Request Queue implementation
+  private queue: Array<() => Promise<void>> = [];
+  private isProcessingQueue = false;
+
+  // 10-minute rolling window strikes tracker for 429 / 503 (5 hits in 10 mins = 10 min ban)
+  private rateLimitStrikes: number[] = [];
+
+  private static instance: FiveSimApiClient | null = null;
+  public static getInstance(): FiveSimApiClient {
+    if (!FiveSimApiClient.instance) {
+      FiveSimApiClient.instance = new FiveSimApiClient();
+    }
+    return FiveSimApiClient.instance;
+  }
 
   constructor(options: FiveSimClientOptions = {}) {
     this.apiKey = options.apiKey || process.env.FIVESIM_API_KEY || '';
@@ -57,7 +72,70 @@ export class FiveSimApiClient {
   }
 
   /**
-   * Internal rate-limited request helper with retries for transient 429/503 errors
+   * Helper to mask API key in logs
+   */
+  public static maskKey(key: string): string {
+    if (!key) return '(not configured)';
+    if (key.length <= 8) return '****';
+    return `${key.slice(0, 4)}...${key.slice(-4)}`;
+  }
+
+  /**
+   * Enqueue a request through the rate-limited serial queue
+   */
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          const res = await task();
+          resolve(res);
+        } catch (err) {
+          reject(err);
+        }
+      });
+      this.processQueue();
+    });
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.isProcessingQueue) return;
+    this.isProcessingQueue = true;
+
+    while (this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (task) {
+        // Enforce interval
+        const now = Date.now();
+        const elapsed = now - this.lastRequestTime;
+        if (elapsed < this.minIntervalMs) {
+          await new Promise((r) => setTimeout(r, this.minIntervalMs - elapsed));
+        }
+        this.lastRequestTime = Date.now();
+
+        try {
+          await task();
+        } catch {
+          // Task errors handled inside individual promise
+        }
+      }
+    }
+
+    this.isProcessingQueue = false;
+  }
+
+  /**
+   * Record a rate limit hit in a 10-minute rolling window
+   */
+  private recordRateLimitStrike(): number {
+    const now = Date.now();
+    const tenMinutesAgo = now - 10 * 60 * 1000;
+    this.rateLimitStrikes = this.rateLimitStrikes.filter((t) => t > tenMinutesAgo);
+    this.rateLimitStrikes.push(now);
+    return this.rateLimitStrikes.length;
+  }
+
+  /**
+   * Internal rate-limited request helper with retries for transient 429/503 errors and plain text parsing
    */
   private async request<T>(
     endpoint: string,
@@ -69,19 +147,32 @@ export class FiveSimApiClient {
       retries?: number;
     } = {}
   ): Promise<T> {
-    const { method = 'GET', params, body, isGuest = false, retries = 2 } = options;
+    return this.enqueue(() => this.executeRequest<T>(endpoint, options));
+  }
+
+  private async executeRequest<T>(
+    endpoint: string,
+    options: {
+      method?: 'GET' | 'POST' | 'DELETE' | 'PUT';
+      params?: Record<string, any>;
+      body?: any;
+      isGuest?: boolean;
+      retries?: number;
+    } = {}
+  ): Promise<T> {
+    const { method = 'GET', params, body, isGuest = false, retries = 3 } = options;
 
     if (!isGuest && !this.apiKey) {
       throw new Error('5SIM API key is not configured. Please set your token in settings or FIVESIM_API_KEY.');
     }
 
-    // Rate limiter throttle to prevent hitting 100 req/sec ceiling
+    // Check rate limit safety window (avoid triggering the 5-hit 10-minute ban)
     const now = Date.now();
-    const elapsed = now - this.lastRequestTime;
-    if (elapsed < this.minIntervalMs) {
-      await new Promise((resolve) => setTimeout(resolve, this.minIntervalMs - elapsed));
+    const recentHits = this.rateLimitStrikes.filter((t) => t > now - 10 * 60 * 1000);
+    if (recentHits.length >= 4) {
+      console.warn(`[5SIM API] Approaching rate-limit ban limit (4 hits in 10 mins). Self-throttling 5000ms.`);
+      await new Promise((r) => setTimeout(r, 5000));
     }
-    this.lastRequestTime = Date.now();
 
     // Construct URL with query parameters
     let url = `${this.baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
@@ -126,45 +217,105 @@ export class FiveSimApiClient {
       clearTimeout(timeoutTimer);
 
       const status = response.status;
-      const responseText = await response.text();
+      const rawText = await response.text();
 
-      // Handle transient rate limits with backoff
-      if ((status === 429 || status === 503) && retries > 0) {
-        console.warn(`[5SIM API] Rate limit hit (HTTP ${status}). Backing off for 1000ms...`);
-        await new Promise((r) => setTimeout(r, 1000));
-        return this.request<T>(endpoint, { ...options, retries: retries - 1 });
+      // Log raw response with masked credentials for diagnostics if needed
+      // console.debug(`[5SIM API] ${method} ${endpoint} -> HTTP ${status} (len ${rawText.length})`);
+
+      // Handle 429 and 503 with exponential backoff & strike tracking
+      if (status === 429 || status === 503) {
+        const strikes = this.recordRateLimitStrike();
+        console.warn(`[5SIM API] Rate limit hit HTTP ${status} (${strikes} strikes in 10m). Retries left: ${retries}`);
+
+        if (retries > 0) {
+          const backoffDelay = (4 - retries) * 1500 + Math.floor(Math.random() * 500);
+          console.warn(`[5SIM API] Backing off for ${backoffDelay}ms before retry...`);
+          await new Promise((r) => setTimeout(r, backoffDelay));
+          return this.executeRequest<T>(endpoint, { ...options, retries: retries - 1 });
+        }
+
+        if (status === 429) {
+          throw new Error('5SIM API Rate limit exceeded (429): Maximum 100 requests/second per API key.');
+        } else {
+          throw new Error('5SIM API Service Unavailable (503): Maximum 100 requests/second per IP.');
+        }
       }
 
       if (status === 401) {
-        throw new Error('5SIM API Unauthorized (401): Invalid or expired API token.');
+        throw new Error(`5SIM API Unauthorized (401): Invalid or expired API token (Key: ${FiveSimApiClient.maskKey(this.apiKey)}).`);
       }
 
-      if (status === 429) {
-        throw new Error('5SIM API Rate limit exceeded (429): Maximum 100 requests/second per API key.');
+      // Check for plain-text error keywords in response (can occur on HTTP 200 or 400)
+      const lowerText = rawText.trim().toLowerCase();
+
+      if (lowerText === 'no free phones' || lowerText.includes('no free phones') || lowerText === 'no_free_phones') {
+        const err = new Error('NO_FREE_PHONES: No phone numbers currently available for this service/country.');
+        (err as any).code = 'NO_FREE_PHONES';
+        throw err;
       }
 
-      if (status === 503) {
-        throw new Error('5SIM API Service Unavailable (503): Maximum 100 requests/second per IP.');
+      if (lowerText.includes('not enough user balance')) {
+        const err = new Error('NOT_ENOUGH_PROVIDER_BALANCE: Master 5SIM provider account balance is depleted.');
+        (err as any).code = 'NOT_ENOUGH_PROVIDER_BALANCE';
+        throw err;
+      }
+
+      if (lowerText.includes('not enough rating')) {
+        const err = new Error('NOT_ENOUGH_RATING: 5SIM account rating is too low to order this service.');
+        (err as any).code = 'NOT_ENOUGH_RATING';
+        throw err;
+      }
+
+      if (lowerText.includes('bad country') || lowerText.includes('bad operator') || lowerText.includes('select country') || lowerText.includes('select operator')) {
+        const err = new Error(`INVALID_OPERATOR: 5SIM rejected country or operator selection: ${rawText.trim()}`);
+        (err as any).code = 'INVALID_OPERATOR';
+        throw err;
+      }
+
+      if (lowerText.includes('no product')) {
+        const err = new Error('NO_PRODUCT: 5SIM does not support the requested product for this country.');
+        (err as any).code = 'NO_PRODUCT';
+        throw err;
+      }
+
+      if (lowerText.includes('server offline')) {
+        const err = new Error('SERVER_OFFLINE: 5SIM telecom node is currently offline.');
+        (err as any).code = 'SERVER_OFFLINE';
+        throw err;
+      }
+
+      if (lowerText.includes('order has sms')) {
+        const err = new Error('ORDER_HAS_SMS: Cannot cancel order after SMS has already been received.');
+        (err as any).code = 'ORDER_HAS_SMS';
+        throw err;
+      }
+
+      if (lowerText.includes('order expired')) {
+        const err = new Error('ORDER_EXPIRED: The virtual number order has expired.');
+        (err as any).code = 'ORDER_EXPIRED';
+        throw err;
       }
 
       if (!response.ok) {
-        let errMsg = responseText || `HTTP ${status}`;
+        let errMsg = rawText || `HTTP ${status}`;
         try {
-          const parsed = JSON.parse(responseText);
-          errMsg = parsed.message || parsed.error || responseText;
+          const parsed = JSON.parse(rawText);
+          errMsg = parsed.message || parsed.error || rawText;
         } catch {}
         throw new Error(`5SIM API Error (${status}): ${errMsg}`);
       }
 
-      // Check for plain-text response that might not be valid JSON
-      if (!responseText || responseText.trim() === '') {
+      // Check for empty body
+      if (!rawText || rawText.trim() === '') {
         return {} as T;
       }
 
+      // Parse JSON
       try {
-        return JSON.parse(responseText) as T;
-      } catch {
-        return responseText as unknown as T;
+        return JSON.parse(rawText) as T;
+      } catch (parseErr) {
+        // If 200 OK returned plain text that didn't match known keywords
+        return rawText as unknown as T;
       }
     } catch (err: any) {
       clearTimeout(timeoutTimer);
@@ -176,135 +327,92 @@ export class FiveSimApiClient {
   }
 
   // =========================================================================
-  // PART 2: USER ENDPOINTS (Profile, Orders, Payments)
+  // USER ENDPOINTS (Profile, Orders, Payments)
   // =========================================================================
 
   /**
-   * 2.1 Balance / Profile
    * GET https://5sim.net/v1/user/profile
    */
   public async getProfile(): Promise<FiveSimProfile> {
-    return this.request<FiveSimProfile>('/user/profile', { method: 'GET' });
+    return this.request<FiveSimProfile>('/user/profile', {
+      method: 'GET'
+    });
   }
 
   /**
-   * 2.2 Order History
    * GET https://5sim.net/v1/user/orders?category=$category
    */
-  public async getOrders(params: {
-    category: 'activation' | 'hosting';
-    limit?: number;
-    offset?: number;
-    order?: string;
-    reverse?: boolean;
-  }): Promise<FiveSimOrdersResponse> {
-    if (!params.category) {
-      throw new Error('Category parameter is required ("activation" or "hosting").');
+  public async getOrders(
+    categoryOrParams?: 'activation' | 'hosting' | { category?: 'activation' | 'hosting'; limit?: number; offset?: number; order?: string; reverse?: boolean },
+    limit?: number
+  ): Promise<FiveSimOrdersResponse> {
+    const params: Record<string, any> = {};
+    if (typeof categoryOrParams === 'string') {
+      params.category = categoryOrParams;
+      if (limit) params.limit = limit;
+    } else if (categoryOrParams && typeof categoryOrParams === 'object') {
+      if (categoryOrParams.category) params.category = categoryOrParams.category;
+      if (categoryOrParams.limit) params.limit = categoryOrParams.limit;
+      if (categoryOrParams.offset) params.offset = categoryOrParams.offset;
+      if (categoryOrParams.order) params.order = categoryOrParams.order;
+      if (categoryOrParams.reverse !== undefined) params.reverse = categoryOrParams.reverse;
     }
+
     return this.request<FiveSimOrdersResponse>('/user/orders', {
       method: 'GET',
-      params: {
-        category: params.category,
-        limit: params.limit,
-        offset: params.offset,
-        order: params.order,
-        reverse: params.reverse !== undefined ? String(params.reverse) : undefined
-      }
+      params
     });
   }
 
   /**
-   * 2.3 Payments History
    * GET https://5sim.net/v1/user/payments
    */
-  public async getPayments(params?: {
-    limit?: number;
-    offset?: number;
-    order?: string;
-    reverse?: boolean;
-  }): Promise<FiveSimPaymentsResponse> {
+  public async getPayments(paramsInput?: { limit?: number; offset?: number; order?: string; reverse?: boolean }): Promise<FiveSimPaymentsResponse> {
     return this.request<FiveSimPaymentsResponse>('/user/payments', {
       method: 'GET',
-      params: params
-        ? {
-            limit: params.limit,
-            offset: params.offset,
-            order: params.order,
-            reverse: params.reverse !== undefined ? String(params.reverse) : undefined
-          }
-        : undefined
+      params: paramsInput
     });
   }
 
-  // =========================================================================
-  // PART 3: PRICE LIMITS (Max Prices)
-  // =========================================================================
-
   /**
-   * 3.1 List of Price Limits
    * GET https://5sim.net/v1/user/max-prices
    */
   public async getMaxPrices(): Promise<FiveSimMaxPriceItem[]> {
-    const res = await this.request<FiveSimMaxPriceItem[] | any>('/user/max-prices', { method: 'GET' });
-    if (Array.isArray(res)) {
-      return res;
-    }
-    return [];
+    return this.request<FiveSimMaxPriceItem[]>('/user/max-prices', {
+      method: 'GET'
+    });
   }
 
   /**
-   * 3.2 Create or Update Price Limit
    * POST https://5sim.net/v1/user/max-prices?product_name=$product&price=$price
    */
-  public async setMaxPrice(productName: string, price: number): Promise<{ success: boolean; data?: any }> {
-    if (!productName || !productName.trim()) {
-      throw new Error('product_name is required to set max price limit.');
-    }
-    if (typeof price !== 'number' || price <= 0) {
-      throw new Error('price must be a positive number.');
-    }
-
-    const cleanProduct = productName.trim().toLowerCase();
-
-    // 5SIM documentation specifies product_name and price as query params
-    const res = await this.request<any>('/user/max-prices', {
+  public async setMaxPrice(product: string, price: number): Promise<any> {
+    return this.request<any>('/user/max-prices', {
       method: 'POST',
       params: {
-        product_name: cleanProduct,
-        price
+        product_name: product.toLowerCase().trim(),
+        price: Number(price.toFixed(2))
       }
     });
-
-    return { success: true, data: res };
   }
 
   /**
-   * 3.3 Delete Price Limit
    * DELETE https://5sim.net/v1/user/max-prices?product_name=$product
    */
-  public async deleteMaxPrice(productName: string): Promise<{ success: boolean; data?: any }> {
-    if (!productName || !productName.trim()) {
-      throw new Error('product_name is required to delete price limit.');
-    }
-
-    const cleanProduct = productName.trim().toLowerCase();
-
-    const res = await this.request<any>('/user/max-prices', {
+  public async deleteMaxPrice(product: string): Promise<any> {
+    return this.request<any>('/user/max-prices', {
       method: 'DELETE',
       params: {
-        product_name: cleanProduct
+        product_name: product.toLowerCase().trim()
       }
     });
-
-    return { success: true, data: res };
   }
 
   // =========================================================================
-  // PART 4: PRODUCTS & PRICES (GUEST ENDPOINTS)
+  // PRODUCTS & PRICES (GUEST ENDPOINTS)
   // =========================================================================
 
   /**
-   * 9.1 / Guest Countries List (Returns countries and available operators)
    * GET https://5sim.net/v1/guest/countries
    */
   public async getGuestCountries(): Promise<FiveSimCountriesResponse> {
@@ -315,7 +423,6 @@ export class FiveSimApiClient {
   }
 
   /**
-   * 4.1 Products Request
    * GET https://5sim.net/v1/guest/products/$country/$operator
    */
   public async getGuestProducts(country = 'any', operator = 'any'): Promise<FiveSimProductsMap> {
@@ -328,8 +435,8 @@ export class FiveSimApiClient {
   }
 
   /**
-   * 4.2 - 4.5 Prices Request (all, by country, by product, or by both)
    * GET https://5sim.net/v1/guest/prices
+   * Supports ?country=X, ?product=Y, or both
    */
   public async getGuestPrices(params?: { country?: string; product?: string }): Promise<any> {
     return this.request<any>('/guest/prices', {
@@ -337,19 +444,18 @@ export class FiveSimApiClient {
       isGuest: true,
       params: params
         ? {
-            country: params.country?.toLowerCase().trim(),
-            product: params.product?.toLowerCase().trim()
+            country: params.country ? params.country.toLowerCase().trim() : undefined,
+            product: params.product ? params.product.toLowerCase().trim() : undefined
           }
         : undefined
     });
   }
 
   // =========================================================================
-  // PART 5: PURCHASE (ACTIVATION, HOSTING, RE-BUY)
+  // PURCHASE (ACTIVATION, HOSTING, RE-BUY)
   // =========================================================================
 
   /**
-   * 5.1 Buy Activation Number
    * GET https://5sim.net/v1/user/buy/activation/$country/$operator/$product
    */
   public async buyActivation(params: BuyActivationParams): Promise<FiveSimOrderItem> {
@@ -377,13 +483,10 @@ export class FiveSimApiClient {
     });
 
     if (typeof res === 'string') {
-      if (res.includes('no free phones') || res.includes('NO_FREE_PHONES')) {
-        throw new Error('NO_FREE_PHONES: No phone numbers currently available for this service/country.');
-      }
       try {
         return JSON.parse(res);
       } catch {
-        throw new Error(`5SIM returned unexpected text response: ${res}`);
+        throw new Error(`5SIM returned text response: ${res}`);
       }
     }
 
@@ -391,8 +494,8 @@ export class FiveSimApiClient {
   }
 
   /**
-   * 5.2 Buy Hosting Number (Rental)
    * GET https://5sim.net/v1/user/buy/hosting/$country/$operator/$product
+   * (Hosting rental - phase 2)
    */
   public async buyHosting(params: BuyHostingParams): Promise<FiveSimOrderItem> {
     const cleanCountry = encodeURIComponent((params.country || 'any').toLowerCase().trim());
@@ -406,9 +509,6 @@ export class FiveSimApiClient {
     });
 
     if (typeof res === 'string') {
-      if (res.includes('no free phones')) {
-        throw new Error('NO_FREE_PHONES: No hosting phone numbers currently available.');
-      }
       try {
         return JSON.parse(res);
       } catch {
@@ -420,8 +520,8 @@ export class FiveSimApiClient {
   }
 
   /**
-   * 5.3 Re-buy Number (Reuse)
    * GET https://5sim.net/v1/user/reuse/$product/$number
+   * (Re-buy / reuse - phase 2)
    */
   public async reuseNumber(params: ReuseNumberParams): Promise<FiveSimOrderItem> {
     const cleanProduct = encodeURIComponent(params.product.toLowerCase().trim());
@@ -434,9 +534,6 @@ export class FiveSimApiClient {
     });
 
     if (typeof res === 'string') {
-      if (res.includes('no free phones')) {
-        throw new Error('NO_FREE_PHONES');
-      }
       try {
         return JSON.parse(res);
       } catch {
@@ -448,11 +545,10 @@ export class FiveSimApiClient {
   }
 
   // =========================================================================
-  // PART 6: ORDER MANAGEMENT & SMS INBOX
+  // ORDER MANAGEMENT & SMS INBOX
   // =========================================================================
 
   /**
-   * 6.1 Check Order (Poll for SMS)
    * GET https://5sim.net/v1/user/check/$id
    */
   public async checkOrder(id: number | string): Promise<FiveSimOrderItem> {
@@ -462,7 +558,6 @@ export class FiveSimApiClient {
   }
 
   /**
-   * 6.2 Finish Order (Mark as Complete)
    * GET https://5sim.net/v1/user/finish/$id
    */
   public async finishOrder(id: number | string): Promise<FiveSimOrderItem> {
@@ -472,7 +567,6 @@ export class FiveSimApiClient {
   }
 
   /**
-   * 6.3 Cancel Order (Before SMS arrives)
    * GET https://5sim.net/v1/user/cancel/$id
    */
   public async cancelOrder(id: number | string): Promise<FiveSimOrderItem> {
@@ -482,7 +576,6 @@ export class FiveSimApiClient {
   }
 
   /**
-   * 6.4 Ban Order (When number is already used)
    * GET https://5sim.net/v1/user/ban/$id
    */
   public async banOrder(id: number | string): Promise<FiveSimOrderItem> {
@@ -492,7 +585,6 @@ export class FiveSimApiClient {
   }
 
   /**
-   * 6.5 SMS Inbox List (For Hosting / Rented numbers only)
    * GET https://5sim.net/v1/user/sms/inbox/$id
    */
   public async getHostingInbox(id: number | string): Promise<FiveSimHostingInboxResponse> {
@@ -501,12 +593,7 @@ export class FiveSimApiClient {
     });
   }
 
-  // =========================================================================
-  // PART 7: NOTIFICATIONS & FLASH BROADCASTS
-  // =========================================================================
-
   /**
-   * 7.1 Flash Notifications
    * GET https://5sim.net/v1/guest/flash/$lang
    */
   public async getFlashNotifications(lang = 'en'): Promise<FiveSimFlashNotification> {
@@ -521,141 +608,72 @@ export class FiveSimApiClient {
   }
 
   // =========================================================================
-  // PART 8: VENDOR API (PARTNER & RESELLER ENDPOINTS)
+  // VENDOR ENDPOINTS
   // =========================================================================
 
-  /**
-   * 8.1 Vendor Statistics
-   * GET https://5sim.net/v1/user/vendor
-   */
   public async getVendorStats(): Promise<FiveSimVendorStats> {
-    return this.request<FiveSimVendorStats>('/user/vendor', {
-      method: 'GET'
-    });
+    return this.request<FiveSimVendorStats>('/user/vendor', { method: 'GET' });
   }
 
-  /**
-   * 8.2 Wallets Reserve
-   * GET https://5sim.net/v1/vendor/wallets
-   */
   public async getVendorWallets(): Promise<FiveSimVendorWallets> {
-    return this.request<FiveSimVendorWallets>('/vendor/wallets', {
-      method: 'GET'
-    });
+    return this.request<FiveSimVendorWallets>('/vendor/wallets', { method: 'GET' });
   }
 
-  /**
-   * 8.3 Vendor Orders History
-   * GET https://5sim.net/v1/vendor/orders?category=$category
-   */
-  public async getVendorOrders(params: {
-    category: 'activation' | 'hosting';
-    limit?: number;
-    offset?: number;
-    order?: string;
-    reverse?: boolean;
-  }): Promise<FiveSimOrdersResponse> {
-    return this.request<FiveSimOrdersResponse>('/vendor/orders', {
-      method: 'GET',
-      params: {
-        category: params.category,
-        limit: params.limit,
-        offset: params.offset,
-        order: params.order,
-        reverse: params.reverse !== undefined ? String(params.reverse) : undefined
-      }
-    });
-  }
-
-  /**
-   * 8.4 Vendor Payments History
-   * GET https://5sim.net/v1/vendor/payments
-   */
-  public async getVendorPayments(params?: {
-    limit?: number;
-    offset?: number;
-    order?: string;
-    reverse?: boolean;
-  }): Promise<FiveSimPaymentsResponse> {
-    return this.request<FiveSimPaymentsResponse>('/vendor/payments', {
-      method: 'GET',
-      params: params
-        ? {
-            limit: params.limit,
-            offset: params.offset,
-            order: params.order,
-            reverse: params.reverse !== undefined ? String(params.reverse) : undefined
-          }
-        : undefined
-    });
-  }
-
-  /**
-   * 8.5 Create Payouts
-   * POST https://5sim.net/v1/vendor/withdraw
-   */
-  public async requestVendorWithdraw(params: FiveSimVendorWithdrawParams): Promise<{ success: boolean; data?: any }> {
-    const res = await this.request<any>('/vendor/withdraw', {
-      method: 'POST',
-      body: params
-    });
-    return { success: true, data: res };
-  }
-
-  /**
-   * 8.6 Vendor Prices — Get List
-   * GET https://5sim.net/v1/vendor/prices
-   */
-  public async getVendorPrices(params?: FiveSimVendorPricesQueryParams): Promise<FiveSimVendorPricesResponse> {
-    const queryParams: Record<string, any> = {};
-    if (params?.filters && Object.keys(params.filters).length > 0) {
-      queryParams._filters = JSON.stringify(params.filters);
+  public async getVendorOrders(
+    categoryOrParams?: 'activation' | 'hosting' | { category?: 'activation' | 'hosting'; limit?: number; offset?: number; order?: string; reverse?: boolean }
+  ): Promise<FiveSimOrdersResponse> {
+    const params: Record<string, any> = {};
+    if (typeof categoryOrParams === 'string') {
+      params.category = categoryOrParams;
+    } else if (categoryOrParams && typeof categoryOrParams === 'object') {
+      if (categoryOrParams.category) params.category = categoryOrParams.category;
+      if (categoryOrParams.limit) params.limit = categoryOrParams.limit;
+      if (categoryOrParams.offset) params.offset = categoryOrParams.offset;
+      if (categoryOrParams.order) params.order = categoryOrParams.order;
+      if (categoryOrParams.reverse !== undefined) params.reverse = categoryOrParams.reverse;
     }
-    if (params?.sortDir) queryParams._sortDir = params.sortDir;
-    if (params?.sortField) queryParams._sortField = params.sortField;
-    if (params?.page !== undefined) queryParams._page = params.page;
-    if (params?.perPage !== undefined) queryParams._perPage = params.perPage;
-
-    return this.request<FiveSimVendorPricesResponse>('/vendor/prices', {
-      method: 'GET',
-      params: queryParams
-    });
+    return this.request<FiveSimOrdersResponse>('/vendor/orders', { method: 'GET', params });
   }
 
-  /**
-   * 8.7 Create Vendor Price
-   * PUT https://5sim.net/v1/vendor/prices
-   */
-  public async createVendorPrice(params: CreateVendorPriceParams): Promise<{ success: boolean; data?: any }> {
-    const res = await this.request<any>('/vendor/prices', {
-      method: 'PUT',
-      body: params
-    });
-    return { success: true, data: res };
+  public async getVendorPayments(params?: { limit?: number; offset?: number; order?: string; reverse?: boolean }): Promise<FiveSimPaymentsResponse> {
+    return this.request<FiveSimPaymentsResponse>('/vendor/payments', { method: 'GET', params });
   }
 
-  /**
-   * 8.8 Change Vendor Price
-   * POST https://5sim.net/v1/vendor/prices
-   */
-  public async updateVendorPrice(params: UpdateVendorPriceParams): Promise<{ success: boolean; data?: any }> {
-    const res = await this.request<any>('/vendor/prices', {
-      method: 'POST',
-      body: params
-    });
-    return { success: true, data: res };
+  public async withdrawVendorFunds(params: FiveSimVendorWithdrawParams): Promise<any> {
+    return this.request<any>('/vendor/withdraw', { method: 'POST', body: params });
   }
 
-  /**
-   * 8.9 Enable / Disable Vendor Price
-   * POST https://5sim.net/v1/vendor/prices/disable
-   */
-  public async toggleVendorPrice(params: ToggleVendorPriceParams): Promise<{ success: boolean; data?: any }> {
-    const res = await this.request<any>('/vendor/prices/disable', {
-      method: 'POST',
-      body: params
-    });
-    return { success: true, data: res };
+  public async requestVendorWithdraw(params: FiveSimVendorWithdrawParams): Promise<any> {
+    return this.withdrawVendorFunds(params);
+  }
+
+  public async getVendorPrices(params?: FiveSimVendorPricesQueryParams): Promise<FiveSimVendorPricesResponse> {
+    return this.request<FiveSimVendorPricesResponse>('/vendor/prices', { method: 'GET', params });
+  }
+
+  public async updateVendorPrices(params: UpdateVendorPriceParams[] | UpdateVendorPriceParams): Promise<any> {
+    const body = Array.isArray(params) ? params : [params];
+    return this.request<any>('/vendor/prices', { method: 'PUT', body });
+  }
+
+  public async updateVendorPrice(params: UpdateVendorPriceParams): Promise<any> {
+    return this.updateVendorPrices(params);
+  }
+
+  public async createVendorPrices(params: CreateVendorPriceParams[] | CreateVendorPriceParams): Promise<any> {
+    const body = Array.isArray(params) ? params : [params];
+    return this.request<any>('/vendor/prices', { method: 'POST', body });
+  }
+
+  public async createVendorPrice(params: CreateVendorPriceParams): Promise<any> {
+    return this.createVendorPrices(params);
+  }
+
+  public async toggleVendorPrices(params: ToggleVendorPriceParams): Promise<any> {
+    return this.request<any>('/vendor/prices/disable', { method: 'POST', body: params });
+  }
+
+  public async toggleVendorPrice(params: ToggleVendorPriceParams): Promise<any> {
+    return this.toggleVendorPrices(params);
   }
 }
-

@@ -8,6 +8,8 @@ import { WhiteLabelSanitizer } from './WhiteLabelSanitizer.js';
 import { MarketplaceCircuitBreakerService } from './MarketplaceCircuitBreakerService.js';
 import { MarketplaceFileService } from './MarketplaceFileService.js';
 import { MarketplaceProductService } from './MarketplaceProductService.js';
+import { CrmExtractorPipelineService } from '../../crm/services/CrmExtractorPipelineService.js';
+import { getCrmDb } from '../../crm/db/index.js';
 
 export class MarketplaceJobWorker {
   private static instance: MarketplaceJobWorker | null = null;
@@ -352,6 +354,33 @@ export class MarketplaceJobWorker {
     // 4. Settle actual charges & release remaining reserve
     const deliveredCount = transformedItems.length;
     this.chargingService.settleJob(jobId, deliveredCount, usageTotalUsd);
+
+    // 5. Auto-flow into CRM List if configured or user's default workspace
+    try {
+      const inputObj = JSON.parse(job.input_json || '{}');
+      const crmListId = inputObj.crm_list_id || inputObj._crm_list_id;
+      const targetWorkspaceId = inputObj.crm_workspace_id || inputObj._crm_workspace_id;
+
+      if (transformedItems.length > 0) {
+        const crmDb = getCrmDb();
+        const ws = targetWorkspaceId
+          ? await crmDb.getWorkspace(targetWorkspaceId)
+          : await crmDb.getUserDefaultWorkspace(job.user_id);
+
+        if (ws) {
+          await CrmExtractorPipelineService.getInstance().ingestExtractorResults(
+            ws.id,
+            crmListId || null,
+            transformedItems,
+            `extractor:${job.product_slug}`,
+            job.id,
+            'update'
+          );
+        }
+      }
+    } catch (crmErr) {
+      console.warn('[MarketplaceJobWorker] Failed to auto-flow leads into CRM:', crmErr);
+    }
 
     // If ADMIN_TEST run, automatically satisfy test_run_passed gate
     if (job.is_test_run === 1 || job.job_type === 'ADMIN_TEST') {

@@ -7,7 +7,9 @@ export interface CurrencyRecord {
   code: string;
   name: string;
   symbol: string;
+  rate_from_usd: number;
   rate_from_5sim_base: number;
+  manual_override: number;
   is_default: number;
   is_active: number;
   created_at?: string;
@@ -40,16 +42,7 @@ export class CurrencyService {
       : 'SELECT * FROM currency_rates ORDER BY is_default DESC, code ASC';
 
     const rows = this.db.prepare(query).all() as any[];
-    return rows.map((r) => ({
-      code: r.code,
-      name: r.name,
-      symbol: r.symbol,
-      rate_from_5sim_base: Number(r.rate_from_5sim_base || 1.0),
-      is_default: Number(r.is_default || 0),
-      is_active: Number(r.is_active || 1),
-      created_at: r.created_at,
-      updated_at: r.updated_at
-    }));
+    return rows.map((r) => this.mapCurrencyRow(r));
   }
 
   /**
@@ -59,17 +52,7 @@ export class CurrencyService {
     if (!code) return null;
     const row = this.db.prepare('SELECT * FROM currency_rates WHERE UPPER(code) = UPPER(?)').get(code.trim()) as any;
     if (!row) return null;
-
-    return {
-      code: row.code,
-      name: row.name,
-      symbol: row.symbol,
-      rate_from_5sim_base: Number(row.rate_from_5sim_base || 1.0),
-      is_default: Number(row.is_default || 0),
-      is_active: Number(row.is_active || 1),
-      created_at: row.created_at,
-      updated_at: row.updated_at
-    };
+    return this.mapCurrencyRow(row);
   }
 
   /**
@@ -78,42 +61,49 @@ export class CurrencyService {
   public getDefaultCurrency(): CurrencyRecord {
     const defaultRow = this.db.prepare('SELECT * FROM currency_rates WHERE is_default = 1 AND is_active = 1').get() as any;
     if (defaultRow) {
-      return {
-        code: defaultRow.code,
-        name: defaultRow.name,
-        symbol: defaultRow.symbol,
-        rate_from_5sim_base: Number(defaultRow.rate_from_5sim_base || 1.0),
-        is_default: 1,
-        is_active: 1
-      };
+      return this.mapCurrencyRow(defaultRow);
     }
 
-    const inrRow = this.getCurrency('INR');
-    if (inrRow) return inrRow;
+    const usdRow = this.getCurrency('USD');
+    if (usdRow) return usdRow;
 
     return {
-      code: 'INR',
-      name: 'Indian Rupee',
-      symbol: '₹',
-      rate_from_5sim_base: 1.05,
+      code: 'USD',
+      name: 'US Dollar',
+      symbol: '$',
+      rate_from_usd: 1.0,
+      rate_from_5sim_base: 1.0,
+      manual_override: 0,
       is_default: 1,
       is_active: 1
     };
   }
 
   /**
-   * Convert 5SIM base cost (in RUB) to target currency
+   * Convert Provider Currency cost to sovereign USD base (STEP 0 requirement)
+   * All provider values are converted to USD ONCE on the server.
    */
-  public convertFrom5SimBase(costInRub: number, targetCurrency?: string): {
+  public convertProviderToUsd(providerCost: number): number {
+    const settings = this.db.prepare("SELECT provider_currency, provider_currency_to_usd_rate FROM pricing_settings WHERE id = 'default'").get() as any;
+    const rate = Number(settings?.provider_currency_to_usd_rate || 1.0);
+    const cost = Math.max(0, Number(providerCost || 0));
+    return Number((cost * rate).toFixed(4));
+  }
+
+  /**
+   * Convert USD base amount to target currency for display or wallet deduction (STEP 4)
+   * final_user_price = final_usd * user_rate
+   */
+  public convertUsdToCurrency(usdAmount: number, targetCurrency?: string): {
     amount: number;
     rate: number;
     currency: string;
     symbol: string;
   } {
-    const code = (targetCurrency || 'INR').toUpperCase();
+    const code = (targetCurrency || 'USD').toUpperCase();
     const curr = this.getCurrency(code) || this.getDefaultCurrency();
-    const rate = curr.rate_from_5sim_base || 1.0;
-    const amount = Number((costInRub * rate).toFixed(4));
+    const rate = curr.rate_from_usd || 1.0;
+    const amount = Number((usdAmount * rate).toFixed(4));
 
     return {
       amount,
@@ -124,9 +114,23 @@ export class CurrencyService {
   }
 
   /**
-   * Convert between any two currencies via 5SIM base exchange rates
+   * Backward-compatible conversion from 5SIM base (USD/RUB)
+   */
+  public convertFrom5SimBase(cost: number, targetCurrency?: string): {
+    amount: number;
+    rate: number;
+    currency: string;
+    symbol: string;
+  } {
+    const usd = this.convertProviderToUsd(cost);
+    return this.convertUsdToCurrency(usd, targetCurrency);
+  }
+
+  /**
+   * Convert between any two currencies via USD base
    */
   public convertBetween(amount: number, fromCurrency: string, toCurrency: string): number {
+    if (!amount) return 0;
     if (fromCurrency.toUpperCase() === toCurrency.toUpperCase()) {
       return amount;
     }
@@ -134,12 +138,35 @@ export class CurrencyService {
     const fromCurr = this.getCurrency(fromCurrency) || this.getDefaultCurrency();
     const toCurr = this.getCurrency(toCurrency) || this.getDefaultCurrency();
 
-    // fromAmount / fromRate = amount in 5SIM base RUB
-    const inRub = amount / fromCurr.rate_from_5sim_base;
-    // inRub * toRate = amount in toCurrency
-    const converted = inRub * toCurr.rate_from_5sim_base;
+    const fromRate = fromCurr.rate_from_usd || fromCurr.rate_from_5sim_base || 1.0;
+    const toRate = toCurr.rate_from_usd || toCurr.rate_from_5sim_base || 1.0;
+
+    // amount / fromRate = amount in USD
+    const inUsd = amount / fromRate;
+    // inUsd * toRate = amount in target currency
+    const converted = inUsd * toRate;
 
     return Number(converted.toFixed(2));
+  }
+
+  /**
+   * Format price using Intl.NumberFormat per currency code
+   */
+  public formatPrice(amount: number, currencyCode: string): string {
+    const code = (currencyCode || 'USD').toUpperCase();
+    try {
+      const formatter = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: code,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+      return formatter.format(amount);
+    } catch {
+      const curr = this.getCurrency(code);
+      const symbol = curr?.symbol || '$';
+      return `${symbol}${amount.toFixed(2)}`;
+    }
   }
 
   /**
@@ -149,7 +176,9 @@ export class CurrencyService {
     code: string;
     name: string;
     symbol: string;
-    rate_from_5sim_base: number;
+    rate_from_usd: number;
+    rate_from_5sim_base?: number;
+    manual_override?: boolean;
     is_default?: boolean;
     is_active?: boolean;
   }): CurrencyRecord {
@@ -158,12 +187,14 @@ export class CurrencyService {
       throw new Error('Currency code must be 2 to 5 characters (e.g. USD, EUR, INR).');
     }
 
-    if (data.rate_from_5sim_base <= 0) {
+    const rate = Number(data.rate_from_usd || data.rate_from_5sim_base || 1.0);
+    if (rate <= 0) {
       throw new Error('Currency exchange rate must be strictly greater than 0.');
     }
 
     const isDefault = data.is_default ? 1 : 0;
     const isActive = data.is_active !== false ? 1 : 0;
+    const manualOverride = data.manual_override ? 1 : 0;
 
     const tx = this.db.transaction(() => {
       if (isDefault) {
@@ -171,16 +202,18 @@ export class CurrencyService {
       }
 
       this.db.prepare(`
-        INSERT INTO currency_rates (code, name, symbol, rate_from_5sim_base, is_default, is_active, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        INSERT INTO currency_rates (code, name, symbol, rate_from_usd, rate_from_5sim_base, manual_override, is_default, is_active, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(code) DO UPDATE SET
           name = excluded.name,
           symbol = excluded.symbol,
-          rate_from_5sim_base = excluded.rate_from_5sim_base,
+          rate_from_usd = excluded.rate_from_usd,
+          rate_from_5sim_base = excluded.rate_from_usd,
+          manual_override = excluded.manual_override,
           is_default = excluded.is_default,
           is_active = excluded.is_active,
           updated_at = datetime('now')
-      `).run(code, data.name.trim(), data.symbol.trim(), data.rate_from_5sim_base, isDefault, isActive);
+      `).run(code, data.name.trim(), data.symbol.trim(), rate, rate, manualOverride, isDefault, isActive);
     });
 
     tx();
@@ -195,7 +228,9 @@ export class CurrencyService {
     updates: Partial<{
       name: string;
       symbol: string;
+      rate_from_usd: number;
       rate_from_5sim_base: number;
+      manual_override: boolean;
       is_default: boolean;
       is_active: boolean;
     }>
@@ -207,13 +242,17 @@ export class CurrencyService {
 
     const name = updates.name !== undefined ? updates.name.trim() : current.name;
     const symbol = updates.symbol !== undefined ? updates.symbol.trim() : current.symbol;
-    const rate = updates.rate_from_5sim_base !== undefined ? Number(updates.rate_from_5sim_base) : current.rate_from_5sim_base;
-    const isDefault = updates.is_default !== undefined ? (updates.is_default ? 1 : 0) : current.is_default;
-    const isActive = updates.is_active !== undefined ? (updates.is_active ? 1 : 0) : current.is_active;
+    const rate = updates.rate_from_usd !== undefined
+      ? Number(updates.rate_from_usd)
+      : (updates.rate_from_5sim_base !== undefined ? Number(updates.rate_from_5sim_base) : current.rate_from_usd);
 
     if (rate <= 0) {
       throw new Error('Exchange rate must be greater than 0.');
     }
+
+    const isDefault = updates.is_default !== undefined ? (updates.is_default ? 1 : 0) : current.is_default;
+    const isActive = updates.is_active !== undefined ? (updates.is_active ? 1 : 0) : current.is_active;
+    const manualOverride = updates.manual_override !== undefined ? (updates.manual_override ? 1 : 0) : current.manual_override;
 
     const tx = this.db.transaction(() => {
       if (isDefault) {
@@ -222,9 +261,9 @@ export class CurrencyService {
 
       this.db.prepare(`
         UPDATE currency_rates
-        SET name = ?, symbol = ?, rate_from_5sim_base = ?, is_default = ?, is_active = ?, updated_at = datetime('now')
+        SET name = ?, symbol = ?, rate_from_usd = ?, rate_from_5sim_base = ?, manual_override = ?, is_default = ?, is_active = ?, updated_at = datetime('now')
         WHERE code = ?
-      `).run(name, symbol, rate, isDefault, isActive, current.code);
+      `).run(name, symbol, rate, rate, manualOverride, isDefault, isActive, current.code);
     });
 
     tx();
@@ -286,11 +325,11 @@ export class CurrencyService {
     }
 
     const wallet = this.walletService.getOrCreateWallet(userId);
-    const oldCurrency = (wallet.currency || 'INR').toUpperCase();
+    const oldCurrency = (wallet.currency || 'USD').toUpperCase();
     const defaultCurr = this.getDefaultCurrency();
     const baseCurrency = (wallet.base_currency || defaultCurr.code).toUpperCase();
 
-    // Ensure base balance is accurately initialized
+    // Ensure base balance is initialized
     let baseBalance = Number(wallet.base_balance ?? wallet.balance);
     if (baseBalance <= 0 && wallet.balance > 0) {
       baseBalance = this.convertBetween(wallet.balance, oldCurrency, baseCurrency);
@@ -307,8 +346,7 @@ export class CurrencyService {
       };
     }
 
-    // High-precision conversion:
-    // If switching to base currency (INR), exactly restore the sovereign base balance! Zero degradation!
+    // High-precision conversion via base currency
     let newBalance: number;
     if (targetCode === baseCurrency) {
       newBalance = Number(baseBalance.toFixed(2));
@@ -322,21 +360,18 @@ export class CurrencyService {
     const newToppedUp = this.convertBetween(wallet.total_topped_up, oldCurrency, targetCode);
 
     const switchTx = this.db.transaction(() => {
-      // 1. Update wallet table
       this.db.prepare(`
         UPDATE user_wallets
         SET balance = ?, base_balance = ?, base_currency = ?, reserved_balance = ?, total_spent = ?, total_topped_up = ?, currency = ?, updated_at = datetime('now')
         WHERE user_id = ?
       `).run(newBalance, baseBalance, baseCurrency, newReserved, newSpent, newToppedUp, targetCode, userId);
 
-      // 2. Update user profile preference
       this.db.prepare(`
         UPDATE users
         SET preferred_currency = ?
         WHERE id = ?
       `).run(targetCode, userId);
 
-      // 3. Insert transaction log for audit trail
       this.db.prepare(`
         INSERT INTO wallet_transactions (
           id, user_id, transaction_type, amount, currency, previous_balance, new_balance, description, status, metadata
@@ -371,6 +406,22 @@ export class CurrencyService {
       oldBalance: wallet.balance,
       newBalance,
       rate: directRate
+    };
+  }
+
+  private mapCurrencyRow(r: any): CurrencyRecord {
+    const rateUsd = Number(r.rate_from_usd ?? r.rate_from_5sim_base ?? 1.0);
+    return {
+      code: r.code,
+      name: r.name,
+      symbol: r.symbol,
+      rate_from_usd: rateUsd,
+      rate_from_5sim_base: rateUsd,
+      manual_override: Number(r.manual_override || 0),
+      is_default: Number(r.is_default || 0),
+      is_active: Number(r.is_active || 1),
+      created_at: r.created_at,
+      updated_at: r.updated_at
     };
   }
 }

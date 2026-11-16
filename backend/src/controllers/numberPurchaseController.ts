@@ -11,7 +11,8 @@ export class NumberPurchaseController {
 
   public getCountries = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const countries = await this.service.getCountries();
+      const forceRefresh = req.query.refresh === 'true';
+      const countries = await this.service.getCountries(forceRefresh);
       res.json({ success: true, count: countries.length, countries });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || 'Failed to load countries' });
@@ -21,7 +22,8 @@ export class NumberPurchaseController {
   public getProducts = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const country = (req.query.country as string) || 'any';
-      const products = await this.service.getProducts(country);
+      const operator = (req.query.operator as string) || 'any';
+      const products = await this.service.getProducts(country, operator);
       res.json({ success: true, count: products.length, products });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || 'Failed to load services' });
@@ -47,6 +49,15 @@ export class NumberPurchaseController {
     }
   };
 
+  public syncCatalog = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const result = await this.service.syncCatalogNow();
+      res.json({ success: true, message: 'Telecom catalog caches cleared and synchronized.', ...result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || 'Failed to sync catalog' });
+    }
+  };
+
   public buyNumber = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       if (!req.user?.id) {
@@ -54,7 +65,16 @@ export class NumberPurchaseController {
         return;
       }
 
-      const { country, operator, product, idempotencyKey } = req.body;
+      const {
+        country,
+        operator,
+        product,
+        idempotencyKey,
+        clientExpectedPrice,
+        clientExpectedPriceUsd,
+        confirmedPriceShift
+      } = req.body;
+
       if (!country || !product) {
         res.status(400).json({ success: false, error: 'Country and product are required.' });
         return;
@@ -64,11 +84,26 @@ export class NumberPurchaseController {
         country,
         operator,
         product,
-        idempotencyKey
+        idempotencyKey,
+        clientExpectedPrice: clientExpectedPrice ? Number(clientExpectedPrice) : undefined,
+        clientExpectedPriceUsd: clientExpectedPriceUsd ? Number(clientExpectedPriceUsd) : undefined,
+        confirmedPriceShift: Boolean(confirmedPriceShift)
       });
 
-      // User response: NEVER reveals cost_price or profit
-      const { cost_price, profit, ...safeOrder } = result.order;
+      if (result.requiresConfirmation) {
+        res.json({
+          success: false,
+          requiresConfirmation: true,
+          currentPrice: result.currentPrice,
+          expectedPrice: result.expectedPrice,
+          currency: result.currency,
+          message: result.message
+        });
+        return;
+      }
+
+      // User response: NEVER reveals cost_price, profit, or provider_cost
+      const { provider_cost_raw, provider_cost_usd, margin_applied, cost_price, profit, ...safeOrder } = result.order!;
 
       res.json({
         success: true,
@@ -89,7 +124,7 @@ export class NumberPurchaseController {
 
       const orderId = String(req.params.id);
       const order = await this.service.getOrderStatus(orderId, req.user.id);
-      const { cost_price, profit, ...safeOrder } = order;
+      const { provider_cost_raw, provider_cost_usd, margin_applied, cost_price, profit, ...safeOrder } = order;
 
       res.json({ success: true, order: safeOrder });
     } catch (err: any) {
@@ -106,7 +141,7 @@ export class NumberPurchaseController {
 
       const orderId = String(req.params.id);
       const result = await this.service.cancelOrder(orderId, req.user.id);
-      const { cost_price, profit, ...safeOrder } = result.order;
+      const { provider_cost_raw, provider_cost_usd, margin_applied, cost_price, profit, ...safeOrder } = result.order;
 
       res.json({
         success: true,
@@ -127,7 +162,7 @@ export class NumberPurchaseController {
 
       const orderId = String(req.params.id);
       const result = await this.service.finishOrder(orderId, req.user.id);
-      const { cost_price, profit, ...safeOrder } = result.order;
+      const { provider_cost_raw, provider_cost_usd, margin_applied, cost_price, profit, ...safeOrder } = result.order;
 
       res.json({
         success: true,
@@ -148,7 +183,7 @@ export class NumberPurchaseController {
 
       const orderId = String(req.params.id);
       const result = await this.service.banOrder(orderId, req.user.id);
-      const { cost_price, profit, ...safeOrder } = result.order;
+      const { provider_cost_raw, provider_cost_usd, margin_applied, cost_price, profit, ...safeOrder } = result.order;
 
       res.json({
         success: true,
@@ -175,6 +210,23 @@ export class NumberPurchaseController {
       res.json({ success: true, ...result });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || 'Failed to load order history' });
+    }
+  };
+
+  public adminRefundOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      if (req.user?.role !== 'admin') {
+        res.status(403).json({ success: false, error: 'Administrator access required.' });
+        return;
+      }
+
+      const orderId = String(req.params.id);
+      const reason = (req.body.reason as string) || 'Admin Manual Refund';
+      const result = await this.service.adminRefundOrder(orderId, req.user.username || 'admin', reason);
+
+      res.json({ success: true, message: result.message, order: result.order });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message || 'Failed to refund order' });
     }
   };
 }

@@ -100,6 +100,13 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
 
   // Modal & Actions
   const [isConfirmBuyOpen, setIsConfirmBuyOpen] = useState<boolean>(false);
+  const [priceShiftConfirmation, setPriceShiftConfirmation] = useState<{
+    requiresConfirmation: boolean;
+    expectedPrice: number;
+    currentPrice: number;
+    currency: string;
+    message: string;
+  } | null>(null);
   const [isPurchasing, setIsPurchasing] = useState<boolean>(false);
   const [operatingOrderId, setOperatingOrderId] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState<string | null>(null);
@@ -141,7 +148,7 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.55);
-    } catch {}
+    } catch { }
   };
 
   // Initial load
@@ -316,20 +323,36 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
   };
 
   // --- Purchase Execution ---
-  const handleExecuteBuy = async () => {
+  const handleExecuteBuy = async (confirmedShift = false) => {
     if (!selectedCountry || !selectedProduct) return;
     setIsPurchasing(true);
     try {
       const res = await api.numbers.buyNumber({
         country: selectedCountry,
         product: selectedProduct,
-        operator: selectedOperator
+        operator: selectedOperator,
+        clientExpectedPrice: currentSellPrice,
+        confirmedPriceShift: confirmedShift
       });
+
+      if (res.requiresConfirmation) {
+        setPriceShiftConfirmation({
+          requiresConfirmation: true,
+          expectedPrice: res.expectedPrice || 0,
+          currentPrice: res.currentPrice || 0,
+          currency: res.currency || currency,
+          message: res.message
+        });
+        return;
+      }
 
       if (res.success) {
         showToast(res.message || 'Number purchased successfully!', 'success');
         setIsConfirmBuyOpen(false);
+        setPriceShiftConfirmation(null);
         await Promise.all([loadWallet(), loadUserOrders()]);
+      } else {
+        showToast((res as any).error || res.message || 'Purchase could not be completed.', 'error');
       }
     } catch (err: any) {
       showToast(err.message || 'Failed to complete number purchase.', 'error');
@@ -477,13 +500,12 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between shadow-md transition ${
-            toast.type === 'success'
-              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-              : toast.type === 'error'
+          className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between shadow-md transition ${toast.type === 'success'
+            ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+            : toast.type === 'error'
               ? 'bg-rose-50 border-rose-300 text-rose-900'
               : 'bg-sky-50 border-sky-300 text-sky-900'
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2">
             {toast.type === 'success' ? (
@@ -552,11 +574,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                       key={c.code}
                       type="button"
                       onClick={() => handleSwitchCurrency(c.code)}
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-bold text-left transition flex items-center justify-between ${
-                        isCurrent
-                          ? 'bg-sky-600 text-white'
-                          : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                      }`}
+                      className={`w-full px-3 py-2 rounded-xl text-xs font-bold text-left transition flex items-center justify-between ${isCurrent
+                        ? 'bg-sky-600 text-white'
+                        : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="w-5 text-center font-mono font-bold text-amber-300">{c.symbol}</span>
@@ -696,11 +717,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                         key={slug}
                         type="button"
                         onClick={() => setSelectedProduct(slug)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1.5 border ${
-                          isSelected
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                        }`}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1.5 border ${isSelected
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
                       >
                         <span className={`w-4 h-4 rounded bg-gradient-to-br ${meta.gradient} text-white flex items-center justify-center text-[9px] font-bold`}>
                           {meta.iconChar}
@@ -782,11 +802,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                         key={c.slug}
                         type="button"
                         onClick={() => setSelectedCountry(c.slug)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1 border ${
-                          isSelected
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                        }`}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1 border ${isSelected
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
                       >
                         <span>{c.flag}</span>
                         <span>{c.name.split(' ')[0]}</span>
@@ -818,11 +837,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
               <button
                 type="button"
                 onClick={() => setSelectedOperator('any')}
-                className={`p-3 rounded-2xl border text-left transition relative flex flex-col justify-between ${
-                  selectedOperator === 'any'
-                    ? 'bg-sky-50/70 border-sky-500 ring-2 ring-sky-500/20'
-                    : 'bg-slate-50/60 hover:bg-slate-100 border-slate-200'
-                }`}
+                className={`p-3 rounded-2xl border text-left transition relative flex flex-col justify-between ${selectedOperator === 'any'
+                  ? 'bg-sky-50/70 border-sky-500 ring-2 ring-sky-500/20'
+                  : 'bg-slate-50/60 hover:bg-slate-100 border-slate-200'
+                  }`}
               >
                 <div className="flex items-center justify-between">
                   <span className="font-black text-xs text-slate-900 flex items-center gap-1">
@@ -848,20 +866,18 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                   type="button"
                   disabled={!op.is_available}
                   onClick={() => setSelectedOperator(op.operator)}
-                  className={`p-3 rounded-2xl border text-left transition relative flex flex-col justify-between ${
-                    selectedOperator === op.operator
-                      ? 'bg-sky-50/70 border-sky-500 ring-2 ring-sky-500/20'
-                      : !op.is_available
+                  className={`p-3 rounded-2xl border text-left transition relative flex flex-col justify-between ${selectedOperator === op.operator
+                    ? 'bg-sky-50/70 border-sky-500 ring-2 ring-sky-500/20'
+                    : !op.is_available
                       ? 'bg-slate-100/60 border-slate-200 opacity-60 cursor-not-allowed'
                       : 'bg-slate-50/60 hover:bg-slate-100 border-slate-200'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-xs text-slate-900 truncate">{op.operator}</span>
                     <span
-                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                        op.is_available ? 'bg-slate-200 text-slate-700' : 'bg-rose-100 text-rose-700'
-                      }`}
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${op.is_available ? 'bg-slate-200 text-slate-700' : 'bg-rose-100 text-rose-700'
+                        }`}
                     >
                       {op.is_available ? `${op.count} pcs` : 'Out of stock'}
                     </span>
@@ -1006,11 +1022,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
               return (
                 <div
                   key={order.id}
-                  className={`p-5 rounded-3xl border transition space-y-4 ${
-                    isReceived
-                      ? 'bg-emerald-50/50 border-emerald-300 shadow-sm'
-                      : 'bg-slate-50/70 border-slate-200'
-                  }`}
+                  className={`p-5 rounded-3xl border transition space-y-4 ${isReceived
+                    ? 'bg-emerald-50/50 border-emerald-300 shadow-sm'
+                    : 'bg-slate-50/70 border-slate-200'
+                    }`}
                 >
                   {/* Top Bar: Service, Country, Status Badge */}
                   <div className="flex items-center justify-between">
@@ -1025,11 +1040,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
 
                     <div className="flex items-center gap-2">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                          isReceived
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                            : 'bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1'
-                        }`}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${isReceived
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : 'bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1'
+                          }`}
                       >
                         {!isReceived && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
                         {order.status}
@@ -1107,6 +1121,42 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                         {order.sms_text}
                       </div>
                     )}
+
+                    {/* Multi-SMS History if multiple messages arrived */}
+                    {order.sms_history && order.sms_history.length > 1 && (
+                      <div className="pt-2 text-left space-y-1.5 border-t border-slate-200 mt-2">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                          All Received Messages ({order.sms_history.length})
+                        </span>
+                        {order.sms_history.map((sms, sIdx) => (
+                          <div key={sIdx} className="bg-white p-2.5 rounded-xl border border-slate-200 text-[11px] font-mono flex items-start justify-between gap-2 shadow-2xs">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 text-slate-400 text-[10px]">
+                                <span>{sms.sender || '5SIM Gateway'}</span>
+                                {sms.date && <span>• {new Date(sms.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                              </div>
+                              <div className="text-slate-800 font-semibold text-xs mt-0.5 break-words">{sms.text}</div>
+                              {sms.code && (
+                                <div className="text-emerald-700 font-bold text-xs mt-1">
+                                  Verification Code: <strong className="text-emerald-800 font-mono font-black">{sms.code}</strong>
+                                </div>
+                              )}
+                            </div>
+                            {sms.code && (
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(sms.code!, 'SMS Code')}
+                                className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold transition flex items-center gap-1 border border-emerald-200 shrink-0"
+                                title="Copy verification code"
+                              >
+                                <Copy className="w-3 h-3" />
+                                <span>Copy</span>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Action Buttons */}
@@ -1178,11 +1228,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                   setHistoryStatusFilter(st);
                   loadUserOrders();
                 }}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
-                  historyStatusFilter === st
-                    ? 'bg-sky-600 text-white shadow-2xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                }`}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${historyStatusFilter === st
+                  ? 'bg-sky-600 text-white shadow-2xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
               >
                 {st === 'all' ? 'All Orders' : st}
               </button>
@@ -1230,17 +1279,16 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                     </td>
                     <td className="py-3 px-3">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                          order.status === 'FINISHED'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : order.status === 'RECEIVED'
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${order.status === 'FINISHED'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : order.status === 'RECEIVED'
                             ? 'bg-sky-100 text-sky-800'
                             : order.status === 'PENDING'
-                            ? 'bg-amber-100 text-amber-800'
-                            : order.status === 'CANCELED' || order.status === 'TIMEOUT'
-                            ? 'bg-slate-100 text-slate-600'
-                            : 'bg-rose-100 text-rose-800'
-                        }`}
+                              ? 'bg-amber-100 text-amber-800'
+                              : order.status === 'CANCELED' || order.status === 'TIMEOUT'
+                                ? 'bg-slate-100 text-slate-600'
+                                : 'bg-rose-100 text-rose-800'
+                          }`}
                       >
                         {order.status}
                         {order.refunded && ' (Refunded)'}
@@ -1333,6 +1381,24 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
               </div>
             </div>
 
+            {/* Price Shift Warning Alert if rate shifted dynamically */}
+            {priceShiftConfirmation && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl text-xs text-amber-950 space-y-1.5 animate-in fade-in duration-100">
+                <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Carrier Wholesale Price Updated</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  The upstream provider price shifted between catalog load and checkout:
+                  <br />
+                  Quoted: <strong>{priceShiftConfirmation.currency} {priceShiftConfirmation.expectedPrice.toFixed(2)}</strong> → Current: <strong className="text-amber-800">{priceShiftConfirmation.currency} {priceShiftConfirmation.currentPrice.toFixed(2)}</strong>.
+                </p>
+                <p className="text-[11px] font-semibold text-amber-900">
+                  Do you accept the updated provider price for this purchase?
+                </p>
+              </div>
+            )}
+
             <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-[11px] text-emerald-900 flex items-start gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <span>
@@ -1343,30 +1409,54 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
             <div className="flex items-center gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setIsConfirmBuyOpen(false)}
+                onClick={() => {
+                  setIsConfirmBuyOpen(false);
+                  setPriceShiftConfirmation(null);
+                }}
                 disabled={isPurchasing}
                 className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={handleExecuteBuy}
-                disabled={isPurchasing}
-                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/30"
-              >
-                {isPurchasing ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Activating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-3.5 h-3.5 fill-white" />
-                    <span>Confirm & Pay</span>
-                  </>
-                )}
-              </button>
+              {priceShiftConfirmation ? (
+                <button
+                  type="button"
+                  onClick={() => handleExecuteBuy(true)}
+                  disabled={isPurchasing}
+                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-600/30"
+                >
+                  {isPurchasing ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Confirming...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-3.5 h-3.5 fill-white" />
+                      <span>Accept New Price ({priceShiftConfirmation.currency} {priceShiftConfirmation.currentPrice.toFixed(2)})</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleExecuteBuy(false)}
+                  disabled={isPurchasing}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/30"
+                >
+                  {isPurchasing ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Activating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-3.5 h-3.5 fill-white" />
+                      <span>Confirm & Pay</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1433,11 +1523,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                     key={cat.id}
                     type="button"
                     onClick={() => setServiceCategoryFilter(cat.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 border ${
-                      serviceCategoryFilter === cat.id
-                        ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
-                        : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 border ${serviceCategoryFilter === cat.id
+                      ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                      : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
                   >
                     <span>{cat.icon}</span>
                     <span>{cat.label}</span>
@@ -1467,11 +1556,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                           setSelectedProduct(p.slug);
                           setIsServiceModalOpen(false);
                         }}
-                        className={`p-3 rounded-2xl border text-left transition flex items-center gap-3 relative group ${
-                          isSelected
-                            ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 shadow-xs'
-                            : 'bg-white hover:bg-slate-50 hover:border-slate-300 border-slate-200'
-                        }`}
+                        className={`p-3 rounded-2xl border text-left transition flex items-center gap-3 relative group ${isSelected
+                          ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 shadow-xs'
+                          : 'bg-white hover:bg-slate-50 hover:border-slate-300 border-slate-200'
+                          }`}
                       >
                         <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${meta.gradient} text-white flex items-center justify-center text-sm font-bold shrink-0 shadow-2xs group-hover:scale-105 transition`}>
                           {meta.iconChar}
@@ -1571,11 +1659,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                     key={r.id}
                     type="button"
                     onClick={() => setCountryRegionFilter(r.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 border ${
-                      countryRegionFilter === r.id
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                        : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 border ${countryRegionFilter === r.id
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                      : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
                   >
                     {r.label}
                   </button>
@@ -1608,11 +1695,10 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({ onNaviga
                           setSelectedCountry(c.slug);
                           setIsCountryModalOpen(false);
                         }}
-                        className={`p-3 rounded-2xl border text-left transition flex items-center gap-3 relative group ${
-                          isSelected
-                            ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
-                            : 'bg-white hover:bg-slate-50 hover:border-slate-300 border-slate-200'
-                        }`}
+                        className={`p-3 rounded-2xl border text-left transition flex items-center gap-3 relative group ${isSelected
+                          ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
+                          : 'bg-white hover:bg-slate-50 hover:border-slate-300 border-slate-200'
+                          }`}
                       >
                         <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-xl shrink-0 group-hover:scale-110 transition shadow-2xs">
                           {flag}

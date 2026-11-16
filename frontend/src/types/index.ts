@@ -1271,30 +1271,47 @@ export interface NumberOrder {
   product: string;
   phone: string | null;
   status: 'PENDING_PURCHASE' | 'PENDING' | 'RECEIVED' | 'CANCELED' | 'TIMEOUT' | 'FINISHED' | 'BANNED';
+  provider_cost_raw?: number;
+  provider_cost_usd?: number;
+  margin_applied?: number;
+  margin_rule_id?: string | null;
+  final_price_usd?: number;
+  user_currency?: string;
+  final_price_user_currency?: number;
+  exchange_rate_at_purchase?: number;
   cost_price?: number;
   sell_price: number;
   profit?: number;
   currency: string;
   otp_code: string | null;
   sms_text: string | null;
+  sms_history?: Array<{ sender?: string; date?: string; text?: string; code?: string }>;
   expires_at: string | null;
   created_at: string;
   finished_at: string | null;
   refunded: boolean;
   refund_at: string | null;
+  wallet_transaction_id?: string | null;
+  refund_transaction_id?: string | null;
+  reservation_id?: string | null;
+  locked_price_usd?: number;
   user_email?: string;
   user_name?: string;
 }
 
 export interface MarginRule {
   id: string;
-  scope: 'global' | 'country' | 'product' | 'country_product' | 'country_product_operator';
+  scope: 'global' | 'provider' | 'country' | 'product' | 'country_product' | 'country_product_operator';
   country?: string | null;
   product?: string | null;
   operator?: string | null;
   type: 'percent' | 'fixed' | 'percent_plus_fixed';
   percent_value: number;
   fixed_value: number;
+  min_price?: number;
+  max_price?: number;
+  custom_override_price?: number;
+  description?: string | null;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -1302,13 +1319,30 @@ export interface MarginRule {
 
 export interface PricingSettings {
   id: string;
+  provider_currency?: string;
+  provider_currency_to_usd_rate?: number;
   fx_rate: number;
   min_margin: number;
   min_sell_price: number;
   rounding_mode: 'none' | '2_decimals' | 'nearest_1' | '99_cents';
   low_balance_threshold: number;
   display_currency: string;
+  ban_refund_policy?: 'auto' | 'manual';
+  auto_refund_on_ban?: number;
+  sync_interval_seconds?: number;
   updated_at: string;
+}
+
+export interface MarginAuditLogRecord {
+  id: string;
+  admin_user_id: string;
+  action: string;
+  entity_type: string;
+  entity_id?: string | null;
+  before_state?: any;
+  after_state?: any;
+  undone: boolean;
+  created_at: string;
 }
 
 export interface ProfitReport {
@@ -1350,7 +1384,9 @@ export interface CurrencyRecord {
   code: string;
   name: string;
   symbol: string;
+  rate_from_usd?: number;
   rate_from_5sim_base: number;
+  manual_override?: number;
   is_default: number;
   is_active: number;
   created_at?: string;

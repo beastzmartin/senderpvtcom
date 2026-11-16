@@ -24,16 +24,17 @@ export class CurrencyAdminController {
 
   /**
    * POST /api/admin/currency
-   * Add or register a new currency with 5SIM base exchange rate
+   * Add or register a new currency with USD exchange rate
    */
   public addCurrency = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const { code, name, symbol, rate_from_5sim_base, is_default, is_active } = req.body;
+      const { code, name, symbol, rate_from_usd, rate_from_5sim_base, manual_override, is_default, is_active } = req.body;
+      const rate = rate_from_usd !== undefined ? rate_from_usd : rate_from_5sim_base;
 
-      if (!code || !name || !symbol || rate_from_5sim_base === undefined) {
+      if (!code || !name || !symbol || rate === undefined) {
         res.status(400).json({
           success: false,
-          error: 'Fields code, name, symbol, and rate_from_5sim_base are required.'
+          error: 'Fields code, name, symbol, and exchange rate are required.'
         });
         return;
       }
@@ -42,7 +43,8 @@ export class CurrencyAdminController {
         code: String(code),
         name: String(name),
         symbol: String(symbol),
-        rate_from_5sim_base: Number(rate_from_5sim_base),
+        rate_from_usd: Number(rate),
+        manual_override: Boolean(manual_override),
         is_default: Boolean(is_default),
         is_active: is_active !== false
       });
@@ -65,6 +67,10 @@ export class CurrencyAdminController {
     try {
       const code = String(req.params.code);
       const updates = req.body;
+
+      if (updates.rate_from_usd !== undefined && updates.manual_override === undefined) {
+        updates.manual_override = true;
+      }
 
       const record = this.service.updateCurrency(code, updates);
       res.json({
