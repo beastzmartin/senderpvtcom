@@ -22,11 +22,14 @@ export const DedupeMergeView: React.FC = () => {
     setSelectedGroupIndex(null);
     try {
       const res = await crmApi.findDuplicates(field);
-      if (res.success) {
-        setDuplicateGroups(res.duplicate_groups || []);
+      if (res && res.success) {
+        setDuplicateGroups(Array.isArray(res.duplicate_groups) ? res.duplicate_groups : []);
+      } else {
+        setDuplicateGroups([]);
       }
     } catch (err: any) {
       console.error('Failed to load duplicates:', err);
+      setDuplicateGroups([]);
     } finally {
       setIsLoading(false);
     }
@@ -121,12 +124,12 @@ export const DedupeMergeView: React.FC = () => {
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
             {isLoading ? (
               <div className="p-8 text-center text-xs text-slate-400">Scanning for duplicates...</div>
-            ) : duplicateGroups.length === 0 ? (
+            ) : (!Array.isArray(duplicateGroups) || duplicateGroups.length === 0) ? (
               <div className="p-8 text-center text-xs text-slate-400">
                 No duplicate records found for matching field "{field}". Database is deduplicated.
               </div>
             ) : (
-              duplicateGroups.map((grp, idx) => (
+              (duplicateGroups || []).map((grp, idx) => (
                 <button
                   key={idx}
                   type="button"

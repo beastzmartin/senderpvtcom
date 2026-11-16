@@ -73,11 +73,16 @@ export class CrmInternalController {
 
       res.json({
         success: true,
-        data: result.data,
+        contacts: result.data || [],
+        data: result.data || [],
+        next_cursor: result.next_cursor || null,
+        prev_cursor: null,
+        has_more: Boolean(result.has_more),
+        total_approx: result.approximate_total || 0,
         pagination: {
-          next_cursor: result.next_cursor,
-          has_more: result.has_more,
-          approximate_total: result.approximate_total
+          next_cursor: result.next_cursor || null,
+          has_more: Boolean(result.has_more),
+          approximate_total: result.approximate_total || 0
         }
       });
     } catch (err: any) {
@@ -230,8 +235,9 @@ export class CrmInternalController {
     try {
       const db = getCrmDb();
       const wsId = await CrmInternalController.getWorkspaceId(req);
-      const duplicates = await db.findDuplicates(wsId, 50);
-      res.json({ success: true, duplicates });
+      const limit = parseInt(req.query.limit as string, 10) || 50;
+      const duplicates = await db.findDuplicates(wsId, limit);
+      res.json({ success: true, duplicates: duplicates || [], duplicate_groups: duplicates || [] });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -241,10 +247,12 @@ export class CrmInternalController {
     try {
       const db = getCrmDb();
       const wsId = await CrmInternalController.getWorkspaceId(req);
-      const { primary_id, duplicate_id, field_resolutions } = req.body;
+      const primary_id = req.body.primary_id || req.body.primary_contact_id;
+      const duplicate_id = req.body.duplicate_id || req.body.duplicate_contact_id;
+      const field_resolutions = req.body.field_resolutions || req.body.field_overrides || {};
 
-      const merged = await db.mergeContacts(wsId, primary_id, duplicate_id, field_resolutions || {});
-      res.json({ success: true, contact: merged });
+      const merged = await db.mergeContacts(wsId, primary_id, duplicate_id, field_resolutions);
+      res.json({ success: true, contact: merged, merged_contact: merged });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }

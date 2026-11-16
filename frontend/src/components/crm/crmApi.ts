@@ -209,8 +209,11 @@ export interface ContactListQuery {
 }
 
 export const crmApi = {
+  getStatus: () =>
+    crmRequest<{ success: boolean; is_postgres: boolean; engine: string }>('/crm/status'),
+
   // CONTACTS
-  fetchContacts: (query: ContactListQuery = {}) => {
+  fetchContacts: async (query: ContactListQuery = {}) => {
     const params = new URLSearchParams();
     if (query.limit) params.set('limit', String(query.limit));
     if (query.cursor) params.set('cursor', query.cursor);
@@ -224,14 +227,15 @@ export const crmApi = {
     if (query.email_status) params.set('email_status', query.email_status);
     if (query.filter_definition) params.set('filter_definition', JSON.stringify(query.filter_definition));
 
-    return crmRequest<{
-      success: boolean;
-      contacts: CrmContact[];
-      next_cursor: string | null;
-      prev_cursor: string | null;
-      has_more: boolean;
-      total_approx: number;
-    }>(`/crm/contacts?${params.toString()}`);
+    const res = await crmRequest<any>(`/crm/contacts?${params.toString()}`);
+    return {
+      success: Boolean(res?.success),
+      contacts: (res?.contacts || res?.data || []) as CrmContact[],
+      next_cursor: res?.next_cursor || res?.pagination?.next_cursor || null,
+      prev_cursor: res?.prev_cursor || null,
+      has_more: Boolean(res?.has_more || res?.pagination?.has_more),
+      total_approx: Number(res?.total_approx || res?.pagination?.approximate_total || 0)
+    };
   },
 
   getContact: (id: string) =>
@@ -272,26 +276,36 @@ export const crmApi = {
     }),
 
   // DEDUPE & MERGE
-  findDuplicates: (field: 'email' | 'phone' = 'email', limit: number = 20) =>
-    crmRequest<{
-      success: boolean;
-      duplicate_groups: Array<{
+  findDuplicates: async (field: 'email' | 'phone' = 'email', limit: number = 20) => {
+    const res = await crmRequest<any>(`/crm/duplicates?field=${field}&limit=${limit}`);
+    return {
+      success: Boolean(res?.success),
+      duplicate_groups: (res?.duplicate_groups || res?.duplicates || []) as Array<{
         group_key: string;
         field: string;
         count: number;
         contacts: CrmContact[];
-      }>;
-    }>(`/crm/duplicates?field=${field}&limit=${limit}`),
+      }>
+    };
+  },
 
-  mergeContacts: (primaryContactId: string, duplicateContactId: string, fieldOverrides: Partial<CrmContact>) =>
-    crmRequest<{ success: boolean; merged_contact: CrmContact }>('/crm/duplicates/merge', {
+  mergeContacts: async (primaryContactId: string, duplicateContactId: string, fieldOverrides: Partial<CrmContact>) => {
+    const res = await crmRequest<any>('/crm/duplicates/merge', {
       method: 'POST',
       body: JSON.stringify({
+        primary_id: primaryContactId,
         primary_contact_id: primaryContactId,
+        duplicate_id: duplicateContactId,
         duplicate_contact_id: duplicateContactId,
+        field_resolutions: fieldOverrides,
         field_overrides: fieldOverrides
       })
-    }),
+    });
+    return {
+      success: Boolean(res?.success),
+      merged_contact: (res?.merged_contact || res?.contact) as CrmContact
+    };
+  },
 
   // LISTS & SEGMENTS
   listLists: () =>

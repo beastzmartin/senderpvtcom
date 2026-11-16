@@ -156,17 +156,17 @@ export const CustomFieldsView: React.FC<CustomFieldsViewProps> = ({ customFields
       <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <span className="text-xs font-bold text-slate-700">Active Custom Field Definitions</span>
-          <span className="text-xs text-slate-400 font-semibold">{customFields.length} configured</span>
+          <span className="text-xs text-slate-400 font-semibold">{Array.isArray(customFields) ? customFields.length : 0} configured</span>
         </div>
 
         <div className="divide-y divide-slate-100">
-          {customFields.map((cf) => (
+          {Array.isArray(customFields) && customFields.map((cf) => (
             <div key={cf.id} className="p-4 flex items-center justify-between text-xs hover:bg-slate-50">
               <div>
                 <div className="font-bold text-slate-900">{cf.field_label}</div>
                 <div className="text-[11px] text-slate-400 font-mono mt-0.5">
                   key: <code>{cf.field_name}</code> • type: <span className="text-indigo-600 uppercase font-semibold">{cf.data_type}</span>
-                  {cf.options && ` • [${cf.options.join(', ')}]`}
+                  {Array.isArray(cf.options) ? ` • [${cf.options.join(', ')}]` : cf.options ? ` • [${String(cf.options)}]` : ''}
                 </div>
               </div>
               <button
@@ -179,7 +179,7 @@ export const CustomFieldsView: React.FC<CustomFieldsViewProps> = ({ customFields
             </div>
           ))}
 
-          {customFields.length === 0 && (
+          {(!Array.isArray(customFields) || customFields.length === 0) && (
             <div className="p-8 text-center text-xs text-slate-400">
               No custom fields configured yet. Create one on the left to capture custom attributes.
             </div>

@@ -144,7 +144,7 @@ export const SuppressionListView: React.FC = () => {
       <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <span className="text-xs font-bold text-slate-700">Suppressed Identifiers</span>
-          <span className="text-xs text-slate-400 font-semibold">{items.length} records</span>
+          <span className="text-xs text-slate-400 font-semibold">{Array.isArray(items) ? items.length : 0} records</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -159,12 +159,16 @@ export const SuppressionListView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {items.map((item) => (
+              {Array.isArray(items) && items.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50/60">
                   <td className="py-3 px-4 font-bold text-slate-900 font-mono">{item.identifier_value}</td>
                   <td className="py-3 px-4 uppercase font-semibold text-[10px] text-slate-500">{item.identifier_type}</td>
                   <td className="py-3 px-4 text-slate-500">{item.reason || '—'}</td>
-                  <td className="py-3 px-4 text-slate-400">{new Date(item.created_at).toLocaleDateString()}</td>
+                  <td className="py-3 px-4 text-slate-400">
+                    {item.created_at && !isNaN(new Date(item.created_at).getTime())
+                      ? new Date(item.created_at).toLocaleDateString()
+                      : '—'}
+                  </td>
                   <td className="py-3 px-4 text-right">
                     <button
                       type="button"
@@ -177,7 +181,7 @@ export const SuppressionListView: React.FC = () => {
                 </tr>
               ))}
 
-              {items.length === 0 && (
+              {(!Array.isArray(items) || items.length === 0) && (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-slate-400">
                     No suppressed identifiers.

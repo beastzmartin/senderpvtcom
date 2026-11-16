@@ -87,7 +87,12 @@ export const ListsSegmentsView: React.FC<ListsSegmentsViewProps> = ({ lists, onR
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {lists.map((l) => (
+        {(!Array.isArray(lists) || lists.length === 0) && (
+          <div className="col-span-full bg-white p-12 rounded-3xl border border-slate-200/80 text-center text-xs text-slate-400">
+            No lists or dynamic segments created yet. Click "Create List / Segment" to begin.
+          </div>
+        )}
+        {Array.isArray(lists) && lists.map((l) => (
           <div
             key={l.id}
             className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-slate-300 transition flex flex-col justify-between"
@@ -129,7 +134,7 @@ export const ListsSegmentsView: React.FC<ListsSegmentsViewProps> = ({ lists, onR
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-1 text-xs font-bold text-slate-700">
                 <Users className="w-3.5 h-3.5 text-slate-400" />
-                {l.cached_count.toLocaleString()} contacts
+                {(l.cached_count || 0).toLocaleString()} contacts
               </div>
 
               <button
