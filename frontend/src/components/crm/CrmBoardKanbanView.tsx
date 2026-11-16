@@ -670,8 +670,8 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                   key={t.id}
                   onClick={() => setSelectedTemplate(t.id)}
                   className={`p-3 text-left rounded-xl border transition-all ${selectedTemplate === t.id
-                      ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300'
-                      : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300'
+                    : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
                     }`}
                 >
                   <div className="font-bold text-xs text-slate-200">{t.name}</div>

@@ -97,6 +97,8 @@ export interface LeadFilterOptions {
   industry?: string;
   city?: string;
   tagId?: string;
+  jobId?: string;
+  allUsers?: boolean;
   hasPhone?: boolean;
   hasEmail?: boolean;
   hasWebsite?: boolean;

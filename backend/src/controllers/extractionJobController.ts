@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { ExtractionJobService } from '../services/extractionJobService.js';
 import { ConnectorRegistry } from '../services/connectors/ConnectorRegistry.js';
+import { LeadService } from '../services/leadService.js';
 import { getDatabase } from '../db/database.js';
 
 export class ExtractionJobController {
@@ -152,6 +153,51 @@ export class ExtractionJobController {
         supported_fields: JSON.parse(r.supported_fields || '[]')
       }));
       res.json(sources);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  public getJobLeads = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = req.user?.role === 'admin';
+      const jobId = req.params.id as string;
+      const job = this.jobService.getJobById(userId, jobId);
+
+      const db = getDatabase();
+      // 1. Primary: leads linked directly to this job
+      let rows = db.prepare(`SELECT * FROM leads WHERE job_id = ? ORDER BY created_at DESC`).all(jobId) as any[];
+
+      // 2. Fallback: if job has no explicit job_id links (e.g. legacy/sync edge case), match by search parameters
+      if (rows.length === 0 && job) {
+        if (job.keyword) {
+          const kw = `%${job.keyword.toLowerCase().trim()}%`;
+          rows = db.prepare(`
+            SELECT * FROM leads
+            WHERE (user_id = ? OR ?)
+              AND (LOWER(category) LIKE ? OR LOWER(business_name) LIKE ? OR LOWER(city) LIKE ?)
+            ORDER BY created_at DESC
+            LIMIT ?
+          `).all(userId, isAdmin ? 1 : 0, kw, kw, kw, job.requested_count || 50) as any[];
+        }
+        if (rows.length === 0) {
+          rows = db.prepare(`
+            SELECT * FROM leads
+            WHERE (user_id = ? OR ?)
+            ORDER BY created_at DESC
+            LIMIT ?
+          `).all(userId, isAdmin ? 1 : 0, Math.max(job.collected_count || 0, 50)) as any[];
+        }
+      }
+
+      const leadService = LeadService.getInstance();
+      const leads = rows.map((r) => (leadService as any).mapRow(r));
+      res.json({
+        job: job || null,
+        total: leads.length,
+        leads
+      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

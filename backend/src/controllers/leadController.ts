@@ -13,6 +13,7 @@ export class LeadController {
   public listLeads = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
+      const isAdmin = req.user?.role === 'admin';
       const {
         search,
         source,
@@ -20,6 +21,9 @@ export class LeadController {
         industry,
         city,
         tagId,
+        jobId,
+        job_id,
+        allUsers,
         hasPhone,
         hasEmail,
         hasWebsite,
@@ -38,6 +42,8 @@ export class LeadController {
         industry: industry as string,
         city: city as string,
         tagId: tagId as string,
+        jobId: (jobId || job_id) as string,
+        allUsers: allUsers === 'true',
         hasPhone: hasPhone === 'true',
         hasEmail: hasEmail === 'true',
         hasWebsite: hasWebsite === 'true',
@@ -49,7 +55,7 @@ export class LeadController {
         sortOrder: (sortOrder as any) || 'desc'
       };
 
-      const result = this.leadService.listLeads(userId, filters);
+      const result = this.leadService.listLeads(userId, filters, isAdmin);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

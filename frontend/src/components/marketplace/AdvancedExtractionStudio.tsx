@@ -514,9 +514,13 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
             setActiveJob(res.job);
             if (res.job.status === 'RUNNING') {
               appendLog(`Running extraction... Delivered: ${res.job.items_delivered} items`);
+              if (res.job.items_delivered > 0 && results.length < res.job.items_delivered) {
+                loadJobResults(res.job.id);
+              }
             } else if (res.job.status === 'COMPLETED' || res.job.status === 'PARTIAL') {
               appendLog(`Extraction finished! Delivered ${res.job.items_delivered} records.`);
               loadJobResults(res.job.id);
+              setActiveTab('results');
               if (hasFilesCapability) {
                 loadJobFiles(res.job.id);
               }
@@ -837,15 +841,24 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
 
   // Active columns based on selected dataset view tab
   const activeColumns = useMemo(() => {
+    let cols: string[] = [];
     if (selectedViewIdx === -1) {
-      return resultsColumns.filter((c) => visibleColumns[c] !== false);
+      cols = resultsColumns.filter((c) => visibleColumns[c] !== false);
+    } else {
+      const view = datasetViews[selectedViewIdx];
+      if (view && view.fields && view.fields.length > 0) {
+        cols = view.fields.filter((c) => resultsColumns.includes(c));
+      }
+      if (cols.length === 0) {
+        cols = resultsColumns.filter((c) => visibleColumns[c] !== false);
+      }
     }
-    const view = datasetViews[selectedViewIdx];
-    if (view && view.fields && view.fields.length > 0) {
-      return view.fields.filter((c) => resultsColumns.includes(c));
+    // Infallible Fallback: If no columns match but results exist, take top keys of first row
+    if (cols.length === 0 && results && results.length > 0) {
+      cols = Object.keys(results[0]).slice(0, 15);
     }
-    return resultsColumns.filter((c) => visibleColumns[c] !== false);
-  }, [selectedViewIdx, datasetViews, resultsColumns, visibleColumns]);
+    return cols;
+  }, [selectedViewIdx, datasetViews, resultsColumns, visibleColumns, results]);
 
   // Filtered & Deduped Results
   const filteredResults = useMemo(() => {
@@ -1099,7 +1112,39 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
           TAB 1: CONFIGURE & EXTRACT
          ===================================================================== */}
       {activeTab === 'configure' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="space-y-6">
+          {activeJob && (activeJob.status === 'RUNNING' || activeJob.status === 'QUEUED' || activeJob.items_delivered > 0) && (
+            <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-4 rounded-2xl shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center font-bold shrink-0">
+                  {activeJob.status === 'RUNNING' ? <RefreshCw className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
+                </div>
+                <div>
+                  <div className="font-bold text-sm flex items-center gap-2">
+                    <span>Extraction {activeJob.status === 'COMPLETED' ? 'Completed' : 'Active'}</span>
+                    <span className="bg-white/20 text-white text-[10px] font-mono px-2 py-0.5 rounded-full uppercase">
+                      {activeJob.status}
+                    </span>
+                  </div>
+                  <div className="text-xs text-emerald-100">
+                    Delivered {activeJob.items_delivered} rows • Click to view live outputs & data preview.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  loadJobResults(activeJob.id);
+                  setActiveTab('results');
+                }}
+                className="px-4 py-2 bg-white text-emerald-700 hover:bg-emerald-50 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 shrink-0"
+              >
+                <span>View Extracted Outputs</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left 2 Cols: Form Controls */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-6">
@@ -1566,6 +1611,7 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
                 </div>
               )}
             </div>
+          </div>
           </div>
         </div>
       )}

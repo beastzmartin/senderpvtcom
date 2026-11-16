@@ -383,22 +383,57 @@ export class AdvancedMarginEngine {
     }
 
     // Calculate Base Margin Amount
-    // Selling Price = LoadedCost / (1 - MarginPct/100) + Fixed
-    if (effectiveMarginPct >= 100) effectiveMarginPct = 95;
-    const targetSellBeforeFixed = loadedCostUsd / (1 - (effectiveMarginPct / 100));
-    baseMarginUsd = (targetSellBeforeFixed - loadedCostUsd) + effectiveFixedUsd;
-    runningUsd += baseMarginUsd;
+    const pPricing = product.pricing;
+    const hasExplicitSell = pPricing?.sell && (
+      (pPricing.sell.per_1000_items !== undefined && pPricing.sell.per_1000_items > 0) ||
+      (pPricing.sell.per_run_flat !== undefined && pPricing.sell.per_run_flat > 0)
+    );
 
-    waterfall.push({
-      step: 4,
-      name: `Base Platform Margin (${rule?.name || 'Default'})`,
-      description: `Rule ${rule?.scope.toUpperCase()}: ${effectiveMarginPct}% gross margin + $${effectiveFixedUsd.toFixed(2)} fixed`,
-      deltaUsd: Number(baseMarginUsd.toFixed(4)),
-      runningTotalUsd: runningUsd,
-      deltaConverted: Number((baseMarginUsd * rateUsdToTarget).toFixed(2)),
-      runningTotalConverted: Number((runningUsd * rateUsdToTarget).toFixed(2)),
-      metadata: { ruleId: rule?.id, tierMode: rule?.tier_mode, effectiveMarginPct }
-    });
+    if (hasExplicitSell && (!rule || rule.scope !== 'product')) {
+      let rawBase = 0;
+      if (pPricing.mode === 'per_item') {
+        rawBase = (items / 1000) * (pPricing.sell.per_1000_items || 0);
+      } else if (pPricing.mode === 'per_run') {
+        rawBase = pPricing.sell.per_run_flat || 0;
+      } else if (pPricing.mode === 'per_item_plus_run') {
+        rawBase = ((items / 1000) * (pPricing.sell.per_1000_items || 0)) + (pPricing.sell.per_run_flat || 0);
+      }
+      const targetSellInTargetCurr = currency === 'INR' 
+        ? rawBase 
+        : this.currencyService.convertBetween(rawBase, 'INR', currency);
+      
+      const targetSellUsd = targetSellInTargetCurr / rateUsdToTarget;
+      baseMarginUsd = Math.max(0, targetSellUsd - loadedCostUsd);
+      runningUsd = targetSellUsd;
+
+      waterfall.push({
+        step: 4,
+        name: `Product Base Sell Price (${product.display_name || product.slug})`,
+        description: `Configured product pricing: ${rawBase} INR (${targetSellInTargetCurr.toFixed(2)} ${currency})`,
+        deltaUsd: Number(baseMarginUsd.toFixed(4)),
+        runningTotalUsd: runningUsd,
+        deltaConverted: Number((baseMarginUsd * rateUsdToTarget).toFixed(2)),
+        runningTotalConverted: Number((runningUsd * rateUsdToTarget).toFixed(2)),
+        metadata: { explicitSell: true }
+      });
+    } else {
+      // Selling Price = LoadedCost / (1 - MarginPct/100) + Fixed
+      if (effectiveMarginPct >= 100) effectiveMarginPct = 95;
+      const targetSellBeforeFixed = loadedCostUsd / (1 - (effectiveMarginPct / 100));
+      baseMarginUsd = (targetSellBeforeFixed - loadedCostUsd) + effectiveFixedUsd;
+      runningUsd += baseMarginUsd;
+
+      waterfall.push({
+        step: 4,
+        name: `Base Platform Margin (${rule?.name || 'Default'})`,
+        description: `Rule ${rule?.scope.toUpperCase()}: ${effectiveMarginPct}% gross margin + $${effectiveFixedUsd.toFixed(2)} fixed`,
+        deltaUsd: Number(baseMarginUsd.toFixed(4)),
+        runningTotalUsd: runningUsd,
+        deltaConverted: Number((baseMarginUsd * rateUsdToTarget).toFixed(2)),
+        runningTotalConverted: Number((runningUsd * rateUsdToTarget).toFixed(2)),
+        metadata: { ruleId: rule?.id, tierMode: rule?.tier_mode, effectiveMarginPct }
+      });
+    }
 
     // 6. Customer Plan / Group Discount
     let planDiscountPct = 0;
@@ -461,16 +496,21 @@ export class AdvancedMarginEngine {
     }
 
     // 8. Hard Floor Protection
-    // Enforce min_margin_percent & min_sell_price
+    // Enforce min_margin_percent & min_sell_price & product.pricing.min_charge
     const minMarginPct = rule ? rule.min_margin_percent : 15.0;
-    const minSellPriceUsd = rule ? (rule.min_sell_price / rateUsdToTarget) : (0.50 / rateUsdToTarget);
+    const ruleMinSellUsd = rule ? (rule.min_sell_price / rateUsdToTarget) : (0.50 / rateUsdToTarget);
+    const prodMinChargeBase = product.pricing?.min_charge || 0;
+    const prodMinChargeUsd = prodMinChargeBase > 0 
+      ? (currency === 'INR' ? prodMinChargeBase / rateUsdToTarget : (this.currencyService.convertBetween(prodMinChargeBase, 'INR', currency) / rateUsdToTarget))
+      : 0;
+    const minSellPriceUsd = Math.max(ruleMinSellUsd, prodMinChargeUsd);
 
     let floorApplied = false;
     let floorReason = '';
 
-    // Check min margin floor
-    const currentMarginPct = ((runningUsd - loadedCostUsd) / runningUsd) * 100;
-    if (currentMarginPct < minMarginPct) {
+    // Check min margin floor (only if not an explicit admin product pricing)
+    const currentMarginPct = ((runningUsd - loadedCostUsd) / (runningUsd || 1)) * 100;
+    if (!hasExplicitSell && currentMarginPct < minMarginPct) {
       floorApplied = true;
       floorReason = `Protected by hard margin floor: clamped from ${currentMarginPct.toFixed(1)}% to minimum ${minMarginPct}%`;
       const clampedSellUsd = loadedCostUsd / (1 - (minMarginPct / 100));
@@ -491,7 +531,7 @@ export class AdvancedMarginEngine {
     // Check min sell price floor
     if (runningUsd < minSellPriceUsd) {
       floorApplied = true;
-      floorReason = `Protected by absolute minimum run charge ($${(minSellPriceUsd).toFixed(2)})`;
+      floorReason = `Protected by absolute minimum charge (${prodMinChargeBase > 0 ? `${prodMinChargeBase} ${currency}` : `$${minSellPriceUsd.toFixed(2)}`})`;
       const delta = minSellPriceUsd - runningUsd;
       runningUsd = minSellPriceUsd;
 
@@ -507,16 +547,22 @@ export class AdvancedMarginEngine {
     }
 
     // 9. Psychological Rounding & Currency Conversion
-    // Convert to target currency
-    let targetCurrencyPrice = runningUsd * rateUsdToTarget;
+    // Convert to target currency with precision cleanup
+    let targetCurrencyPrice = Number((runningUsd * rateUsdToTarget).toFixed(4));
     let roundedTargetPrice = targetCurrencyPrice;
 
     // Currency-specific ending (.99 for USD/EUR, integer for INR/JPY)
-    // If floor is applied, always round UP to avoid breaching hard floor
+    // If floor is applied, round UP to avoid breaching hard floor (clean floating point fuzz)
     if (currency === 'INR') {
-      roundedTargetPrice = floorApplied ? Math.ceil(targetCurrencyPrice) : Math.max(1, Math.round(targetCurrencyPrice));
+      const cleanVal = Number(targetCurrencyPrice.toFixed(2));
+      roundedTargetPrice = floorApplied 
+        ? (Math.abs(cleanVal - Math.round(cleanVal)) < 0.001 ? Math.round(cleanVal) : Math.ceil(cleanVal))
+        : Math.max(1, Math.round(cleanVal));
     } else {
-      roundedTargetPrice = floorApplied ? Math.ceil(targetCurrencyPrice * 100) / 100 : Number(targetCurrencyPrice.toFixed(2));
+      const cleanVal = Number(targetCurrencyPrice.toFixed(4));
+      roundedTargetPrice = floorApplied 
+        ? Math.ceil(cleanVal * 100) / 100 
+        : Number(cleanVal.toFixed(2));
     }
 
     const roundingDeltaConverted = Number((roundedTargetPrice - targetCurrencyPrice).toFixed(2));

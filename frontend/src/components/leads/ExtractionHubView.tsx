@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { ExtractionSourceRecord, ExtractionJobRecord } from '../../types';
 import { ExtensionPairingModal } from './ExtensionPairingModal';
+import { JobOutputsModal } from './JobOutputsModal';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import {
   Layers,
   MapPin,
@@ -28,7 +30,9 @@ import {
   Clock,
   Sparkles,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  Eye,
+  Database
 } from 'lucide-react';
 
 interface ExtractionHubViewProps {
@@ -36,12 +40,15 @@ interface ExtractionHubViewProps {
 }
 
 export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigateToLeads }) => {
+  const { socket } = useWhatsApp();
   const [sources, setSources] = useState<ExtractionSourceRecord[]>([]);
   const [jobs, setJobs] = useState<ExtractionJobRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPairingOpen, setIsPairingOpen] = useState<boolean>(false);
   const [isCreateJobOpen, setIsCreateJobOpen] = useState<boolean>(false);
   const [selectedSourceId, setSelectedSourceId] = useState<string>('google_maps');
+  const [selectedJobForOutputs, setSelectedJobForOutputs] = useState<ExtractionJobRecord | null>(null);
+  const [isOutputsModalOpen, setIsOutputsModalOpen] = useState<boolean>(false);
 
   // Job creation form
   const [jobKeyword, setJobKeyword] = useState<string>('');
@@ -92,13 +99,9 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = async (showLoading: boolean = true) => {
     try {
-      setIsLoading(true);
+      if (showLoading) setIsLoading(true);
       const [srcList, jobList] = await Promise.all([
         api.extractionJobs.listSources(),
         api.extractionJobs.list(50)
@@ -108,9 +111,63 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
     } catch (err: any) {
       console.error('Failed to load extraction hub data:', err);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadData(true);
+  }, []);
+
+  // Real-time socket events for extraction progress and live lead sync
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleJobProgress = (payload: any) => {
+      if (!payload || !payload.jobId) return;
+      setJobs((prev) =>
+        prev.map((j) => {
+          if (j.id === payload.jobId) {
+            return {
+              ...j,
+              collected_count: payload.collected_count ?? j.collected_count,
+              requested_count: payload.requested_count ?? j.requested_count,
+              current_progress: payload.current_progress ?? j.current_progress,
+              duplicate_count: payload.duplicate_count ?? j.duplicate_count,
+              status: payload.status ?? j.status
+            };
+          }
+          return j;
+        })
+      );
+    };
+
+    const handleBatchSynced = () => {
+      loadData(false);
+    };
+
+    socket.on('extraction_job:progress', handleJobProgress);
+    socket.on('lead:batch_synced', handleBatchSynced);
+    socket.on('lead:created', handleBatchSynced);
+
+    return () => {
+      socket.off('extraction_job:progress', handleJobProgress);
+      socket.off('lead:batch_synced', handleBatchSynced);
+      socket.off('lead:created', handleBatchSynced);
+    };
+  }, [socket]);
+
+  // Polling fallback when any job is actively running or pending
+  useEffect(() => {
+    const hasActiveJob = jobs.some((j) => j.status === 'running' || j.status === 'pending');
+    if (!hasActiveJob) return;
+
+    const interval = setInterval(() => {
+      loadData(false);
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [jobs]);
 
   const getSourceIcon = (iconName: string) => {
     switch (iconName) {
@@ -417,6 +474,41 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
           </button>
         </div>
 
+        {/* ACTIVE RUNNING EXTRACTION LIVE BANNER */}
+        {jobs.some((j) => j.status === 'running') && (
+          <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-4 rounded-2xl shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center font-bold shrink-0">
+                <RotateCw className="w-5 h-5 animate-spin" />
+              </div>
+              <div>
+                <div className="font-bold text-sm flex items-center gap-2">
+                  <span>Extraction in Progress</span>
+                  <span className="bg-white/20 text-white text-[10px] font-mono px-2 py-0.5 rounded-full uppercase">
+                    LIVE
+                  </span>
+                </div>
+                <div className="text-xs text-emerald-100">
+                  {jobs.find((j) => j.status === 'running')?.collected_count || 0} leads gathered in real-time. Click to view live streaming records.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const runningJob = jobs.find((j) => j.status === 'running');
+                if (runningJob) {
+                  setSelectedJobForOutputs(runningJob);
+                  setIsOutputsModalOpen(true);
+                }
+              }}
+              className="px-4 py-2 bg-white text-emerald-700 hover:bg-emerald-50 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 shrink-0"
+            >
+              <Eye className="w-4 h-4 text-emerald-600" />
+              <span>View Live Extracted Outputs</span>
+            </button>
+          </div>
+        )}
+
         {jobs.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
@@ -450,7 +542,14 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {jobs.map((job) => (
-                    <tr key={job.id} className="hover:bg-slate-50/60 transition">
+                    <tr
+                      key={job.id}
+                      onClick={() => {
+                        setSelectedJobForOutputs(job);
+                        setIsOutputsModalOpen(true);
+                      }}
+                      className="hover:bg-slate-50/80 cursor-pointer transition"
+                    >
                       <td className="py-3 px-4 font-semibold text-slate-900">
                         <span className="capitalize">{job.source.replace(/_/g, ' ')}</span>
                       </td>
@@ -499,8 +598,20 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
                         {new Date(job.created_at).toLocaleDateString()}
                       </td>
 
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedJobForOutputs(job);
+                              setIsOutputsModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 rounded-lg text-xs font-bold transition flex items-center gap-1 border border-emerald-200 dark:border-emerald-800"
+                            title="View Extracted Outputs & Data"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Outputs ({job.collected_count})</span>
+                          </button>
+
                           <button
                             onClick={() => {
                               const targetUrl = buildTargetExtractionUrl(
@@ -711,6 +822,14 @@ export const ExtractionHubView: React.FC<ExtractionHubViewProps> = ({ onNavigate
 
       {/* EXTENSION PAIRING MODAL */}
       <ExtensionPairingModal isOpen={isPairingOpen} onClose={() => setIsPairingOpen(false)} />
+
+      {/* EXTRACTION JOB OUTPUTS MODAL */}
+      <JobOutputsModal
+        isOpen={isOutputsModalOpen}
+        onClose={() => setIsOutputsModalOpen(false)}
+        job={selectedJobForOutputs}
+        onNavigateToLeads={onNavigateToLeads}
+      />
     </div>
   );
 };

@@ -13,6 +13,7 @@ router.get('/', controller.listJobs);
 router.post('/', controller.createJob);
 
 router.get('/:id', controller.getJob);
+router.get('/:id/leads', controller.getJobLeads);
 router.post('/:id/start', controller.startJob);
 router.post('/:id/pause', controller.pauseJob);
 router.post('/:id/resume', controller.resumeJob);

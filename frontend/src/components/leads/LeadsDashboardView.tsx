@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
-import { LeadRecord, LeadStatus, LeadFilterOptions, LeadAnalyticsStats } from '../../types';
+import { LeadRecord, LeadStatus, LeadFilterOptions, LeadAnalyticsStats, ExtractionJobRecord } from '../../types';
+import { useWhatsApp } from '../../context/WhatsAppContext';
+import { useAuth } from '../../context/AuthContext';
 import { LeadDetailModal } from './LeadDetailModal';
 import { ExtensionPairingModal } from './ExtensionPairingModal';
 import {
@@ -41,7 +43,13 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
   onLaunchBulkWhatsApp,
   onNavigateToHub
 }) => {
+  const { socket } = useWhatsApp();
+  const { user } = useAuth();
   const [leads, setLeads] = useState<LeadRecord[]>([]);
+  const [jobs, setJobs] = useState<ExtractionJobRecord[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string>('all');
+  const [showAllUsers, setShowAllUsers] = useState<boolean>(false);
+  const [liveMonitor, setLiveMonitor] = useState<boolean>(true);
   const [stats, setStats] = useState<LeadAnalyticsStats | null>(null);
   const [totalLeads, setTotalLeads] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -65,13 +73,20 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
   // Toast notification for incoming real-time leads
   const [incomingAlert, setIncomingAlert] = useState<string | null>(null);
 
-  const fetchLeads = useCallback(async (page: number = currentPage) => {
+  // Load available extraction jobs
+  useEffect(() => {
+    api.extractionJobs.list(50).then((jList) => setJobs(jList || [])).catch(() => {});
+  }, []);
+
+  const fetchLeads = useCallback(async (page: number = currentPage, silent: boolean = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       const filters: LeadFilterOptions = {
         search: searchQuery.trim() || undefined,
         status: selectedStatus,
         source: selectedSource || undefined,
+        jobId: selectedJobId !== 'all' ? selectedJobId : undefined,
+        allUsers: showAllUsers || undefined,
         hasPhone: filterHasPhone || undefined,
         hasEmail: filterHasEmail || undefined,
         hasWebsite: filterHasWebsite || undefined,
@@ -94,13 +109,65 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
     } catch (err: any) {
       console.error('Error fetching leads:', err);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
-  }, [searchQuery, selectedStatus, selectedSource, filterHasPhone, filterHasEmail, filterHasWebsite, currentPage]);
+  }, [searchQuery, selectedStatus, selectedSource, selectedJobId, showAllUsers, filterHasPhone, filterHasEmail, filterHasWebsite, currentPage]);
 
   useEffect(() => {
     fetchLeads(1);
-  }, [selectedStatus, selectedSource, filterHasPhone, filterHasEmail, filterHasWebsite]);
+  }, [selectedStatus, selectedSource, selectedJobId, showAllUsers, filterHasPhone, filterHasEmail, filterHasWebsite]);
+
+  // Real-time WebSocket Listeners for Instant Lead Appearance
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleLeadCreated = (newLead: LeadRecord) => {
+      if (!newLead) return;
+      setLeads((prev) => {
+        if (prev.some((l) => l.id === newLead.id)) return prev;
+        return [newLead, ...prev];
+      });
+      setTotalLeads((prev) => prev + 1);
+      setIncomingAlert(`⚡ New lead extracted: ${newLead.business_name}`);
+      setTimeout(() => setIncomingAlert(null), 3500);
+    };
+
+    const handleBatchSynced = (data: any) => {
+      setIncomingAlert(`✓ ${data.count || 'New'} leads synced from extraction!`);
+      setTimeout(() => setIncomingAlert(null), 3500);
+      fetchLeads(1, true);
+    };
+
+    const handleLeadUpdated = (updated: LeadRecord) => {
+      setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+    };
+
+    const handleLeadDeleted = (data: { id: string }) => {
+      setLeads((prev) => prev.filter((l) => l.id !== data.id));
+      setTotalLeads((prev) => Math.max(0, prev - 1));
+    };
+
+    socket.on('lead:created', handleLeadCreated);
+    socket.on('lead:batch_synced', handleBatchSynced);
+    socket.on('lead:updated', handleLeadUpdated);
+    socket.on('lead:deleted', handleLeadDeleted);
+
+    return () => {
+      socket.off('lead:created', handleLeadCreated);
+      socket.off('lead:batch_synced', handleBatchSynced);
+      socket.off('lead:updated', handleLeadUpdated);
+      socket.off('lead:deleted', handleLeadDeleted);
+    };
+  }, [socket, fetchLeads]);
+
+  // Periodic live background check when liveMonitor is enabled
+  useEffect(() => {
+    if (!liveMonitor) return;
+    const interval = setInterval(() => {
+      fetchLeads(currentPage, true);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [liveMonitor, currentPage, fetchLeads]);
 
   // Handle Search Debounce
   useEffect(() => {
@@ -336,6 +403,21 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
 
           {/* Quick Filter Buttons & Export */}
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            {/* Extraction Job selector */}
+            <select
+              value={selectedJobId}
+              onChange={(e) => setSelectedJobId(e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:border-emerald-500 max-w-[190px] truncate"
+              title="Filter by Extraction Job"
+            >
+              <option value="all">All Extraction Jobs</option>
+              {jobs.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.keyword ? `${j.keyword}${j.location ? ` in ${j.location}` : ''}` : `Job #${j.id.slice(0, 8)}`} ({j.collected_count || 0})
+                </option>
+              ))}
+            </select>
+
             <select
               value={selectedSource}
               onChange={(e) => setSelectedSource(e.target.value)}
@@ -347,6 +429,34 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
               <option value="business_directory">Business Directory</option>
               <option value="company_contact">Company Contact</option>
             </select>
+
+            {/* Live Stream Monitor */}
+            <button
+              onClick={() => setLiveMonitor(!liveMonitor)}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border ${
+                liveMonitor
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                  : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+              }`}
+              title={liveMonitor ? 'Live Stream Active (Auto-updating leads)' : 'Live Stream Paused'}
+            >
+              <span className={`w-2 h-2 rounded-full ${liveMonitor ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+              Live Stream
+            </button>
+
+            {user?.role === 'admin' && (
+              <button
+                onClick={() => setShowAllUsers(!showAllUsers)}
+                className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1 border ${
+                  showAllUsers
+                    ? 'bg-amber-50 text-amber-800 border-amber-300 font-bold'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
+                title="Admin View: Show leads across all users"
+              >
+                <Users className="w-3.5 h-3.5" /> All Users
+              </button>
+            )}
 
             <button
               onClick={() => setFilterHasPhone(!filterHasPhone)}

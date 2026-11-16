@@ -204,6 +204,12 @@ export class LeadService {
         const existing = this.findDuplicate(userId, normalized);
         if (existing) {
           duplicates++;
+          if (jobId) {
+            const db = getDatabase();
+            db.prepare("UPDATE leads SET job_id = ?, updated_at = datetime('now') WHERE id = ?").run(jobId, existing.id);
+            existing.job_id = jobId;
+          }
+          created.push(existing);
           continue;
         }
 
@@ -374,11 +380,24 @@ export class LeadService {
    */
   public listLeads(
     userId: string,
-    filter: LeadFilterOptions = {}
+    filter: LeadFilterOptions = {},
+    isAdmin: boolean = false
   ): { leads: LeadRecord[]; total: number; page: number; limit: number; totalPages: number } {
     const db = getDatabase();
-    const whereClauses: string[] = ['user_id = ?'];
-    const params: any[] = [userId];
+    const whereClauses: string[] = [];
+    const params: any[] = [];
+
+    if (isAdmin && (filter.allUsers || !userId)) {
+      whereClauses.push('1=1');
+    } else {
+      whereClauses.push('user_id = ?');
+      params.push(userId);
+    }
+
+    if (filter.jobId) {
+      whereClauses.push('job_id = ?');
+      params.push(filter.jobId);
+    }
 
     if (filter.search) {
       const q = `%${filter.search.trim().toLowerCase()}%`;

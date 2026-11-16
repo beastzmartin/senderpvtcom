@@ -8,6 +8,7 @@ import { ExtractionJobService } from '../services/extractionJobService.js';
 import { AuthService } from '../services/authService.js';
 import { WalletService } from '../services/walletService.js';
 import { EntitlementService } from '../services/entitlementService.js';
+import { getSocketIO } from '../socket/socketManager.js';
 import { config } from '../config.js';
 
 export class ExtensionController {
@@ -137,23 +138,31 @@ export class ExtensionController {
         return;
       }
 
-      // Determine module ID from source
-      const moduleId = (source === 'google_maps' || !source) ? 'gmaps-search' : (source === 'website_extractor' ? 'web-scanner' : source);
+      // Determine module ID from source safely
+      const db = getDatabase();
+      let moduleId = 'gmaps-search';
+      if (source === 'website_extractor' || source === 'web-scanner') {
+        moduleId = 'web-scanner';
+      } else if (source && source !== 'google_maps') {
+        const exists = db.prepare('SELECT id FROM extension_modules WHERE id = ?').get(source);
+        moduleId = exists ? source : 'gmaps-search';
+      }
 
-      // Validate Module Entitlement and Wallet Quota
-      const entitlement = this.entitlementService.validateModuleAccess(userId, moduleId, leads.length);
-      if (!entitlement.allowed) {
-        res.status(403).json({
-          error: entitlement.reason || 'Unauthorized module execution.',
-          code: 'ENTITLEMENT_DENIED',
-          walletBalance: entitlement.walletBalance
-        });
-        return;
+      // Validate Module Entitlement and Wallet Quota (admin bypasses)
+      if (req.user?.role !== 'admin') {
+        const entitlement = this.entitlementService.validateModuleAccess(userId, moduleId, leads.length);
+        if (!entitlement.allowed) {
+          res.status(403).json({
+            error: entitlement.reason || 'Unauthorized module execution.',
+            code: 'ENTITLEMENT_DENIED',
+            walletBalance: entitlement.walletBalance
+          });
+          return;
+        }
       }
 
       // Check daily extraction limit
       const user = this.authService.getUserById(userId);
-      const db = getDatabase();
       const todayCount = (db.prepare(`
         SELECT COUNT(*) as count FROM leads WHERE user_id = ? AND date(created_at) = date('now')
       `).get(userId) as { count: number }).count;
@@ -214,6 +223,17 @@ export class ExtensionController {
         } else {
           this.jobService.updateProgress(jobId, progress, totalCollected, totalDuplicates, totalFailed);
         }
+
+        try {
+          getSocketIO()?.to(`user:${userId}`).emit('extraction_job:progress', {
+            jobId,
+            collected_count: totalCollected,
+            requested_count: reqCount,
+            current_progress: progress,
+            duplicate_count: totalDuplicates,
+            status: totalCollected >= reqCount ? 'completed' : 'running'
+          });
+        } catch {}
       }
 
       // Record in extension_sessions last active

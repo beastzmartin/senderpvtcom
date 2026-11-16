@@ -1100,6 +1100,8 @@ export const api = {
       if (filters.industry) params.append('industry', filters.industry);
       if (filters.city) params.append('city', filters.city);
       if (filters.tagId) params.append('tagId', filters.tagId);
+      if (filters.jobId) params.append('jobId', filters.jobId);
+      if (filters.allUsers) params.append('allUsers', 'true');
       if (filters.hasPhone) params.append('hasPhone', 'true');
       if (filters.hasEmail) params.append('hasEmail', 'true');
       if (filters.hasWebsite) params.append('hasWebsite', 'true');
@@ -1199,6 +1201,13 @@ export const api = {
     listSources: () => request<ExtractionSourceRecord[]>('/extraction-jobs/sources/all'),
 
     getById: (id: string) => request<ExtractionJobRecord>(`/extraction-jobs/${id}`),
+
+    getLeads: (id: string) =>
+      request<{
+        job: ExtractionJobRecord | null;
+        total: number;
+        leads: LeadRecord[];
+      }>(`/extraction-jobs/${id}/leads`),
 
     create: (data: {
       source: string;
