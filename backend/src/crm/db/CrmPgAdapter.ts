@@ -913,18 +913,20 @@ export class CrmPgAdapter implements CrmStorageAdapter {
   public async updateImport(workspaceId: string, importId: string, updates: Partial<CrmImport>): Promise<CrmImport> {
     const res = await this.pool.query(`
       UPDATE crm_imports SET
-        processed_rows = COALESCE($1, processed_rows),
-        imported_rows = COALESCE($2, imported_rows),
-        updated_rows = COALESCE($3, updated_rows),
-        skipped_rows = COALESCE($4, skipped_rows),
-        error_rows = COALESCE($5, error_rows),
-        status = COALESCE($6, status),
-        error_report_url = COALESCE($7, error_report_url),
-        error_details = COALESCE($8, error_details),
-        completed_at = CASE WHEN $6 IN ('completed', 'failed') THEN NOW() ELSE completed_at END
-      WHERE workspace_id = $9 AND id = $10
+        total_rows = COALESCE($1, total_rows),
+        processed_rows = COALESCE($2, processed_rows),
+        imported_rows = COALESCE($3, imported_rows),
+        updated_rows = COALESCE($4, updated_rows),
+        skipped_rows = COALESCE($5, skipped_rows),
+        error_rows = COALESCE($6, error_rows),
+        status = COALESCE($7, status),
+        error_report_url = COALESCE($8, error_report_url),
+        error_details = COALESCE($9, error_details),
+        completed_at = CASE WHEN $7 IN ('completed', 'failed') THEN NOW() ELSE completed_at END
+      WHERE workspace_id = $10 AND id = $11
       RETURNING *
     `, [
+      updates.total_rows !== undefined ? updates.total_rows : null,
       updates.processed_rows !== undefined ? updates.processed_rows : null,
       updates.imported_rows !== undefined ? updates.imported_rows : null,
       updates.updated_rows !== undefined ? updates.updated_rows : null,

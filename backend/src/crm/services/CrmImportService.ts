@@ -180,11 +180,15 @@ export class CrmImportService {
   }
 
   private mapRowToContact(row: Record<string, any>, mapping: Record<string, string>): Partial<Contact> | null {
-    // Reverse mapping: mapping is { crmField: fileColumn }
+    // Robust bi-directional mapping: supports both { crmField: fileCol } and { fileCol: crmField }
     const getValue = (crmField: string): any => {
-      const col = mapping[crmField];
-      if (col && row[col] !== undefined) {
-        return row[col];
+      if (mapping[crmField] && row[mapping[crmField]] !== undefined) {
+        return row[mapping[crmField]];
+      }
+      for (const [k, v] of Object.entries(mapping)) {
+        if (v === crmField && row[k] !== undefined) {
+          return row[k];
+        }
       }
       return row[crmField];
     };
@@ -208,8 +212,14 @@ export class CrmImportService {
 
     // Capture extra custom fields
     const customFields: Record<string, any> = {};
+    const mappedCols = new Set<string>();
+    for (const [k, v] of Object.entries(mapping)) {
+      mappedCols.add(k);
+      mappedCols.add(v);
+    }
+
     for (const [col, val] of Object.entries(row)) {
-      if (!Object.values(mapping).includes(col) && val !== undefined && val !== null && val !== '') {
+      if (!mappedCols.has(col) && val !== undefined && val !== null && val !== '') {
         customFields[col] = val;
       }
     }
@@ -219,7 +229,8 @@ export class CrmImportService {
       last_name: CrmNormalizer.cleanText(lastName),
       email: email || null,
       phone: phone || null,
-      title: CrmNormalizer.cleanText(getValue('title')),
+      company_name: CrmNormalizer.cleanText(getValue('company_name') || getValue('company')),
+      title: CrmNormalizer.cleanText(getValue('title') || getValue('job_title')),
       country: CrmNormalizer.cleanText(getValue('country')),
       city: CrmNormalizer.cleanText(getValue('city')),
       source: 'import',

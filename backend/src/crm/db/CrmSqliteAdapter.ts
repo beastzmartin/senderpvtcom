@@ -1289,6 +1289,7 @@ export class CrmSqliteAdapter implements CrmStorageAdapter {
   public async updateImport(workspaceId: string, importId: string, updates: Partial<CrmImport>): Promise<CrmImport> {
     this.db.prepare(`
       UPDATE crm_imports SET
+        total_rows = COALESCE(?, total_rows),
         processed_rows = COALESCE(?, processed_rows),
         imported_rows = COALESCE(?, imported_rows),
         updated_rows = COALESCE(?, updated_rows),
@@ -1300,6 +1301,7 @@ export class CrmSqliteAdapter implements CrmStorageAdapter {
         completed_at = CASE WHEN ? IN ('completed', 'failed') THEN datetime('now') ELSE completed_at END
       WHERE workspace_id = ? AND id = ?
     `).run(
+      updates.total_rows !== undefined ? updates.total_rows : null,
       updates.processed_rows !== undefined ? updates.processed_rows : null,
       updates.imported_rows !== undefined ? updates.imported_rows : null,
       updates.updated_rows !== undefined ? updates.updated_rows : null,

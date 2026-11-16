@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { parse } from 'csv-parse';
+import ExcelJS from 'exceljs';
 import { getCrmDb } from '../db/index.js';
 import { AuthenticatedRequest } from '../../middleware/authMiddleware.js';
 import { CrmImportService } from '../services/CrmImportService.js';
@@ -454,6 +456,123 @@ export class CrmInternalController {
   // =========================================================================
   // IMPORTS WIZARD
   // =========================================================================
+  public static async uploadImportFile(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const file = (req as any).file;
+      if (!file) {
+        res.status(400).json({ error: 'No file uploaded. Please select a valid CSV or Excel file.' });
+        return;
+      }
+
+      const filePath = file.path;
+      const originalName = file.originalname;
+      const ext = path.extname(originalName).toLowerCase();
+
+      let headers: string[] = [];
+      let previewRows: any[] = [];
+
+      if (ext === '.xlsx' || ext === '.xls') {
+        const workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(filePath, {
+          entries: 'emit',
+          sharedStrings: 'cache',
+          hyperlinks: 'ignore',
+          worksheets: 'emit'
+        });
+
+        for await (const worksheetReader of workbookReader) {
+          for await (const row of worksheetReader) {
+            const values = (row.values as any[]).slice(1);
+            if (headers.length === 0) {
+              headers = values.map((v) => String(v ?? '').trim()).filter(Boolean);
+            } else if (previewRows.length < 5) {
+              const rowObj: Record<string, any> = {};
+              headers.forEach((h, idx) => {
+                rowObj[h] = values[idx] !== undefined && values[idx] !== null ? String(values[idx]) : '';
+              });
+              previewRows.push(rowObj);
+            } else {
+              break;
+            }
+          }
+          break; // only inspect first worksheet
+        }
+      } else {
+        // Stream preview of CSV file
+        const stream = fs.createReadStream(filePath, { start: 0, end: 128 * 1024 });
+        const parser = stream.pipe(
+          parse({
+            relax_column_count: true,
+            trim: true,
+            skip_empty_lines: true
+          })
+        );
+
+        let isHeader = true;
+        for await (const record of parser) {
+          if (isHeader) {
+            headers = (record as string[]).map((h) => String(h ?? '').trim()).filter(Boolean);
+            isHeader = false;
+          } else if (previewRows.length < 5) {
+            const rowObj: Record<string, any> = {};
+            headers.forEach((h, idx) => {
+              rowObj[h] = (record as any)[idx] ?? '';
+            });
+            previewRows.push(rowObj);
+          } else {
+            break;
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        file_path: filePath,
+        original_name: originalName,
+        headers,
+        preview_rows: previewRows
+      });
+    } catch (err: any) {
+      console.error('[CrmInternalController] uploadImportFile error:', err);
+      res.status(400).json({ error: err.message || 'Failed to inspect uploaded file' });
+    }
+  }
+
+  public static async executeImport(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const { file_path, file_name, column_mapping, dedupe_policy, target_list_id } = req.body;
+
+      if (!file_path || !fs.existsSync(file_path)) {
+        res.status(400).json({ error: 'Uploaded file not found or expired. Please upload again.' });
+        return;
+      }
+
+      const filename = file_name || path.basename(file_path);
+      const importJob = await db.createImport(wsId, {
+        user_id: req.user!.id,
+        filename,
+        file_path,
+        column_mapping: column_mapping || {},
+        dedupe_rule: dedupe_policy || 'update',
+        list_id: target_list_id || null
+      });
+
+      // Launch async stream import worker
+      CrmImportService.getInstance().processImport(importJob.id, wsId).catch((err) => {
+        console.error('[CrmImport] Async error:', err);
+      });
+
+      res.status(202).json({
+        success: true,
+        import_job_id: importJob.id,
+        message: 'Import job scheduled successfully in background.'
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
   public static async createImport(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const db = getCrmDb();
@@ -513,7 +632,13 @@ export class CrmInternalController {
         res.status(404).json({ error: 'Import job not found' });
         return;
       }
-      res.json({ success: true, import: imp });
+      res.json({
+        success: true,
+        import: {
+          ...imp,
+          created_rows: imp.imported_rows
+        }
+      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

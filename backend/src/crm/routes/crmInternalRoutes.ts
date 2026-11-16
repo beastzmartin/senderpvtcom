@@ -1,10 +1,34 @@
 import { Router } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { requireAuth } from '../../middleware/authMiddleware.js';
 import { CrmInternalController } from '../controllers/CrmInternalController.js';
 import { getCrmOpenApiSpec } from '../services/CrmOpenApiSpec.js';
 import { getCrmDb } from '../db/index.js';
 
 const router = Router();
+
+const uploadsDir = path.resolve('data/crm_imports/uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9_-]/g, '_');
+    cb(null, `${Date.now()}_${safeName}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB
+});
 
 // OpenAPI Spec & Documentation route
 router.get('/openapi.json', (_req, res) => {
@@ -88,6 +112,8 @@ router.get('/activities/:contactId', CrmInternalController.listActivities);
 router.post('/activities/:contactId', CrmInternalController.logActivity);
 
 // Imports
+router.post('/imports/upload', upload.single('file'), CrmInternalController.uploadImportFile);
+router.post('/imports/execute', CrmInternalController.executeImport);
 router.post('/imports', CrmInternalController.createImport);
 router.get('/imports', CrmInternalController.listImports);
 router.get('/imports/:id', CrmInternalController.getImport);
