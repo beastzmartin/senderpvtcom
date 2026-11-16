@@ -16,7 +16,10 @@ import {
   CheckCircle2,
   Kanban,
   BarChart3,
-  Command
+  Command,
+  CreditCard,
+  Wallet,
+  Tag
 } from 'lucide-react';
 import { crmApi, CrmList, CrmTag, CrmCustomFieldDefinition } from './crmApi';
 import { ContactsTableView } from './ContactsTableView';
@@ -27,6 +30,11 @@ import { SuppressionListView } from './SuppressionListView';
 import { DeveloperPortalView } from './DeveloperPortalView';
 import { PipelineKanbanView } from './PipelineKanbanView';
 import { AnalyticsDashboardView } from './AnalyticsDashboardView';
+import { CrmBoardKanbanView } from './CrmBoardKanbanView';
+import { SuperFieldsManagerView } from './SuperFieldsManagerView';
+import { CustomerBillingView } from './CustomerBillingView';
+import { TagsManagerView } from './TagsManagerView';
+import { AdminBillingCenter } from './AdminBillingCenter';
 import { CrmCommandPalette } from './CrmCommandPalette';
 import { FilterBuilderModal } from './FilterBuilderModal';
 import { ContactDetailModal } from './ContactDetailModal';
@@ -43,7 +51,9 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
   onStartWhatsAppChat,
   onLaunchBulkWhatsApp
 }) => {
-  const [activeTab, setActiveTab] = useState<'contacts' | 'pipeline' | 'analytics' | 'lists' | 'dedupe' | 'fields' | 'suppression' | 'developer'>('contacts');
+  const [activeTab, setActiveTab] = useState<
+    'contacts' | 'boards' | 'pipeline' | 'analytics' | 'lists' | 'dedupe' | 'fields' | 'super_fields' | 'tags_mgmt' | 'billing' | 'admin_billing' | 'suppression' | 'developer'
+  >('contacts');
 
   // Global CRM state
   const [lists, setLists] = useState<CrmList[]>([]);
@@ -250,6 +260,58 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
 
           <button
             type="button"
+            onClick={() => setActiveTab('boards')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeTab === 'boards'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Kanban className="w-4 h-4" />
+            Boards (Kanban)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('super_fields')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeTab === 'super_fields'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Sliders className="w-4 h-4" />
+            Super Fields (20 Types)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('billing')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeTab === 'billing'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Wallet className="w-4 h-4" />
+            Plans & Wallet Billing
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('tags_mgmt')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeTab === 'tags_mgmt'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            Tags & Rules
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('pipeline')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'pipeline'
@@ -258,7 +320,7 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
             }`}
           >
             <Kanban className="w-4 h-4" />
-            Deals Pipeline (Kanban)
+            Deals Pipeline
           </button>
 
           <button
@@ -302,15 +364,15 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab('fields')}
+            onClick={() => setActiveTab('admin_billing')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
-              activeTab === 'fields'
+              activeTab === 'admin_billing'
                 ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <Sliders className="w-4 h-4" />
-            Custom Fields ({customFields.length})
+            <CreditCard className="w-4 h-4" />
+            Admin Billing
           </button>
 
           <button
@@ -355,6 +417,21 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
               activeFilter={activeFilter}
             />
           )}
+
+          {activeTab === 'boards' && (
+            <CrmBoardKanbanView
+              onStartWhatsAppChat={handleLaunchWhatsApp}
+              onSelectContact={(id) => setSelectedContactId(id)}
+            />
+          )}
+
+          {activeTab === 'super_fields' && <SuperFieldsManagerView />}
+
+          {activeTab === 'billing' && <CustomerBillingView />}
+
+          {activeTab === 'tags_mgmt' && <TagsManagerView />}
+
+          {activeTab === 'admin_billing' && <AdminBillingCenter />}
 
           {activeTab === 'pipeline' && (
             <PipelineKanbanView

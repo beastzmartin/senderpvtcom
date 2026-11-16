@@ -60,7 +60,24 @@ import {
   AttributionSourceRow,
   CohortRow,
   CustomReportSpec,
-  CustomReportResult
+  CustomReportResult,
+  CrmBoard,
+  CrmBoardColumn,
+  CrmBoardCard,
+  BoardStatsSummary,
+  CrmTagGroup,
+  CrmAutoTagRule,
+  MergeTagsRequest,
+  CrmSuperField,
+  CrmPromotedFieldValue,
+  CrmBillingPlan,
+  CrmBillingAddon,
+  CrmBillingCoupon,
+  CrmSubscription,
+  CrmUsageCounter,
+  CrmInvoice,
+  CrmBillingSettings,
+  BillingResourceType
 } from '../models/types.js';
 import { CrmNormalizer } from '../services/crmNormalizer.js';
 import { CrmFilterBuilder } from '../services/crmFilterBuilder.js';
@@ -749,6 +766,249 @@ export class CrmSqliteAdapter implements CrmStorageAdapter {
         erased_by_user_id TEXT,
         created_at TEXT DEFAULT (datetime('now'))
       );
+
+      -- CRM V2: Boards (Kanban)
+      CREATE TABLE IF NOT EXISTS crm_boards (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT,
+        color TEXT DEFAULT '#4f46e5',
+        icon TEXT DEFAULT 'kanban',
+        owner_user_id TEXT,
+        visibility TEXT NOT NULL DEFAULT 'workspace',
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        card_layout TEXT NOT NULL DEFAULT '{}',
+        filter_criteria TEXT NOT NULL DEFAULT '{}',
+        auto_add_matching INTEGER NOT NULL DEFAULT 0,
+        auto_remove_unmatched INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_board_columns (
+        id TEXT PRIMARY KEY,
+        board_id TEXT NOT NULL REFERENCES crm_boards(id) ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        color TEXT DEFAULT '#94a3b8',
+        order_index INTEGER NOT NULL DEFAULT 0,
+        wip_limit INTEGER,
+        stage_type TEXT NOT NULL DEFAULT 'standard',
+        auto_actions TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_board_cards (
+        id TEXT PRIMARY KEY,
+        board_id TEXT NOT NULL REFERENCES crm_boards(id) ON DELETE CASCADE,
+        column_id TEXT NOT NULL REFERENCES crm_board_columns(id) ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        entity_type TEXT NOT NULL DEFAULT 'contact',
+        entity_id TEXT NOT NULL,
+        rank TEXT NOT NULL DEFAULT '0|hzzzzz:',
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE (board_id, entity_type, entity_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_crm_board_cards_col_rank ON crm_board_cards (column_id, rank ASC);
+
+      -- CRM V2: Tags Extended (Groups and Rules)
+      CREATE TABLE IF NOT EXISTS crm_tag_groups (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        color TEXT DEFAULT '#64748b',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE (workspace_id, name)
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_auto_tag_rules (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        trigger TEXT NOT NULL,
+        condition_value TEXT NOT NULL,
+        tag_name TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      -- CRM V2: Super Fields
+      CREATE TABLE IF NOT EXISTS crm_super_fields (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        entity_type TEXT NOT NULL DEFAULT 'contact',
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        description TEXT,
+        field_type TEXT NOT NULL,
+        is_required INTEGER NOT NULL DEFAULT 0,
+        is_unique INTEGER NOT NULL DEFAULT 0,
+        min_value REAL,
+        max_value REAL,
+        validation_regex TEXT,
+        default_value TEXT,
+        options TEXT NOT NULL DEFAULT '[]',
+        formula_expression TEXT,
+        lookup_config TEXT NOT NULL DEFAULT '{}',
+        auto_number_prefix TEXT,
+        auto_number_padding INTEGER DEFAULT 4,
+        group_name TEXT DEFAULT 'General',
+        is_searchable INTEGER NOT NULL DEFAULT 1,
+        is_filterable INTEGER NOT NULL DEFAULT 1,
+        is_promoted INTEGER NOT NULL DEFAULT 0,
+        visibility_roles TEXT NOT NULL DEFAULT '["owner", "admin", "member", "read_only"]',
+        linked_board_id TEXT REFERENCES crm_boards(id) ON DELETE SET NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE (workspace_id, entity_type, slug)
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_promoted_field_values (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        field_slug TEXT NOT NULL,
+        field_type TEXT NOT NULL,
+        value_text TEXT,
+        value_numeric REAL,
+        value_timestamp TEXT,
+        value_json TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE (workspace_id, entity_type, entity_id, field_slug)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_crm_promoted_values_query ON crm_promoted_field_values (workspace_id, field_slug, value_text, value_numeric);
+
+      -- CRM V2: Plan-Based Billing & Hard Entitlements (Wallet-Only)
+      CREATE TABLE IF NOT EXISTS crm_billing_plans (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT UNIQUE NOT NULL,
+        description TEXT,
+        price_usd REAL NOT NULL DEFAULT 0.0,
+        duration_days INTEGER NOT NULL DEFAULT 30,
+        quota_contacts INTEGER NOT NULL DEFAULT 1000,
+        quota_boards INTEGER NOT NULL DEFAULT 5,
+        quota_columns_per_board INTEGER NOT NULL DEFAULT 10,
+        quota_super_fields INTEGER NOT NULL DEFAULT 25,
+        quota_tags INTEGER NOT NULL DEFAULT 50,
+        quota_team_seats INTEGER NOT NULL DEFAULT 3,
+        quota_api_calls_per_month INTEGER NOT NULL DEFAULT 10000,
+        quota_automations_per_month INTEGER NOT NULL DEFAULT 5000,
+        quota_messages_per_month INTEGER NOT NULL DEFAULT 2000,
+        quota_storage_mb INTEGER NOT NULL DEFAULT 1024,
+        quota_enrichment_credits INTEGER NOT NULL DEFAULT 100,
+        quota_export_rows_per_month INTEGER NOT NULL DEFAULT 50000,
+        feature_flags TEXT NOT NULL DEFAULT '{}',
+        version INTEGER NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        is_visible INTEGER NOT NULL DEFAULT 1,
+        trial_days INTEGER NOT NULL DEFAULT 0,
+        is_recurring INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_billing_addons (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT UNIQUE NOT NULL,
+        resource_type TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        price_usd REAL NOT NULL,
+        validity_days INTEGER,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_billing_coupons (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        discount_type TEXT NOT NULL,
+        discount_value REAL NOT NULL,
+        max_uses INTEGER NOT NULL DEFAULT 100,
+        current_uses INTEGER NOT NULL DEFAULT 0,
+        plan_ids TEXT NOT NULL DEFAULT '[]',
+        valid_until TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_subscriptions (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL REFERENCES crm_billing_plans(id),
+        plan_version INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'active',
+        starts_at TEXT DEFAULT (datetime('now')),
+        ends_at TEXT NOT NULL,
+        grace_ends_at TEXT,
+        auto_renew INTEGER NOT NULL DEFAULT 1,
+        renew_retry_count INTEGER NOT NULL DEFAULT 0,
+        custom_quotas TEXT NOT NULL DEFAULT '{}',
+        metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_usage_counters (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        resource_type TEXT NOT NULL,
+        used_count INTEGER NOT NULL DEFAULT 0,
+        quota_limit INTEGER NOT NULL DEFAULT -1,
+        period_start TEXT DEFAULT (datetime('now')),
+        period_end TEXT,
+        last_updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE (workspace_id, resource_type)
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_invoices (
+        id TEXT PRIMARY KEY,
+        invoice_number TEXT UNIQUE NOT NULL,
+        workspace_id TEXT NOT NULL REFERENCES crm_workspaces(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        subscription_id TEXT REFERENCES crm_subscriptions(id) ON DELETE SET NULL,
+        plan_name TEXT NOT NULL,
+        amount_usd REAL NOT NULL,
+        amount_charged REAL NOT NULL,
+        currency_charged TEXT NOT NULL DEFAULT 'USD',
+        exchange_rate_snapshot REAL NOT NULL DEFAULT 1.0,
+        subtotal_usd REAL NOT NULL,
+        discount_usd REAL NOT NULL DEFAULT 0.0,
+        tax_rate_percent REAL NOT NULL DEFAULT 18.0,
+        tax_amount_usd REAL NOT NULL DEFAULT 0.0,
+        gstin TEXT,
+        status TEXT NOT NULL DEFAULT 'paid',
+        ledger_tx_id TEXT,
+        line_items TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS crm_billing_settings (
+        id TEXT PRIMARY KEY,
+        gst_vat_rate_percent REAL NOT NULL DEFAULT 18.0,
+        company_gstin TEXT DEFAULT '07AAAAA0000A1Z5',
+        company_legal_name TEXT DEFAULT 'PVTSender Enterprise',
+        invoice_footer TEXT DEFAULT 'Thank you for your business!',
+        grace_period_days INTEGER NOT NULL DEFAULT 3,
+        renewal_reminder_days INTEGER NOT NULL DEFAULT 7,
+        stacking_rule TEXT NOT NULL DEFAULT 'extend',
+        refund_policy TEXT NOT NULL DEFAULT 'pro_rata_wallet',
+        quota_definition_archived_frees_quota INTEGER NOT NULL DEFAULT 1,
+        quota_overflow_policy TEXT NOT NULL DEFAULT 'partial_accept',
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
     `);
 
     // Dynamic schema checks for hot/cold archiving columns
@@ -761,6 +1021,150 @@ export class CrmSqliteAdapter implements CrmStorageAdapter {
         this.db.prepare('ALTER TABLE crm_contacts ADD COLUMN archived_at TEXT').run();
       }
     } catch {}
+
+    // Seed default billing plans and settings if not present
+    try {
+      const planCount = (this.db.prepare('SELECT COUNT(*) as c FROM crm_billing_plans').get() as any)?.c || 0;
+      if (planCount === 0) {
+        const seedPlans = [
+          {
+            id: 'plan_free',
+            name: 'Starter (Free)',
+            slug: 'free',
+            description: 'Essential contact management for individuals.',
+            price_usd: 0,
+            duration_days: 30,
+            quota_contacts: 1000,
+            quota_boards: 3,
+            quota_columns_per_board: 6,
+            quota_super_fields: 15,
+            quota_tags: 30,
+            quota_team_seats: 1,
+            quota_api_calls_per_month: 2000,
+            quota_automations_per_month: 500,
+            quota_messages_per_month: 200,
+            quota_storage_mb: 512,
+            quota_enrichment_credits: 25,
+            quota_export_rows_per_month: 5000,
+            feature_flags: JSON.stringify({ kanban: true, super_fields: true, automations: false, export: true }),
+            sort_order: 1
+          },
+          {
+            id: 'plan_starter',
+            name: 'Growth',
+            slug: 'growth',
+            description: 'Scalable CRM for growing sales teams.',
+            price_usd: 29.0,
+            duration_days: 30,
+            quota_contacts: 10000,
+            quota_boards: 10,
+            quota_columns_per_board: 12,
+            quota_super_fields: 50,
+            quota_tags: 100,
+            quota_team_seats: 5,
+            quota_api_calls_per_month: 25000,
+            quota_automations_per_month: 5000,
+            quota_messages_per_month: 2500,
+            quota_storage_mb: 4096,
+            quota_enrichment_credits: 250,
+            quota_export_rows_per_month: 50000,
+            feature_flags: JSON.stringify({ kanban: true, super_fields: true, automations: true, export: true, webhooks: true }),
+            sort_order: 2
+          },
+          {
+            id: 'plan_pro',
+            name: 'Scale & Automation',
+            slug: 'scale',
+            description: 'Full power automation and multi-channel outreach.',
+            price_usd: 79.0,
+            duration_days: 30,
+            quota_contacts: 50000,
+            quota_boards: 30,
+            quota_columns_per_board: 20,
+            quota_super_fields: 150,
+            quota_tags: 500,
+            quota_team_seats: 15,
+            quota_api_calls_per_month: 100000,
+            quota_automations_per_month: 25000,
+            quota_messages_per_month: 10000,
+            quota_storage_mb: 16384,
+            quota_enrichment_credits: 1000,
+            quota_export_rows_per_month: 250000,
+            feature_flags: JSON.stringify({ kanban: true, super_fields: true, automations: true, export: true, webhooks: true, ai_scoring: true }),
+            sort_order: 3
+          },
+          {
+            id: 'plan_enterprise',
+            name: 'Enterprise 100M+',
+            slug: 'enterprise',
+            description: 'Unlimited scale for high-volume enterprise operations.',
+            price_usd: 199.0,
+            duration_days: 30,
+            quota_contacts: 1000000,
+            quota_boards: 100,
+            quota_columns_per_board: 50,
+            quota_super_fields: -1,
+            quota_tags: -1,
+            quota_team_seats: 50,
+            quota_api_calls_per_month: 1000000,
+            quota_automations_per_month: 250000,
+            quota_messages_per_month: 100000,
+            quota_storage_mb: 102400,
+            quota_enrichment_credits: 5000,
+            quota_export_rows_per_month: 1000000,
+            feature_flags: JSON.stringify({ kanban: true, super_fields: true, automations: true, export: true, webhooks: true, ai_scoring: true, custom_roles: true }),
+            sort_order: 4
+          }
+        ];
+
+        for (const p of seedPlans) {
+          this.db.prepare(`
+            INSERT OR IGNORE INTO crm_billing_plans (
+              id, name, slug, description, price_usd, duration_days, quota_contacts,
+              quota_boards, quota_columns_per_board, quota_super_fields, quota_tags,
+              quota_team_seats, quota_api_calls_per_month, quota_automations_per_month,
+              quota_messages_per_month, quota_storage_mb, quota_enrichment_credits,
+              quota_export_rows_per_month, feature_flags, sort_order
+            ) VALUES (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+          `).run(
+            p.id, p.name, p.slug, p.description, p.price_usd, p.duration_days, p.quota_contacts,
+            p.quota_boards, p.quota_columns_per_board, p.quota_super_fields, p.quota_tags,
+            p.quota_team_seats, p.quota_api_calls_per_month, p.quota_automations_per_month,
+            p.quota_messages_per_month, p.quota_storage_mb, p.quota_enrichment_credits,
+            p.quota_export_rows_per_month, p.feature_flags, p.sort_order
+          );
+        }
+      }
+
+      const addonCount = (this.db.prepare('SELECT COUNT(*) as c FROM crm_billing_addons').get() as any)?.c || 0;
+      if (addonCount === 0) {
+        const seedAddons = [
+          { id: 'addon_contacts_10k', name: '+10,000 Contacts Pack', slug: 'addon-contacts-10k', resource_type: 'contacts', quantity: 10000, price_usd: 15.0 },
+          { id: 'addon_contacts_50k', name: '+50,000 Contacts Pack', slug: 'addon-contacts-50k', resource_type: 'contacts', quantity: 50000, price_usd: 49.0 },
+          { id: 'addon_seats_5', name: '+5 Team Seats', slug: 'addon-seats-5', resource_type: 'team_seats', quantity: 5, price_usd: 25.0 },
+          { id: 'addon_api_50k', name: '+50,000 API Calls', slug: 'addon-api-50k', resource_type: 'api_calls', quantity: 50000, price_usd: 20.0 }
+        ];
+
+        for (const a of seedAddons) {
+          this.db.prepare(`
+            INSERT OR IGNORE INTO crm_billing_addons (id, name, slug, resource_type, quantity, price_usd)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(a.id, a.name, a.slug, a.resource_type, a.quantity, a.price_usd);
+        }
+      }
+
+      const settingsCheck = this.db.prepare('SELECT id FROM crm_billing_settings WHERE id = ?').get('global');
+      if (!settingsCheck) {
+        this.db.prepare(`
+          INSERT OR IGNORE INTO crm_billing_settings (id, gst_vat_rate_percent, company_gstin, company_legal_name, invoice_footer)
+          VALUES ('global', 18.0, '07AAAAA0000A1Z5', 'PVTSender Enterprise', 'Thank you for choosing PVTSender Enterprise!')
+        `).run();
+      }
+    } catch (e) {
+      console.error('[CrmSqliteAdapter] Seeding billing defaults error:', e);
+    }
   }
 
   // =========================================================================
@@ -4373,5 +4777,1382 @@ export class CrmSqliteAdapter implements CrmStorageAdapter {
       }))
     };
   }
+
+  // =========================================================================
+  // CRM V2: BOARDS (KANBAN)
+  // =========================================================================
+  public async listBoards(workspaceId: string, includeArchived: boolean = false): Promise<CrmBoard[]> {
+    let sql = 'SELECT * FROM crm_boards WHERE workspace_id = ?';
+    if (!includeArchived) sql += ' AND is_archived = 0';
+    sql += ' ORDER BY created_at DESC';
+
+    const rows = this.db.prepare(sql).all(workspaceId) as any[];
+    return rows.map((r) => this.mapBoard(r));
+  }
+
+  public async getBoard(workspaceId: string, boardId: string): Promise<CrmBoard | null> {
+    const row = this.db.prepare('SELECT * FROM crm_boards WHERE workspace_id = ? AND id = ?').get(workspaceId, boardId) as any;
+    if (!row) return null;
+    const board = this.mapBoard(row);
+    board.columns = await this.listBoardColumns(workspaceId, boardId);
+    return board;
+  }
+
+  public async createBoard(workspaceId: string, data: Partial<CrmBoard>): Promise<CrmBoard> {
+    const id = data.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO crm_boards (
+        id, workspace_id, name, description, color, icon, owner_user_id, visibility,
+        is_archived, card_layout, filter_criteria, auto_add_matching, auto_remove_unmatched,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      workspaceId,
+      data.name || 'Untitled Board',
+      data.description || null,
+      data.color || '#4f46e5',
+      data.icon || 'kanban',
+      data.owner_user_id || null,
+      data.visibility || 'workspace',
+      data.is_archived ? 1 : 0,
+      JSON.stringify(data.card_layout || {}),
+      JSON.stringify(data.filter_criteria || {}),
+      data.auto_add_matching ? 1 : 0,
+      data.auto_remove_unmatched ? 1 : 0,
+      now,
+      now
+    );
+
+    return (await this.getBoard(workspaceId, id))!;
+  }
+
+  public async updateBoard(workspaceId: string, boardId: string, updates: Partial<CrmBoard>): Promise<CrmBoard> {
+    const current = await this.getBoard(workspaceId, boardId);
+    if (!current) throw new Error(`Board '${boardId}' not found.`);
+
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE crm_boards SET
+        name = COALESCE(?, name),
+        description = COALESCE(?, description),
+        color = COALESCE(?, color),
+        icon = COALESCE(?, icon),
+        owner_user_id = COALESCE(?, owner_user_id),
+        visibility = COALESCE(?, visibility),
+        is_archived = COALESCE(?, is_archived),
+        card_layout = COALESCE(?, card_layout),
+        filter_criteria = COALESCE(?, filter_criteria),
+        auto_add_matching = COALESCE(?, auto_add_matching),
+        auto_remove_unmatched = COALESCE(?, auto_remove_unmatched),
+        updated_at = ?
+      WHERE workspace_id = ? AND id = ?
+    `).run(
+      updates.name ?? null,
+      updates.description ?? null,
+      updates.color ?? null,
+      updates.icon ?? null,
+      updates.owner_user_id ?? null,
+      updates.visibility ?? null,
+      updates.is_archived !== undefined ? (updates.is_archived ? 1 : 0) : null,
+      updates.card_layout ? JSON.stringify(updates.card_layout) : null,
+      updates.filter_criteria ? JSON.stringify(updates.filter_criteria) : null,
+      updates.auto_add_matching !== undefined ? (updates.auto_add_matching ? 1 : 0) : null,
+      updates.auto_remove_unmatched !== undefined ? (updates.auto_remove_unmatched ? 1 : 0) : null,
+      now,
+      workspaceId,
+      boardId
+    );
+
+    return (await this.getBoard(workspaceId, boardId))!;
+  }
+
+  public async deleteBoard(workspaceId: string, boardId: string): Promise<boolean> {
+    const res = this.db.prepare('DELETE FROM crm_boards WHERE workspace_id = ? AND id = ?').run(workspaceId, boardId);
+    return res.changes > 0;
+  }
+
+  public async duplicateBoard(workspaceId: string, boardId: string, newName?: string): Promise<CrmBoard> {
+    const orig = await this.getBoard(workspaceId, boardId);
+    if (!orig) throw new Error(`Board '${boardId}' not found.`);
+
+    const clone = await this.createBoard(workspaceId, {
+      name: newName || `${orig.name} (Copy)`,
+      description: orig.description,
+      color: orig.color,
+      icon: orig.icon,
+      owner_user_id: orig.owner_user_id,
+      visibility: orig.visibility,
+      card_layout: orig.card_layout,
+      filter_criteria: orig.filter_criteria,
+      auto_add_matching: orig.auto_add_matching,
+      auto_remove_unmatched: orig.auto_remove_unmatched
+    });
+
+    const cols = await this.listBoardColumns(workspaceId, boardId);
+    for (const c of cols) {
+      await this.createBoardColumn(workspaceId, {
+        board_id: clone.id,
+        name: c.name,
+        color: c.color,
+        order_index: c.order_index,
+        wip_limit: c.wip_limit,
+        stage_type: c.stage_type,
+        auto_actions: c.auto_actions
+      });
+    }
+
+    return (await this.getBoard(workspaceId, clone.id))!;
+  }
+
+  public async listBoardColumns(workspaceId: string, boardId: string): Promise<CrmBoardColumn[]> {
+    const rows = this.db.prepare(`
+      SELECT 
+        c.*,
+        (SELECT COUNT(*) FROM crm_board_cards bc WHERE bc.column_id = c.id AND bc.is_archived = 0) as card_count
+      FROM crm_board_columns c
+      WHERE c.board_id = ? AND c.workspace_id = ?
+      ORDER BY c.order_index ASC
+    `).all(boardId, workspaceId) as any[];
+
+    return rows.map((r) => ({
+      id: r.id,
+      board_id: r.board_id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      color: r.color || '#94a3b8',
+      order_index: Number(r.order_index) || 0,
+      wip_limit: r.wip_limit !== null ? Number(r.wip_limit) : null,
+      stage_type: r.stage_type || 'standard',
+      auto_actions: JSON.parse(r.auto_actions || '[]'),
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      card_count: Number(r.card_count) || 0
+    }));
+  }
+
+  public async createBoardColumn(workspaceId: string, data: Partial<CrmBoardColumn>): Promise<CrmBoardColumn> {
+    const id = data.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO crm_board_columns (
+        id, board_id, workspace_id, name, color, order_index, wip_limit, stage_type, auto_actions, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.board_id,
+      workspaceId,
+      data.name || 'New Column',
+      data.color || '#94a3b8',
+      data.order_index || 0,
+      data.wip_limit || null,
+      data.stage_type || 'standard',
+      JSON.stringify(data.auto_actions || []),
+      now,
+      now
+    );
+
+    const cols = await this.listBoardColumns(workspaceId, data.board_id!);
+    return cols.find((c) => c.id === id)!;
+  }
+
+  public async updateBoardColumn(workspaceId: string, columnId: string, updates: Partial<CrmBoardColumn>): Promise<CrmBoardColumn> {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE crm_board_columns SET
+        name = COALESCE(?, name),
+        color = COALESCE(?, color),
+        order_index = COALESCE(?, order_index),
+        wip_limit = COALESCE(?, wip_limit),
+        stage_type = COALESCE(?, stage_type),
+        auto_actions = COALESCE(?, auto_actions),
+        updated_at = ?
+      WHERE workspace_id = ? AND id = ?
+    `).run(
+      updates.name ?? null,
+      updates.color ?? null,
+      updates.order_index ?? null,
+      updates.wip_limit !== undefined ? updates.wip_limit : null,
+      updates.stage_type ?? null,
+      updates.auto_actions ? JSON.stringify(updates.auto_actions) : null,
+      now,
+      workspaceId,
+      columnId
+    );
+
+    const col = this.db.prepare('SELECT * FROM crm_board_columns WHERE workspace_id = ? AND id = ?').get(workspaceId, columnId) as any;
+    return {
+      id: col.id,
+      board_id: col.board_id,
+      workspace_id: col.workspace_id,
+      name: col.name,
+      color: col.color,
+      order_index: col.order_index,
+      wip_limit: col.wip_limit,
+      stage_type: col.stage_type,
+      auto_actions: JSON.parse(col.auto_actions || '[]'),
+      created_at: col.created_at,
+      updated_at: col.updated_at
+    };
+  }
+
+  public async deleteBoardColumn(workspaceId: string, columnId: string, fallbackColumnId?: string): Promise<boolean> {
+    if (fallbackColumnId) {
+      this.db.prepare('UPDATE crm_board_cards SET column_id = ? WHERE column_id = ? AND workspace_id = ?').run(
+        fallbackColumnId,
+        columnId,
+        workspaceId
+      );
+    }
+    const res = this.db.prepare('DELETE FROM crm_board_columns WHERE workspace_id = ? AND id = ?').run(workspaceId, columnId);
+    return res.changes > 0;
+  }
+
+  public async reorderBoardColumns(workspaceId: string, boardId: string, columnIds: string[]): Promise<void> {
+    const tx = this.db.transaction(() => {
+      for (let i = 0; i < columnIds.length; i++) {
+        this.db.prepare('UPDATE crm_board_columns SET order_index = ? WHERE id = ? AND board_id = ? AND workspace_id = ?').run(
+          i,
+          columnIds[i],
+          boardId,
+          workspaceId
+        );
+      }
+    });
+    tx();
+  }
+
+  public async listBoardCards(
+    workspaceId: string,
+    boardId: string,
+    columnId?: string,
+    cursor?: string,
+    limit: number = 50
+  ): Promise<{ cards: CrmBoardCard[]; next_cursor: string | null; total: number }> {
+    let sql = `
+      SELECT bc.*, c.first_name, c.last_name, c.email, c.phone, c.lead_score, c.status, c.custom_fields
+      FROM crm_board_cards bc
+      LEFT JOIN crm_contacts c ON bc.entity_type = 'contact' AND c.id = bc.entity_id AND c.workspace_id = bc.workspace_id
+      WHERE bc.board_id = ? AND bc.workspace_id = ? AND bc.is_archived = 0
+    `;
+    const params: any[] = [boardId, workspaceId];
+
+    if (columnId) {
+      sql += ' AND bc.column_id = ?';
+      params.push(columnId);
+    }
+
+    if (cursor) {
+      sql += ' AND bc.rank > ?';
+      params.push(cursor);
+    }
+
+    sql += ' ORDER BY bc.rank ASC LIMIT ?';
+    params.push(limit + 1);
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    const hasNext = rows.length > limit;
+    const items = hasNext ? rows.slice(0, limit) : rows;
+    const nextCursor = hasNext ? items[items.length - 1].rank : null;
+
+    const countRow = this.db.prepare(`
+      SELECT COUNT(*) as c FROM crm_board_cards WHERE board_id = ? AND workspace_id = ? AND is_archived = 0 ${columnId ? 'AND column_id = ?' : ''}
+    `).get(...(columnId ? [boardId, workspaceId, columnId] : [boardId, workspaceId])) as any;
+
+    const cards: CrmBoardCard[] = items.map((r) => ({
+      id: r.id,
+      board_id: r.board_id,
+      column_id: r.column_id,
+      workspace_id: r.workspace_id,
+      entity_type: r.entity_type,
+      entity_id: r.entity_id,
+      rank: r.rank,
+      is_archived: Boolean(r.is_archived),
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      entity_data: {
+        id: r.entity_id,
+        first_name: r.first_name,
+        last_name: r.last_name,
+        email: r.email,
+        phone: r.phone,
+        lead_score: r.lead_score,
+        status: r.status,
+        custom_fields: r.custom_fields ? (typeof r.custom_fields === 'string' ? JSON.parse(r.custom_fields) : r.custom_fields) : {}
+      }
+    }));
+
+    return { cards, next_cursor: nextCursor, total: Number(countRow?.c) || 0 };
+  }
+
+  public async moveBoardCard(
+    workspaceId: string,
+    cardId: string,
+    targetColumnId: string,
+    newRank: string
+  ): Promise<CrmBoardCard> {
+    const now = new Date().toISOString();
+    const updated = this.db.prepare(`
+      UPDATE crm_board_cards
+      SET column_id = ?, rank = ?, updated_at = ?
+      WHERE workspace_id = ? AND id = ?
+      RETURNING *
+    `).get(targetColumnId, newRank, now, workspaceId, cardId) as any;
+
+    if (!updated) throw new Error(`Card '${cardId}' not found.`);
+
+    return {
+      id: updated.id,
+      board_id: updated.board_id,
+      column_id: updated.column_id,
+      workspace_id: updated.workspace_id,
+      entity_type: updated.entity_type,
+      entity_id: updated.entity_id,
+      rank: updated.rank,
+      is_archived: Boolean(updated.is_archived),
+      created_at: updated.created_at,
+      updated_at: updated.updated_at
+    };
+  }
+
+  public async addCardToBoard(workspaceId: string, data: Partial<CrmBoardCard>): Promise<CrmBoardCard> {
+    const id = data.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const row = this.db.prepare(`
+      INSERT INTO crm_board_cards (
+        id, board_id, column_id, workspace_id, entity_type, entity_id, rank, is_archived, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(board_id, entity_type, entity_id) DO UPDATE SET
+        column_id = excluded.column_id,
+        rank = excluded.rank,
+        updated_at = excluded.updated_at
+      RETURNING *
+    `).get(
+      id,
+      data.board_id,
+      data.column_id,
+      workspaceId,
+      data.entity_type || 'contact',
+      data.entity_id,
+      data.rank || '0|hzzzzz:',
+      data.is_archived ? 1 : 0,
+      now,
+      now
+    ) as any;
+
+    return {
+      id: row.id,
+      board_id: row.board_id,
+      column_id: row.column_id,
+      workspace_id: row.workspace_id,
+      entity_type: row.entity_type,
+      entity_id: row.entity_id,
+      rank: row.rank,
+      is_archived: Boolean(row.is_archived),
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+  }
+
+  public async removeCardFromBoard(workspaceId: string, boardId: string, entityType: string, entityId: string): Promise<boolean> {
+    const res = this.db.prepare(`
+      DELETE FROM crm_board_cards WHERE workspace_id = ? AND board_id = ? AND entity_type = ? AND entity_id = ?
+    `).run(workspaceId, boardId, entityType, entityId);
+    return res.changes > 0;
+  }
+
+  public async getBoardStats(workspaceId: string, boardId: string): Promise<BoardStatsSummary> {
+    const cols = await this.listBoardColumns(workspaceId, boardId);
+    let totalCards = 0;
+    let wonCount = 0;
+    let lostCount = 0;
+
+    const columnMetrics = cols.map((col, index) => {
+      const cnt = col.card_count || 0;
+      totalCards += cnt;
+      if (col.stage_type === 'won') wonCount += cnt;
+      if (col.stage_type === 'lost') lostCount += cnt;
+
+      const prevCnt = index > 0 ? (cols[index - 1].card_count || 0) : cnt;
+      const convRate = prevCnt > 0 ? Number(((cnt / prevCnt) * 100).toFixed(1)) : 100;
+
+      return {
+        column_id: col.id,
+        name: col.name,
+        card_count: cnt,
+        total_value_usd: 0,
+        conversion_rate: convRate,
+        avg_time_in_stage_hours: 24
+      };
+    });
+
+    const winRate = totalCards > 0 ? Number(((wonCount / totalCards) * 100).toFixed(1)) : 0;
+
+    return {
+      board_id: boardId,
+      total_cards: totalCards,
+      columns: columnMetrics,
+      won_count: wonCount,
+      lost_count: lostCount,
+      win_rate_percent: winRate
+    };
+  }
+
+  private mapBoard(r: any): CrmBoard {
+    return {
+      id: r.id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      description: r.description,
+      color: r.color || '#4f46e5',
+      icon: r.icon || 'kanban',
+      owner_user_id: r.owner_user_id,
+      visibility: r.visibility || 'workspace',
+      is_archived: Boolean(r.is_archived),
+      card_layout: JSON.parse(r.card_layout || '{}'),
+      filter_criteria: JSON.parse(r.filter_criteria || '{}'),
+      auto_add_matching: Boolean(r.auto_add_matching),
+      auto_remove_unmatched: Boolean(r.auto_remove_unmatched),
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  }
+
+  // =========================================================================
+  // CRM V2: TAGS EXTENDED
+  // =========================================================================
+  public async listTagsWithCounts(workspaceId: string): Promise<Array<CrmTag & { usage_count: number }>> {
+    const rows = this.db.prepare(`
+      SELECT t.*, COUNT(ct.contact_id) as usage_count
+      FROM crm_tags t
+      LEFT JOIN crm_contact_tags ct ON ct.tag_id = t.id AND ct.workspace_id = t.workspace_id
+      WHERE t.workspace_id = ?
+      GROUP BY t.id
+      ORDER BY usage_count DESC, t.name ASC
+    `).all(workspaceId) as any[];
+
+    return rows.map((r) => ({
+      id: r.id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      color: r.color,
+      created_at: r.created_at,
+      contacts_count: Number(r.usage_count) || 0,
+      usage_count: Number(r.usage_count) || 0
+    }));
+  }
+
+  public async mergeTags(workspaceId: string, req: MergeTagsRequest): Promise<{ affected_contacts: number }> {
+    const { source_tag_id, target_tag_id } = req;
+    if (source_tag_id === target_tag_id) return { affected_contacts: 0 };
+
+    let count = 0;
+    const tx = this.db.transaction(() => {
+      // Find all contacts with source_tag_id
+      const contactsWithSource = this.db.prepare(`
+        SELECT contact_id FROM crm_contact_tags WHERE workspace_id = ? AND tag_id = ?
+      `).all(workspaceId, source_tag_id) as any[];
+
+      count = contactsWithSource.length;
+
+      for (const row of contactsWithSource) {
+        // Insert target tag if not already associated
+        this.db.prepare(`
+          INSERT OR IGNORE INTO crm_contact_tags (workspace_id, contact_id, tag_id, created_at)
+          VALUES (?, ?, ?, datetime('now'))
+        `).run(workspaceId, row.contact_id, target_tag_id);
+      }
+
+      // Delete source associations and source tag
+      this.db.prepare('DELETE FROM crm_contact_tags WHERE workspace_id = ? AND tag_id = ?').run(workspaceId, source_tag_id);
+      this.db.prepare('DELETE FROM crm_tags WHERE workspace_id = ? AND id = ?').run(workspaceId, source_tag_id);
+    });
+
+    tx();
+    return { affected_contacts: count };
+  }
+
+  public async listTagGroups(workspaceId: string): Promise<CrmTagGroup[]> {
+    const rows = this.db.prepare('SELECT * FROM crm_tag_groups WHERE workspace_id = ? ORDER BY sort_order ASC').all(workspaceId) as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      color: r.color,
+      sort_order: Number(r.sort_order) || 0,
+      created_at: r.created_at
+    }));
+  }
+
+  public async saveTagGroup(workspaceId: string, group: Partial<CrmTagGroup>): Promise<CrmTagGroup> {
+    const id = group.id || crypto.randomUUID();
+    const row = this.db.prepare(`
+      INSERT INTO crm_tag_groups (id, workspace_id, name, color, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        color = excluded.color,
+        sort_order = excluded.sort_order
+      RETURNING *
+    `).get(id, workspaceId, group.name || 'New Group', group.color || '#64748b', group.sort_order || 0) as any;
+
+    return {
+      id: row.id,
+      workspace_id: row.workspace_id,
+      name: row.name,
+      color: row.color,
+      sort_order: row.sort_order,
+      created_at: row.created_at
+    };
+  }
+
+  public async listAutoTagRules(workspaceId: string): Promise<CrmAutoTagRule[]> {
+    const rows = this.db.prepare('SELECT * FROM crm_auto_tag_rules WHERE workspace_id = ? ORDER BY created_at DESC').all(workspaceId) as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      trigger: r.trigger,
+      condition_value: JSON.parse(r.condition_value || '{}'),
+      tag_name: r.tag_name,
+      is_active: Boolean(r.is_active),
+      created_at: r.created_at
+    }));
+  }
+
+  public async saveAutoTagRule(workspaceId: string, rule: Partial<CrmAutoTagRule>): Promise<CrmAutoTagRule> {
+    const id = rule.id || crypto.randomUUID();
+    const row = this.db.prepare(`
+      INSERT INTO crm_auto_tag_rules (id, workspace_id, name, trigger, condition_value, tag_name, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        trigger = excluded.trigger,
+        condition_value = excluded.condition_value,
+        tag_name = excluded.tag_name,
+        is_active = excluded.is_active
+      RETURNING *
+    `).get(
+      id,
+      workspaceId,
+      rule.name || 'Auto Tag Rule',
+      rule.trigger || 'score_threshold',
+      JSON.stringify(rule.condition_value || {}),
+      rule.tag_name || 'Hot',
+      rule.is_active !== undefined ? (rule.is_active ? 1 : 0) : 1
+    ) as any;
+
+    return {
+      id: row.id,
+      workspace_id: row.workspace_id,
+      name: row.name,
+      trigger: row.trigger,
+      condition_value: JSON.parse(row.condition_value || '{}'),
+      tag_name: row.tag_name,
+      is_active: Boolean(row.is_active),
+      created_at: row.created_at
+    };
+  }
+
+  // =========================================================================
+  // CRM V2: SUPER FIELDS
+  // =========================================================================
+  public async listSuperFields(workspaceId: string, entityType: string = 'contact'): Promise<CrmSuperField[]> {
+    const rows = this.db.prepare(`
+      SELECT * FROM crm_super_fields WHERE workspace_id = ? AND entity_type = ? ORDER BY group_name ASC, name ASC
+    `).all(workspaceId, entityType) as any[];
+
+    return rows.map((r) => this.mapSuperField(r));
+  }
+
+  public async getSuperField(workspaceId: string, id: string): Promise<CrmSuperField | null> {
+    const row = this.db.prepare('SELECT * FROM crm_super_fields WHERE workspace_id = ? AND id = ?').get(workspaceId, id) as any;
+    if (!row) return null;
+    return this.mapSuperField(row);
+  }
+
+  public async createSuperField(workspaceId: string, data: Partial<CrmSuperField>): Promise<CrmSuperField> {
+    const id = data.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+    const slug = data.slug || data.name?.toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'custom_field';
+
+    const row = this.db.prepare(`
+      INSERT INTO crm_super_fields (
+        id, workspace_id, entity_type, name, slug, description, field_type,
+        is_required, is_unique, min_value, max_value, validation_regex, default_value,
+        options, formula_expression, lookup_config, auto_number_prefix, auto_number_padding,
+        group_name, is_searchable, is_filterable, is_promoted, visibility_roles, linked_board_id,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      RETURNING *
+    `).get(
+      id,
+      workspaceId,
+      data.entity_type || 'contact',
+      data.name || 'Field',
+      slug,
+      data.description || null,
+      data.field_type || 'text',
+      data.is_required ? 1 : 0,
+      data.is_unique ? 1 : 0,
+      data.min_value ?? null,
+      data.max_value ?? null,
+      data.validation_regex ?? null,
+      data.default_value ?? null,
+      JSON.stringify(data.options || []),
+      data.formula_expression ?? null,
+      JSON.stringify(data.lookup_config || {}),
+      data.auto_number_prefix ?? null,
+      data.auto_number_padding ?? 4,
+      data.group_name || 'General',
+      data.is_searchable !== undefined ? (data.is_searchable ? 1 : 0) : 1,
+      data.is_filterable !== undefined ? (data.is_filterable ? 1 : 0) : 1,
+      data.is_promoted ? 1 : 0,
+      JSON.stringify(data.visibility_roles || ['owner', 'admin', 'member', 'read_only']),
+      data.linked_board_id ?? null,
+      now,
+      now
+    ) as any;
+
+    return this.mapSuperField(row);
+  }
+
+  public async updateSuperField(workspaceId: string, id: string, updates: Partial<CrmSuperField>): Promise<CrmSuperField> {
+    const now = new Date().toISOString();
+    const row = this.db.prepare(`
+      UPDATE crm_super_fields SET
+        name = COALESCE(?, name),
+        description = COALESCE(?, description),
+        is_required = COALESCE(?, is_required),
+        min_value = COALESCE(?, min_value),
+        max_value = COALESCE(?, max_value),
+        validation_regex = COALESCE(?, validation_regex),
+        default_value = COALESCE(?, default_value),
+        options = COALESCE(?, options),
+        formula_expression = COALESCE(?, formula_expression),
+        lookup_config = COALESCE(?, lookup_config),
+        group_name = COALESCE(?, group_name),
+        is_promoted = COALESCE(?, is_promoted),
+        visibility_roles = COALESCE(?, visibility_roles),
+        linked_board_id = COALESCE(?, linked_board_id),
+        updated_at = ?
+      WHERE workspace_id = ? AND id = ?
+      RETURNING *
+    `).get(
+      updates.name ?? null,
+      updates.description ?? null,
+      updates.is_required !== undefined ? (updates.is_required ? 1 : 0) : null,
+      updates.min_value ?? null,
+      updates.max_value ?? null,
+      updates.validation_regex ?? null,
+      updates.default_value ?? null,
+      updates.options ? JSON.stringify(updates.options) : null,
+      updates.formula_expression ?? null,
+      updates.lookup_config ? JSON.stringify(updates.lookup_config) : null,
+      updates.group_name ?? null,
+      updates.is_promoted !== undefined ? (updates.is_promoted ? 1 : 0) : null,
+      updates.visibility_roles ? JSON.stringify(updates.visibility_roles) : null,
+      updates.linked_board_id ?? null,
+      now,
+      workspaceId,
+      id
+    ) as any;
+
+    if (!row) throw new Error(`Super field '${id}' not found.`);
+    return this.mapSuperField(row);
+  }
+
+  public async deleteSuperField(workspaceId: string, id: string): Promise<boolean> {
+    const field = await this.getSuperField(workspaceId, id);
+    if (field) {
+      this.db.prepare('DELETE FROM crm_promoted_field_values WHERE workspace_id = ? AND field_slug = ?').run(workspaceId, field.slug);
+    }
+    const res = this.db.prepare('DELETE FROM crm_super_fields WHERE workspace_id = ? AND id = ?').run(workspaceId, id);
+    return res.changes > 0;
+  }
+
+  public async promoteSuperField(workspaceId: string, id: string, isPromoted: boolean): Promise<CrmSuperField> {
+    const updated = await this.updateSuperField(workspaceId, id, { is_promoted: isPromoted });
+    if (isPromoted) {
+      // Backfill promoted field values from contacts table custom_fields JSON
+      const contacts = this.db.prepare('SELECT id, custom_fields FROM crm_contacts WHERE workspace_id = ? AND deleted_at IS NULL').all(workspaceId) as any[];
+      const tx = this.db.transaction(() => {
+        for (const c of contacts) {
+          const cf = c.custom_fields ? (typeof c.custom_fields === 'string' ? JSON.parse(c.custom_fields) : c.custom_fields) : {};
+          const val = cf[updated.slug];
+          if (val !== undefined && val !== null) {
+            this.db.prepare(`
+              INSERT OR REPLACE INTO crm_promoted_field_values (
+                id, workspace_id, entity_type, entity_id, field_slug, field_type, value_text, value_numeric, created_at, updated_at
+              ) VALUES (?, ?, 'contact', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            `).run(
+              crypto.randomUUID(),
+              workspaceId,
+              c.id,
+              updated.slug,
+              updated.field_type,
+              typeof val === 'string' ? val : String(val),
+              typeof val === 'number' ? val : null
+            );
+          }
+        }
+      });
+      tx();
+    } else {
+      this.db.prepare('DELETE FROM crm_promoted_field_values WHERE workspace_id = ? AND field_slug = ?').run(workspaceId, updated.slug);
+    }
+    return updated;
+  }
+
+  public async upsertPromotedFieldValue(entry: Partial<CrmPromotedFieldValue>): Promise<void> {
+    const id = entry.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO crm_promoted_field_values (
+        id, workspace_id, entity_type, entity_id, field_slug, field_type,
+        value_text, value_numeric, value_timestamp, value_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workspace_id, entity_type, entity_id, field_slug) DO UPDATE SET
+        value_text = excluded.value_text,
+        value_numeric = excluded.value_numeric,
+        value_timestamp = excluded.value_timestamp,
+        value_json = excluded.value_json,
+        updated_at = excluded.updated_at
+    `).run(
+      id,
+      entry.workspace_id,
+      entry.entity_type,
+      entry.entity_id,
+      entry.field_slug,
+      entry.field_type,
+      entry.value_text ?? null,
+      entry.value_numeric ?? null,
+      entry.value_timestamp ?? null,
+      entry.value_json ? JSON.stringify(entry.value_json) : null,
+      now,
+      now
+    );
+  }
+
+  public async getPromotedFieldValues(workspaceId: string, entityType: string, entityId: string): Promise<Record<string, any>> {
+    const rows = this.db.prepare(`
+      SELECT field_slug, value_text, value_numeric, value_timestamp, value_json FROM crm_promoted_field_values
+      WHERE workspace_id = ? AND entity_type = ? AND entity_id = ?
+    `).all(workspaceId, entityType, entityId) as any[];
+
+    const res: Record<string, any> = {};
+    for (const r of rows) {
+      if (r.value_numeric !== null) res[r.field_slug] = r.value_numeric;
+      else if (r.value_timestamp !== null) res[r.field_slug] = r.value_timestamp;
+      else if (r.value_json !== null) res[r.field_slug] = JSON.parse(r.value_json);
+      else res[r.field_slug] = r.value_text;
+    }
+    return res;
+  }
+
+  private mapSuperField(r: any): CrmSuperField {
+    return {
+      id: r.id,
+      workspace_id: r.workspace_id,
+      entity_type: r.entity_type,
+      name: r.name,
+      slug: r.slug,
+      description: r.description,
+      field_type: r.field_type,
+      is_required: Boolean(r.is_required),
+      is_unique: Boolean(r.is_unique),
+      min_value: r.min_value !== null ? Number(r.min_value) : null,
+      max_value: r.max_value !== null ? Number(r.max_value) : null,
+      validation_regex: r.validation_regex,
+      default_value: r.default_value,
+      options: JSON.parse(r.options || '[]'),
+      formula_expression: r.formula_expression,
+      lookup_config: JSON.parse(r.lookup_config || '{}'),
+      auto_number_prefix: r.auto_number_prefix,
+      auto_number_padding: Number(r.auto_number_padding) || 4,
+      group_name: r.group_name || 'General',
+      is_searchable: Boolean(r.is_searchable),
+      is_filterable: Boolean(r.is_filterable),
+      is_promoted: Boolean(r.is_promoted),
+      visibility_roles: JSON.parse(r.visibility_roles || '[]'),
+      linked_board_id: r.linked_board_id,
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  }
+
+  // =========================================================================
+  // CRM V2: PLAN-BASED BILLING & HARD ENTITLEMENTS (WALLET-ONLY)
+  // =========================================================================
+  public async listBillingPlans(includeInactive: boolean = false): Promise<CrmBillingPlan[]> {
+    let sql = 'SELECT * FROM crm_billing_plans';
+    if (!includeInactive) sql += ' WHERE is_active = 1';
+    sql += ' ORDER BY sort_order ASC, price_usd ASC';
+
+    const rows = this.db.prepare(sql).all() as any[];
+    return rows.map((r) => this.mapBillingPlan(r));
+  }
+
+  public async getBillingPlan(planIdOrSlug: string): Promise<CrmBillingPlan | null> {
+    const row = this.db.prepare('SELECT * FROM crm_billing_plans WHERE id = ? OR slug = ?').get(planIdOrSlug, planIdOrSlug) as any;
+    if (!row) return null;
+    return this.mapBillingPlan(row);
+  }
+
+  public async saveBillingPlan(plan: Partial<CrmBillingPlan>): Promise<CrmBillingPlan> {
+    const id = plan.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const row = this.db.prepare(`
+      INSERT INTO crm_billing_plans (
+        id, name, slug, description, price_usd, duration_days, quota_contacts,
+        quota_boards, quota_columns_per_board, quota_super_fields, quota_tags,
+        quota_team_seats, quota_api_calls_per_month, quota_automations_per_month,
+        quota_messages_per_month, quota_storage_mb, quota_enrichment_credits,
+        quota_export_rows_per_month, feature_flags, version, is_active, is_visible,
+        trial_days, is_recurring, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        description = excluded.description,
+        price_usd = excluded.price_usd,
+        duration_days = excluded.duration_days,
+        quota_contacts = excluded.quota_contacts,
+        quota_boards = excluded.quota_boards,
+        quota_columns_per_board = excluded.quota_columns_per_board,
+        quota_super_fields = excluded.quota_super_fields,
+        quota_tags = excluded.quota_tags,
+        quota_team_seats = excluded.quota_team_seats,
+        quota_api_calls_per_month = excluded.quota_api_calls_per_month,
+        quota_automations_per_month = excluded.quota_automations_per_month,
+        quota_messages_per_month = excluded.quota_messages_per_month,
+        quota_storage_mb = excluded.quota_storage_mb,
+        quota_enrichment_credits = excluded.quota_enrichment_credits,
+        quota_export_rows_per_month = excluded.quota_export_rows_per_month,
+        feature_flags = excluded.feature_flags,
+        version = excluded.version + 1,
+        is_active = excluded.is_active,
+        is_visible = excluded.is_visible,
+        sort_order = excluded.sort_order,
+        updated_at = excluded.updated_at
+      RETURNING *
+    `).get(
+      id,
+      plan.name || 'Custom Plan',
+      plan.slug || 'custom-plan',
+      plan.description || null,
+      plan.price_usd ?? 0.0,
+      plan.duration_days ?? 30,
+      plan.quota_contacts ?? 1000,
+      plan.quota_boards ?? 5,
+      plan.quota_columns_per_board ?? 10,
+      plan.quota_super_fields ?? 25,
+      plan.quota_tags ?? 50,
+      plan.quota_team_seats ?? 3,
+      plan.quota_api_calls_per_month ?? 10000,
+      plan.quota_automations_per_month ?? 5000,
+      plan.quota_messages_per_month ?? 2000,
+      plan.quota_storage_mb ?? 1024,
+      plan.quota_enrichment_credits ?? 100,
+      plan.quota_export_rows_per_month ?? 50000,
+      JSON.stringify(plan.feature_flags || {}),
+      plan.version || 1,
+      plan.is_active !== undefined ? (plan.is_active ? 1 : 0) : 1,
+      plan.is_visible !== undefined ? (plan.is_visible ? 1 : 0) : 1,
+      plan.trial_days ?? 0,
+      plan.is_recurring !== undefined ? (plan.is_recurring ? 1 : 0) : 1,
+      plan.sort_order ?? 0,
+      now,
+      now
+    ) as any;
+
+    return this.mapBillingPlan(row);
+  }
+
+  public async listBillingAddons(): Promise<CrmBillingAddon[]> {
+    const rows = this.db.prepare('SELECT * FROM crm_billing_addons WHERE is_active = 1 ORDER BY price_usd ASC').all() as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      resource_type: r.resource_type,
+      quantity: Number(r.quantity),
+      price_usd: Number(r.price_usd),
+      validity_days: r.validity_days !== null ? Number(r.validity_days) : null,
+      is_active: Boolean(r.is_active),
+      created_at: r.created_at
+    }));
+  }
+
+  public async saveBillingAddon(addon: Partial<CrmBillingAddon>): Promise<CrmBillingAddon> {
+    const id = addon.id || crypto.randomUUID();
+    const row = this.db.prepare(`
+      INSERT INTO crm_billing_addons (id, name, slug, resource_type, quantity, price_usd, validity_days, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        quantity = excluded.quantity,
+        price_usd = excluded.price_usd,
+        is_active = excluded.is_active
+      RETURNING *
+    `).get(
+      id,
+      addon.name || 'Add-on Pack',
+      addon.slug || 'addon',
+      addon.resource_type || 'contacts',
+      addon.quantity || 1000,
+      addon.price_usd || 10.0,
+      addon.validity_days ?? null,
+      addon.is_active !== undefined ? (addon.is_active ? 1 : 0) : 1
+    ) as any;
+
+    return {
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      resource_type: row.resource_type,
+      quantity: Number(row.quantity),
+      price_usd: Number(row.price_usd),
+      validity_days: row.validity_days !== null ? Number(row.validity_days) : null,
+      is_active: Boolean(row.is_active),
+      created_at: row.created_at
+    };
+  }
+
+  public async getBillingCoupon(code: string): Promise<CrmBillingCoupon | null> {
+    const row = this.db.prepare('SELECT * FROM crm_billing_coupons WHERE UPPER(code) = ?').get(code.toUpperCase().trim()) as any;
+    if (!row) return null;
+    return {
+      id: row.id,
+      code: row.code,
+      discount_type: row.discount_type,
+      discount_value: Number(row.discount_value),
+      max_uses: Number(row.max_uses),
+      current_uses: Number(row.current_uses),
+      plan_ids: JSON.parse(row.plan_ids || '[]'),
+      valid_until: row.valid_until,
+      is_active: Boolean(row.is_active),
+      created_at: row.created_at
+    };
+  }
+
+  public async saveBillingCoupon(coupon: Partial<CrmBillingCoupon>): Promise<CrmBillingCoupon> {
+    const id = coupon.id || crypto.randomUUID();
+    const row = this.db.prepare(`
+      INSERT INTO crm_billing_coupons (id, code, discount_type, discount_value, max_uses, current_uses, plan_ids, valid_until, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        discount_value = excluded.discount_value,
+        max_uses = excluded.max_uses,
+        current_uses = excluded.current_uses,
+        valid_until = excluded.valid_until,
+        is_active = excluded.is_active
+      RETURNING *
+    `).get(
+      id,
+      coupon.code?.toUpperCase().trim() || 'PROMO',
+      coupon.discount_type || 'percent',
+      coupon.discount_value || 10,
+      coupon.max_uses || 100,
+      coupon.current_uses || 0,
+      JSON.stringify(coupon.plan_ids || []),
+      coupon.valid_until || null,
+      coupon.is_active !== undefined ? (coupon.is_active ? 1 : 0) : 1
+    ) as any;
+
+    return {
+      id: row.id,
+      code: row.code,
+      discount_type: row.discount_type,
+      discount_value: Number(row.discount_value),
+      max_uses: Number(row.max_uses),
+      current_uses: Number(row.current_uses),
+      plan_ids: JSON.parse(row.plan_ids || '[]'),
+      valid_until: row.valid_until,
+      is_active: Boolean(row.is_active),
+      created_at: row.created_at
+    };
+  }
+
+  public async getActiveSubscription(workspaceId: string): Promise<CrmSubscription | null> {
+    const row = this.db.prepare(`
+      SELECT * FROM crm_subscriptions
+      WHERE workspace_id = ? AND status IN ('active', 'grace', 'expiring_soon')
+      ORDER BY created_at DESC LIMIT 1
+    `).get(workspaceId) as any;
+
+    if (!row) {
+      // Default fallback: return Free Plan subscription simulation if workspace exists
+      const ws = await this.getWorkspace(workspaceId);
+      if (!ws) return null;
+      const freePlan = await this.getBillingPlan('free');
+      if (!freePlan) return null;
+      return {
+        id: `sub_free_${workspaceId}`,
+        workspace_id: workspaceId,
+        user_id: ws.owner_user_id,
+        plan_id: freePlan.id,
+        plan_version: freePlan.version,
+        status: 'active',
+        starts_at: ws.created_at,
+        ends_at: '2099-12-31T23:59:59.000Z',
+        auto_renew: false,
+        renew_retry_count: 0,
+        custom_quotas: {},
+        metadata: { tier: 'free' },
+        created_at: ws.created_at,
+        updated_at: ws.created_at,
+        plan: freePlan
+      };
+    }
+
+    const plan = await this.getBillingPlan(row.plan_id);
+    return {
+      id: row.id,
+      workspace_id: row.workspace_id,
+      user_id: row.user_id,
+      plan_id: row.plan_id,
+      plan_version: Number(row.plan_version),
+      status: row.status,
+      starts_at: row.starts_at,
+      ends_at: row.ends_at,
+      grace_ends_at: row.grace_ends_at,
+      auto_renew: Boolean(row.auto_renew),
+      renew_retry_count: Number(row.renew_retry_count),
+      custom_quotas: JSON.parse(row.custom_quotas || '{}'),
+      metadata: JSON.parse(row.metadata || '{}'),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      plan: plan || undefined
+    };
+  }
+
+  public async saveSubscription(sub: Partial<CrmSubscription>): Promise<CrmSubscription> {
+    const id = sub.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const row = this.db.prepare(`
+      INSERT INTO crm_subscriptions (
+        id, workspace_id, user_id, plan_id, plan_version, status,
+        starts_at, ends_at, grace_ends_at, auto_renew, renew_retry_count,
+        custom_quotas, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        status = excluded.status,
+        ends_at = excluded.ends_at,
+        grace_ends_at = excluded.grace_ends_at,
+        auto_renew = excluded.auto_renew,
+        custom_quotas = excluded.custom_quotas,
+        metadata = excluded.metadata,
+        updated_at = excluded.updated_at
+      RETURNING *
+    `).get(
+      id,
+      sub.workspace_id,
+      sub.user_id,
+      sub.plan_id,
+      sub.plan_version || 1,
+      sub.status || 'active',
+      sub.starts_at || now,
+      sub.ends_at || now,
+      sub.grace_ends_at ?? null,
+      sub.auto_renew !== undefined ? (sub.auto_renew ? 1 : 0) : 1,
+      sub.renew_retry_count || 0,
+      JSON.stringify(sub.custom_quotas || {}),
+      JSON.stringify(sub.metadata || {}),
+      now,
+      now
+    ) as any;
+
+    const plan = await this.getBillingPlan(row.plan_id);
+    return {
+      id: row.id,
+      workspace_id: row.workspace_id,
+      user_id: row.user_id,
+      plan_id: row.plan_id,
+      plan_version: Number(row.plan_version),
+      status: row.status,
+      starts_at: row.starts_at,
+      ends_at: row.ends_at,
+      grace_ends_at: row.grace_ends_at,
+      auto_renew: Boolean(row.auto_renew),
+      renew_retry_count: Number(row.renew_retry_count),
+      custom_quotas: JSON.parse(row.custom_quotas || '{}'),
+      metadata: JSON.parse(row.metadata || '{}'),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      plan: plan || undefined
+    };
+  }
+
+  public async consumeQuotaAtomic(
+    workspaceId: string,
+    resourceType: BillingResourceType | string,
+    incrementBy: number,
+    limitFallback: number = 1000
+  ): Promise<{ success: boolean; used_count: number; quota_limit: number }> {
+    // 1. Ensure counter row exists with default limit
+    this.db.prepare(`
+      INSERT OR IGNORE INTO crm_usage_counters (id, workspace_id, resource_type, used_count, quota_limit)
+      VALUES (?, ?, ?, 0, ?)
+    `).run(crypto.randomUUID(), workspaceId, resourceType, limitFallback);
+
+    // If increment is 0, just update quota limit if higher
+    if (incrementBy === 0) {
+      const row = this.db.prepare(`
+        UPDATE crm_usage_counters SET quota_limit = ?, last_updated_at = datetime('now')
+        WHERE workspace_id = ? AND resource_type = ?
+        RETURNING used_count, quota_limit
+      `).get(limitFallback, workspaceId, resourceType) as any;
+      return { success: true, used_count: Number(row?.used_count) || 0, quota_limit: Number(row?.quota_limit) || limitFallback };
+    }
+
+    // 2. ATOMIC Hard-limit check & increment in a single statement
+    const updated = this.db.prepare(`
+      UPDATE crm_usage_counters
+      SET used_count = used_count + ?, last_updated_at = datetime('now')
+      WHERE workspace_id = ? AND resource_type = ? AND (quota_limit = -1 OR used_count + ? <= quota_limit)
+      RETURNING used_count, quota_limit
+    `).get(incrementBy, workspaceId, resourceType, incrementBy) as any;
+
+    if (updated) {
+      return {
+        success: true,
+        used_count: Number(updated.used_count),
+        quota_limit: Number(updated.quota_limit)
+      };
+    }
+
+    // If update affected 0 rows, the hard quota was exceeded!
+    const current = this.db.prepare(`
+      SELECT used_count, quota_limit FROM crm_usage_counters
+      WHERE workspace_id = ? AND resource_type = ?
+    `).get(workspaceId, resourceType) as any;
+
+    return {
+      success: false,
+      used_count: Number(current?.used_count) || 0,
+      quota_limit: Number(current?.quota_limit) || limitFallback
+    };
+  }
+
+  public async getUsageCounters(workspaceId: string): Promise<CrmUsageCounter[]> {
+    const rows = this.db.prepare('SELECT * FROM crm_usage_counters WHERE workspace_id = ?').all(workspaceId) as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      workspace_id: r.workspace_id,
+      resource_type: r.resource_type,
+      used_count: Number(r.used_count) || 0,
+      quota_limit: Number(r.quota_limit),
+      period_start: r.period_start,
+      period_end: r.period_end,
+      last_updated_at: r.last_updated_at
+    }));
+  }
+
+  public async reconcileUsageCounters(workspaceId: string): Promise<Record<string, number>> {
+    // Recalculate actual active contacts
+    const contactCount = (this.db.prepare(`
+      SELECT COUNT(*) as c FROM crm_contacts WHERE workspace_id = ? AND deleted_at IS NULL AND (is_archived = 0 OR is_archived IS NULL)
+    `).get(workspaceId) as any)?.c || 0;
+
+    const boardCount = (this.db.prepare(`
+      SELECT COUNT(*) as c FROM crm_boards WHERE workspace_id = ? AND is_archived = 0
+    `).get(workspaceId) as any)?.c || 0;
+
+    const fieldCount = (this.db.prepare(`
+      SELECT COUNT(*) as c FROM crm_super_fields WHERE workspace_id = ?
+    `).get(workspaceId) as any)?.c || 0;
+
+    const tagCount = (this.db.prepare(`
+      SELECT COUNT(*) as c FROM crm_tags WHERE workspace_id = ?
+    `).get(workspaceId) as any)?.c || 0;
+
+    this.db.prepare("UPDATE crm_usage_counters SET used_count = ?, last_updated_at = datetime('now') WHERE workspace_id = ? AND resource_type = 'contacts'").run(contactCount, workspaceId);
+    this.db.prepare("UPDATE crm_usage_counters SET used_count = ?, last_updated_at = datetime('now') WHERE workspace_id = ? AND resource_type = 'boards'").run(boardCount, workspaceId);
+    this.db.prepare("UPDATE crm_usage_counters SET used_count = ?, last_updated_at = datetime('now') WHERE workspace_id = ? AND resource_type = 'super_fields'").run(fieldCount, workspaceId);
+    this.db.prepare("UPDATE crm_usage_counters SET used_count = ?, last_updated_at = datetime('now') WHERE workspace_id = ? AND resource_type = 'tags'").run(tagCount, workspaceId);
+
+    return {
+      contacts: contactCount,
+      boards: boardCount,
+      super_fields: fieldCount,
+      tags: tagCount
+    };
+  }
+
+  public async createInvoice(invoice: Partial<CrmInvoice>): Promise<CrmInvoice> {
+    const id = invoice.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const row = this.db.prepare(`
+      INSERT INTO crm_invoices (
+        id, invoice_number, workspace_id, user_id, subscription_id, plan_name,
+        amount_usd, amount_charged, currency_charged, exchange_rate_snapshot,
+        subtotal_usd, discount_usd, tax_rate_percent, tax_amount_usd, gstin,
+        status, ledger_tx_id, line_items, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      RETURNING *
+    `).get(
+      id,
+      invoice.invoice_number || `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      invoice.workspace_id,
+      invoice.user_id,
+      invoice.subscription_id ?? null,
+      invoice.plan_name || 'CRM Subscription',
+      invoice.amount_usd ?? 0.0,
+      invoice.amount_charged ?? 0.0,
+      invoice.currency_charged || 'USD',
+      invoice.exchange_rate_snapshot ?? 1.0,
+      invoice.subtotal_usd ?? 0.0,
+      invoice.discount_usd ?? 0.0,
+      invoice.tax_rate_percent ?? 18.0,
+      invoice.tax_amount_usd ?? 0.0,
+      invoice.gstin ?? null,
+      invoice.status || 'paid',
+      invoice.ledger_tx_id ?? null,
+      JSON.stringify(invoice.line_items || []),
+      now
+    ) as any;
+
+    return this.mapInvoice(row);
+  }
+
+  public async listInvoices(workspaceId: string): Promise<CrmInvoice[]> {
+    const rows = this.db.prepare('SELECT * FROM crm_invoices WHERE workspace_id = ? ORDER BY created_at DESC').all(workspaceId) as any[];
+    return rows.map((r) => this.mapInvoice(r));
+  }
+
+  public async getInvoice(invoiceIdOrNumber: string): Promise<CrmInvoice | null> {
+    const row = this.db.prepare('SELECT * FROM crm_invoices WHERE id = ? OR invoice_number = ?').get(invoiceIdOrNumber, invoiceIdOrNumber) as any;
+    if (!row) return null;
+    return this.mapInvoice(row);
+  }
+
+  public async getBillingSettings(): Promise<CrmBillingSettings> {
+    const row = this.db.prepare('SELECT * FROM crm_billing_settings LIMIT 1').get() as any;
+    if (!row) {
+      return {
+        id: 'global',
+        gst_vat_rate_percent: 18.0,
+        company_gstin: '07AAAAA0000A1Z5',
+        company_legal_name: 'PVTSender Enterprise',
+        invoice_footer: 'Thank you for choosing PVTSender Enterprise!',
+        grace_period_days: 3,
+        renewal_reminder_days: 7,
+        stacking_rule: 'extend',
+        refund_policy: 'pro_rata_wallet',
+        quota_definition_archived_frees_quota: true,
+        quota_overflow_policy: 'partial_accept',
+        updated_at: new Date().toISOString()
+      };
+    }
+    return {
+      id: row.id,
+      gst_vat_rate_percent: Number(row.gst_vat_rate_percent) || 18.0,
+      company_gstin: row.company_gstin || '07AAAAA0000A1Z5',
+      company_legal_name: row.company_legal_name || 'PVTSender Enterprise',
+      invoice_footer: row.invoice_footer || 'Thank you for choosing PVTSender Enterprise!',
+      grace_period_days: Number(row.grace_period_days) || 3,
+      renewal_reminder_days: Number(row.renewal_reminder_days) || 7,
+      stacking_rule: row.stacking_rule || 'extend',
+      refund_policy: row.refund_policy || 'pro_rata_wallet',
+      quota_definition_archived_frees_quota: Boolean(row.quota_definition_archived_frees_quota),
+      quota_overflow_policy: row.quota_overflow_policy || 'partial_accept',
+      updated_at: row.updated_at
+    };
+  }
+
+  public async updateBillingSettings(settings: Partial<CrmBillingSettings>): Promise<CrmBillingSettings> {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE crm_billing_settings SET
+        gst_vat_rate_percent = COALESCE(?, gst_vat_rate_percent),
+        company_gstin = COALESCE(?, company_gstin),
+        company_legal_name = COALESCE(?, company_legal_name),
+        invoice_footer = COALESCE(?, invoice_footer),
+        grace_period_days = COALESCE(?, grace_period_days),
+        renewal_reminder_days = COALESCE(?, renewal_reminder_days),
+        stacking_rule = COALESCE(?, stacking_rule),
+        refund_policy = COALESCE(?, refund_policy),
+        quota_overflow_policy = COALESCE(?, quota_overflow_policy),
+        updated_at = ?
+    `).run(
+      settings.gst_vat_rate_percent ?? null,
+      settings.company_gstin ?? null,
+      settings.company_legal_name ?? null,
+      settings.invoice_footer ?? null,
+      settings.grace_period_days ?? null,
+      settings.renewal_reminder_days ?? null,
+      settings.stacking_rule ?? null,
+      settings.refund_policy ?? null,
+      settings.quota_overflow_policy ?? null,
+      now
+    );
+
+    return this.getBillingSettings();
+  }
+
+  private mapBillingPlan(r: any): CrmBillingPlan {
+    return {
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      description: r.description,
+      price_usd: Number(r.price_usd),
+      duration_days: Number(r.duration_days),
+      quota_contacts: Number(r.quota_contacts),
+      quota_boards: Number(r.quota_boards),
+      quota_columns_per_board: Number(r.quota_columns_per_board),
+      quota_super_fields: Number(r.quota_super_fields),
+      quota_tags: Number(r.quota_tags),
+      quota_team_seats: Number(r.quota_team_seats),
+      quota_api_calls_per_month: Number(r.quota_api_calls_per_month),
+      quota_automations_per_month: Number(r.quota_automations_per_month),
+      quota_messages_per_month: Number(r.quota_messages_per_month),
+      quota_storage_mb: Number(r.quota_storage_mb),
+      quota_enrichment_credits: Number(r.quota_enrichment_credits),
+      quota_export_rows_per_month: Number(r.quota_export_rows_per_month),
+      feature_flags: JSON.parse(r.feature_flags || '{}'),
+      version: Number(r.version) || 1,
+      is_active: Boolean(r.is_active),
+      is_visible: Boolean(r.is_visible),
+      trial_days: Number(r.trial_days) || 0,
+      is_recurring: Boolean(r.is_recurring),
+      sort_order: Number(r.sort_order) || 0,
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  }
+
+  private mapInvoice(r: any): CrmInvoice {
+    return {
+      id: r.id,
+      invoice_number: r.invoice_number,
+      workspace_id: r.workspace_id,
+      user_id: r.user_id,
+      subscription_id: r.subscription_id,
+      plan_name: r.plan_name,
+      amount_usd: Number(r.amount_usd),
+      amount_charged: Number(r.amount_charged),
+      currency_charged: r.currency_charged,
+      exchange_rate_snapshot: Number(r.exchange_rate_snapshot),
+      subtotal_usd: Number(r.subtotal_usd),
+      discount_usd: Number(r.discount_usd),
+      tax_rate_percent: Number(r.tax_rate_percent),
+      tax_amount_usd: Number(r.tax_amount_usd),
+      gstin: r.gstin,
+      status: r.status,
+      ledger_tx_id: r.ledger_tx_id,
+      line_items: JSON.parse(r.line_items || '[]'),
+      created_at: r.created_at
+    };
+  }
 }
+
 

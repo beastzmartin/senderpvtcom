@@ -907,4 +907,99 @@ export class MarketplaceController {
       res.status(500).json({ success: false, error: err.message || 'Failed to test provider authentication' });
     }
   };
+
+  /**
+   * POST /api/marketplace/jobs/:id/share
+   * Create an expiring signed share link for job results (Zero provider branding)
+   */
+  public createShareLink = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const id = req.params.id as string;
+      const hoursValid = req.body.hoursValid ? Number(req.body.hoursValid) : 72;
+      const link = this.jobService.createShareLink(id, userId, hoursValid);
+      res.json(link);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  };
+
+  /**
+   * GET /api/marketplace/shared/:token
+   * Public retrieval of shared extraction results (Zero provider branding)
+   */
+  public getSharedJob = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const token = req.params.token as string;
+      const data = this.jobService.getSharedJob(token);
+      res.json(data);
+    } catch (err: any) {
+      res.status(404).json({ error: err.message });
+    }
+  };
+
+  /**
+   * POST /api/marketplace/jobs/:id/crm-sync
+   * Bridge extraction results directly into CRM contacts and lists
+   */
+  public syncJobToCrm = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const id = req.params.id as string;
+      const { listId, dedupeRule, workspaceId } = req.body;
+      const result = await this.jobService.syncJobToCrm(id, userId, {
+        workspaceId,
+        listId,
+        dedupeRule
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  };
+
+  /**
+   * Scheduled Runs Management
+   */
+  public createScheduledRun = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const id = this.jobService.createScheduledRun(userId, req.body);
+      res.status(201).json({ success: true, id });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  };
+
+  public listScheduledRuns = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const schedules = this.jobService.listScheduledRuns(userId);
+      res.json({ schedules });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  public deleteScheduledRun = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const id = req.params.id as string;
+      this.jobService.deleteScheduledRun(id, userId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  public toggleScheduledRun = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const id = req.params.id as string;
+      const nextStatus = this.jobService.toggleScheduledRun(id, userId);
+      res.json({ success: true, status: nextStatus });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  };
 }

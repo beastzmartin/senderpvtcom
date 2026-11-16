@@ -52,7 +52,25 @@ import {
   AttributionSummary,
   CohortRow,
   CustomReportSpec,
-  CustomReportResult
+  CustomReportResult,
+  CrmBoard,
+  CrmBoardColumn,
+  CrmBoardCard,
+  BoardStatsSummary,
+  CrmTagGroup,
+  CrmAutoTagRule,
+  MergeTagsRequest,
+  CrmSuperField,
+  CrmPromotedFieldValue,
+  CrmBillingPlan,
+  CrmBillingAddon,
+  CrmBillingCoupon,
+  CrmSubscription,
+  CrmUsageCounter,
+  CrmInvoice,
+  CrmBillingSettings,
+  QuotaCheckResult,
+  BillingResourceType
 } from '../models/types.js';
 
 export interface ContactListParams {
@@ -339,5 +357,79 @@ export interface CrmStorageAdapter {
   getAttributionMetrics(workspaceId: string): Promise<AttributionSummary>;
   getCohortRetention(workspaceId: string, months?: number): Promise<CohortRow[]>;
   runCustomReport(workspaceId: string, spec: CustomReportSpec): Promise<CustomReportResult>;
+
+  // =========================================================================
+  // CRM V2: BOARDS (KANBAN)
+  // =========================================================================
+  listBoards(workspaceId: string, includeArchived?: boolean): Promise<CrmBoard[]>;
+  getBoard(workspaceId: string, boardId: string): Promise<CrmBoard | null>;
+  createBoard(workspaceId: string, data: Partial<CrmBoard>): Promise<CrmBoard>;
+  updateBoard(workspaceId: string, boardId: string, updates: Partial<CrmBoard>): Promise<CrmBoard>;
+  deleteBoard(workspaceId: string, boardId: string): Promise<boolean>;
+  duplicateBoard(workspaceId: string, boardId: string, newName?: string): Promise<CrmBoard>;
+  listBoardColumns(workspaceId: string, boardId: string): Promise<CrmBoardColumn[]>;
+  createBoardColumn(workspaceId: string, data: Partial<CrmBoardColumn>): Promise<CrmBoardColumn>;
+  updateBoardColumn(workspaceId: string, columnId: string, updates: Partial<CrmBoardColumn>): Promise<CrmBoardColumn>;
+  deleteBoardColumn(workspaceId: string, columnId: string, fallbackColumnId?: string): Promise<boolean>;
+  reorderBoardColumns(workspaceId: string, boardId: string, columnIds: string[]): Promise<void>;
+  listBoardCards(
+    workspaceId: string,
+    boardId: string,
+    columnId?: string,
+    cursor?: string,
+    limit?: number
+  ): Promise<{ cards: CrmBoardCard[]; next_cursor: string | null; total: number }>;
+  moveBoardCard(workspaceId: string, cardId: string, targetColumnId: string, newRank: string): Promise<CrmBoardCard>;
+  addCardToBoard(workspaceId: string, data: Partial<CrmBoardCard>): Promise<CrmBoardCard>;
+  removeCardFromBoard(workspaceId: string, boardId: string, entityType: string, entityId: string): Promise<boolean>;
+  getBoardStats(workspaceId: string, boardId: string): Promise<BoardStatsSummary>;
+
+  // =========================================================================
+  // CRM V2: TAGS EXTENDED
+  // =========================================================================
+  listTagsWithCounts(workspaceId: string): Promise<Array<CrmTag & { usage_count: number }>>;
+  mergeTags(workspaceId: string, req: MergeTagsRequest): Promise<{ affected_contacts: number }>;
+  listTagGroups(workspaceId: string): Promise<CrmTagGroup[]>;
+  saveTagGroup(workspaceId: string, group: Partial<CrmTagGroup>): Promise<CrmTagGroup>;
+  listAutoTagRules(workspaceId: string): Promise<CrmAutoTagRule[]>;
+  saveAutoTagRule(workspaceId: string, rule: Partial<CrmAutoTagRule>): Promise<CrmAutoTagRule>;
+
+  // =========================================================================
+  // CRM V2: SUPER FIELDS
+  // =========================================================================
+  listSuperFields(workspaceId: string, entityType?: string): Promise<CrmSuperField[]>;
+  getSuperField(workspaceId: string, id: string): Promise<CrmSuperField | null>;
+  createSuperField(workspaceId: string, data: Partial<CrmSuperField>): Promise<CrmSuperField>;
+  updateSuperField(workspaceId: string, id: string, updates: Partial<CrmSuperField>): Promise<CrmSuperField>;
+  deleteSuperField(workspaceId: string, id: string): Promise<boolean>;
+  promoteSuperField(workspaceId: string, id: string, isPromoted: boolean): Promise<CrmSuperField>;
+  upsertPromotedFieldValue(entry: Partial<CrmPromotedFieldValue>): Promise<void>;
+  getPromotedFieldValues(workspaceId: string, entityType: string, entityId: string): Promise<Record<string, any>>;
+
+  // =========================================================================
+  // CRM V2: PLAN-BASED BILLING & HARD ENTITLEMENTS (WALLET-ONLY)
+  // =========================================================================
+  listBillingPlans(includeInactive?: boolean): Promise<CrmBillingPlan[]>;
+  getBillingPlan(planIdOrSlug: string): Promise<CrmBillingPlan | null>;
+  saveBillingPlan(plan: Partial<CrmBillingPlan>): Promise<CrmBillingPlan>;
+  listBillingAddons(): Promise<CrmBillingAddon[]>;
+  saveBillingAddon(addon: Partial<CrmBillingAddon>): Promise<CrmBillingAddon>;
+  getBillingCoupon(code: string): Promise<CrmBillingCoupon | null>;
+  saveBillingCoupon(coupon: Partial<CrmBillingCoupon>): Promise<CrmBillingCoupon>;
+  getActiveSubscription(workspaceId: string): Promise<CrmSubscription | null>;
+  saveSubscription(sub: Partial<CrmSubscription>): Promise<CrmSubscription>;
+  consumeQuotaAtomic(
+    workspaceId: string,
+    resourceType: BillingResourceType | string,
+    incrementBy: number,
+    limitFallback?: number
+  ): Promise<{ success: boolean; used_count: number; quota_limit: number }>;
+  getUsageCounters(workspaceId: string): Promise<CrmUsageCounter[]>;
+  reconcileUsageCounters(workspaceId: string): Promise<Record<string, number>>;
+  createInvoice(invoice: Partial<CrmInvoice>): Promise<CrmInvoice>;
+  listInvoices(workspaceId: string): Promise<CrmInvoice[]>;
+  getInvoice(invoiceIdOrNumber: string): Promise<CrmInvoice | null>;
+  getBillingSettings(): Promise<CrmBillingSettings>;
+  updateBillingSettings(settings: Partial<CrmBillingSettings>): Promise<CrmBillingSettings>;
 }
 

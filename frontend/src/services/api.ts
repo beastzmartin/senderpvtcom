@@ -145,6 +145,30 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  // Generic HTTP methods
+  get: async <T = any>(endpoint: string) => {
+    const data = await request<T>(endpoint.replace(/^\/api/, ''), { method: 'GET' });
+    return { data };
+  },
+  post: async <T = any>(endpoint: string, body?: any) => {
+    const data = await request<T>(endpoint.replace(/^\/api/, ''), {
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined
+    });
+    return { data };
+  },
+  put: async <T = any>(endpoint: string, body?: any) => {
+    const data = await request<T>(endpoint.replace(/^\/api/, ''), {
+      method: 'PUT',
+      body: body ? JSON.stringify(body) : undefined
+    });
+    return { data };
+  },
+  delete: async <T = any>(endpoint: string) => {
+    const data = await request<T>(endpoint.replace(/^\/api/, ''), { method: 'DELETE' });
+    return { data };
+  },
+
   // WhatsApp Connection
   whatsapp: {
     getStatus: () =>

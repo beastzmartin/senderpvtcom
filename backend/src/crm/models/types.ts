@@ -929,6 +929,383 @@ export interface CustomReportResult {
   generated_at: string;
 }
 
+// =========================================================================
+// CRM V2: BOARDS (KANBAN) TYPES
+// =========================================================================
+export type BoardVisibility = 'private' | 'team' | 'workspace';
+export type BoardColumnStageType = 'standard' | 'won' | 'lost';
+export type BoardCardEntityType = 'contact' | 'deal' | 'task';
+
+export interface ColumnAutoAction {
+  type: 'set_field' | 'add_tag' | 'remove_tag' | 'assign_owner' | 'trigger_automation' | 'send_webhook';
+  config: {
+    field_slug?: string;
+    field_value?: any;
+    tag_name?: string;
+    owner_user_id?: string;
+    workflow_id?: string;
+    webhook_url?: string;
+  };
+}
+
+export interface CardActionButtonConfig {
+  id: string;
+  type: 'open_chat' | 'move_chat' | 'call' | 'send_template' | 'add_note' | 'create_task' | 'run_automation' | 'webhook';
+  label: string;
+  color?: string;
+  size?: 'sm' | 'md' | 'lg';
+  webhook_url?: string;
+  template_id?: string;
+  automation_id?: string;
+}
+
+export interface CardLayoutConfig {
+  visible_fields: string[];
+  field_order: string[];
+  card_size: 'compact' | 'standard' | 'expanded';
+  card_color_field?: string;
+  card_accent_color?: string;
+  action_buttons: CardActionButtonConfig[];
+  show_avatar: boolean;
+  show_tags: boolean;
+  show_score: boolean;
+  show_owner: boolean;
+}
+
+export interface CrmBoard {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description?: string | null;
+  color: string;
+  icon: string;
+  owner_user_id?: string | null;
+  visibility: BoardVisibility;
+  is_archived: boolean;
+  card_layout: CardLayoutConfig;
+  filter_criteria: FilterGroup;
+  auto_add_matching: boolean;
+  auto_remove_unmatched: boolean;
+  created_at: string;
+  updated_at: string;
+  columns?: CrmBoardColumn[];
+}
+
+export interface CrmBoardColumn {
+  id: string;
+  board_id: string;
+  workspace_id: string;
+  name: string;
+  color: string;
+  order_index: number;
+  wip_limit?: number | null;
+  stage_type: BoardColumnStageType;
+  auto_actions: ColumnAutoAction[];
+  created_at: string;
+  updated_at: string;
+  card_count?: number;
+  total_value?: number;
+}
+
+export interface CrmBoardCard {
+  id: string;
+  board_id: string;
+  column_id: string;
+  workspace_id: string;
+  entity_type: BoardCardEntityType;
+  entity_id: string;
+  rank: string;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+  entity_data?: Partial<Contact> | Record<string, any>;
+}
+
+export interface BoardStatsColumnMetric {
+  column_id: string;
+  name: string;
+  card_count: number;
+  total_value_usd: number;
+  conversion_rate: number;
+  avg_time_in_stage_hours: number;
+}
+
+export interface BoardStatsSummary {
+  board_id: string;
+  total_cards: number;
+  columns: BoardStatsColumnMetric[];
+  won_count: number;
+  lost_count: number;
+  win_rate_percent: number;
+}
+
+// =========================================================================
+// CRM V2: TAGS EXTENDED TYPES
+// =========================================================================
+export interface CrmTagGroup {
+  id: string;
+  workspace_id: string;
+  name: string;
+  color?: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface CrmAutoTagRule {
+  id: string;
+  workspace_id: string;
+  name: string;
+  trigger: 'score_threshold' | 'inactivity_days' | 'extractor_import' | 'status_change';
+  condition_value: any;
+  tag_name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface MergeTagsRequest {
+  source_tag_id: string;
+  target_tag_id: string;
+}
+
+// =========================================================================
+// CRM V2: SUPER FIELDS TYPES (20 TYPES)
+// =========================================================================
+export type SuperFieldType =
+  | 'text'
+  | 'long_text'
+  | 'number'
+  | 'currency'
+  | 'percent'
+  | 'date'
+  | 'datetime'
+  | 'dropdown'
+  | 'multi_select'
+  | 'checkbox'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'user'
+  | 'tag'
+  | 'file'
+  | 'rating'
+  | 'formula'
+  | 'lookup'
+  | 'auto_number'
+  | 'stage';
+
+export interface SuperFieldOption {
+  label: string;
+  value: string;
+  color?: string;
+}
+
+export interface SuperFieldLookupConfig {
+  source_entity: 'company' | 'contact';
+  target_field: string;
+}
+
+export interface CrmSuperField {
+  id: string;
+  workspace_id: string;
+  entity_type: 'contact' | 'company' | 'deal';
+  name: string;
+  slug: string;
+  description?: string | null;
+  field_type: SuperFieldType;
+  is_required: boolean;
+  is_unique: boolean;
+  min_value?: number | null;
+  max_value?: number | null;
+  validation_regex?: string | null;
+  default_value?: string | null;
+  options: SuperFieldOption[];
+  formula_expression?: string | null;
+  lookup_config: SuperFieldLookupConfig | Record<string, any>;
+  auto_number_prefix?: string | null;
+  auto_number_padding: number;
+  group_name: string;
+  is_searchable: boolean;
+  is_filterable: boolean;
+  is_promoted: boolean;
+  visibility_roles: WorkspaceRole[];
+  linked_board_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmPromotedFieldValue {
+  id: string;
+  workspace_id: string;
+  entity_type: string;
+  entity_id: string;
+  field_slug: string;
+  field_type: SuperFieldType;
+  value_text?: string | null;
+  value_numeric?: number | null;
+  value_timestamp?: string | null;
+  value_json?: any;
+  created_at: string;
+  updated_at: string;
+}
+
+// =========================================================================
+// CRM V2: PLAN-BASED BILLING & HARD ENTITLEMENTS (WALLET-ONLY)
+// =========================================================================
+export type BillingDuration = 'monthly' | 'annual' | 'lifetime';
+export type SubscriptionStatus = 'pending' | 'active' | 'expiring_soon' | 'grace' | 'expired' | 'cancelled' | 'suspended';
+export type BillingResourceType =
+  | 'contacts'
+  | 'boards'
+  | 'columns_per_board'
+  | 'super_fields'
+  | 'tags'
+  | 'team_seats'
+  | 'api_calls'
+  | 'automations'
+  | 'messages'
+  | 'storage_mb'
+  | 'enrichment_credits'
+  | 'export_rows';
+
+export interface CrmBillingPlan {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  price_usd: number;
+  duration_days: number;
+  quota_contacts: number;
+  quota_boards: number;
+  quota_columns_per_board: number;
+  quota_super_fields: number;
+  quota_tags: number;
+  quota_team_seats: number;
+  quota_api_calls_per_month: number;
+  quota_automations_per_month: number;
+  quota_messages_per_month: number;
+  quota_storage_mb: number;
+  quota_enrichment_credits: number;
+  quota_export_rows_per_month: number;
+  feature_flags: Record<string, boolean>;
+  version: number;
+  is_active: boolean;
+  is_visible: boolean;
+  trial_days: number;
+  is_recurring: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmBillingAddon {
+  id: string;
+  name: string;
+  slug: string;
+  resource_type: BillingResourceType;
+  quantity: number;
+  price_usd: number;
+  validity_days?: number | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CrmBillingCoupon {
+  id: string;
+  code: string;
+  discount_type: 'percent' | 'fixed_usd';
+  discount_value: number;
+  max_uses: number;
+  current_uses: number;
+  plan_ids: string[];
+  valid_until?: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CrmSubscription {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  plan_id: string;
+  plan_version: number;
+  status: SubscriptionStatus;
+  starts_at: string;
+  ends_at: string;
+  grace_ends_at?: string | null;
+  auto_renew: boolean;
+  renew_retry_count: number;
+  custom_quotas: Record<string, number>;
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+  plan?: CrmBillingPlan;
+}
+
+export interface CrmUsageCounter {
+  id: string;
+  workspace_id: string;
+  resource_type: BillingResourceType | string;
+  used_count: number;
+  quota_limit: number;
+  period_start: string;
+  period_end?: string | null;
+  last_updated_at: string;
+}
+
+export interface InvoiceLineItem {
+  description: string;
+  quantity: number;
+  unit_price_usd: number;
+  total_usd: number;
+}
+
+export interface CrmInvoice {
+  id: string;
+  invoice_number: string;
+  workspace_id: string;
+  user_id: string;
+  subscription_id?: string | null;
+  plan_name: string;
+  amount_usd: number;
+  amount_charged: number;
+  currency_charged: string;
+  exchange_rate_snapshot: number;
+  subtotal_usd: number;
+  discount_usd: number;
+  tax_rate_percent: number;
+  tax_amount_usd: number;
+  gstin?: string | null;
+  status: 'paid' | 'refunded' | 'void' | 'credited';
+  ledger_tx_id?: string | null;
+  line_items: InvoiceLineItem[];
+  created_at: string;
+}
+
+export interface CrmBillingSettings {
+  id: string;
+  gst_vat_rate_percent: number;
+  company_gstin: string;
+  company_legal_name: string;
+  invoice_footer: string;
+  grace_period_days: number;
+  renewal_reminder_days: number;
+  stacking_rule: 'extend' | 'queue' | 'prorate';
+  refund_policy: 'full_wallet' | 'pro_rata_wallet' | 'none';
+  quota_definition_archived_frees_quota: boolean;
+  quota_overflow_policy: 'partial_accept' | 'reject_batch';
+  updated_at: string;
+}
+
+export interface QuotaCheckResult {
+  allowed: boolean;
+  resource_type: BillingResourceType | string;
+  used_count: number;
+  quota_limit: number;
+  remaining: number;
+  rejection_reason?: string;
+}
+
+
 
 
 

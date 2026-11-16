@@ -27,6 +27,11 @@ import { CrmGdprService } from '../services/CrmGdprService.js';
 import { CrmCloudApiAdapter } from '../services/CrmCloudApiAdapter.js';
 import { CrmOpenApiService } from '../services/CrmOpenApiService.js';
 import { CrmAnalyticsService } from '../services/CrmAnalyticsService.js';
+import { CrmBoardManager, PRESET_BOARD_TEMPLATES } from '../services/CrmBoardManager.js';
+import { CrmLexoRankService } from '../services/CrmLexoRankService.js';
+import { CrmSuperFieldService } from '../services/CrmSuperFieldService.js';
+import { CrmEntitlementService } from '../services/CrmEntitlementService.js';
+import { CrmBillingService } from '../services/CrmBillingService.js';
 
 export class CrmInternalController {
   private static async getWorkspaceId(req: AuthenticatedRequest): Promise<string> {
@@ -133,6 +138,18 @@ export class CrmInternalController {
     try {
       const db = getCrmDb();
       const wsId = await CrmInternalController.getWorkspaceId(req);
+
+      // HARD LIMIT CHECK: Enforce atomic quota before inserting contact
+      const quotaCheck = await CrmEntitlementService.checkAndConsumeQuota(db, wsId, 'contacts', 1);
+      if (!quotaCheck.allowed) {
+        res.status(402).json({
+          error: quotaCheck.rejection_reason || 'Contact quota limit reached. Please upgrade your plan or top up your wallet.',
+          code: 'QUOTA_EXCEEDED',
+          quota: quotaCheck
+        });
+        return;
+      }
+
       const contact = await db.createContact(wsId, req.body);
 
       db.logActivity(wsId, {
@@ -155,6 +172,16 @@ export class CrmInternalController {
     try {
       const db = getCrmDb();
       const wsId = await CrmInternalController.getWorkspaceId(req);
+
+      const isReadOnly = await CrmEntitlementService.isWorkspaceReadOnly(db, wsId);
+      if (isReadOnly) {
+        res.status(402).json({
+          error: 'Workspace is in READ-ONLY mode due to expired subscription. Please renew or top up your wallet to edit contacts.',
+          code: 'WORKSPACE_READ_ONLY'
+        });
+        return;
+      }
+
       const contact = await db.updateContact(wsId, String(req.params.id), req.body);
 
       db.logActivity(wsId, {
@@ -2365,4 +2392,623 @@ export class CrmInternalController {
       res.status(400).json({ error: err.message });
     }
   }
+
+  // =========================================================================
+  // CRM V2: BOARDS (KANBAN)
+  // =========================================================================
+  public static async listBoards(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const includeArchived = req.query.include_archived === 'true';
+      const boards = await db.listBoards(wsId, includeArchived);
+      res.json({ success: true, boards });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async listBoardTemplates(_req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, templates: PRESET_BOARD_TEMPLATES });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async getBoard(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const board = await db.getBoard(wsId, String(req.params.id));
+      if (!board) {
+        res.status(404).json({ error: 'Board not found' });
+        return;
+      }
+      res.json({ success: true, board });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async createBoard(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+
+      // Quota check for boards
+      const quotaCheck = await CrmEntitlementService.checkAndConsumeQuota(db, wsId, 'boards', 1);
+      if (!quotaCheck.allowed) {
+        res.status(402).json({ error: quotaCheck.rejection_reason, code: 'QUOTA_EXCEEDED', quota: quotaCheck });
+        return;
+      }
+
+      const board = await db.createBoard(wsId, {
+        ...req.body,
+        owner_user_id: req.user!.id
+      });
+      res.status(201).json({ success: true, board });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async createBoardFromTemplate(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+
+      const quotaCheck = await CrmEntitlementService.checkAndConsumeQuota(db, wsId, 'boards', 1);
+      if (!quotaCheck.allowed) {
+        res.status(402).json({ error: quotaCheck.rejection_reason, code: 'QUOTA_EXCEEDED', quota: quotaCheck });
+        return;
+      }
+
+      const board = await CrmBoardManager.createFromTemplate(
+        db,
+        wsId,
+        req.body.template_id || 'sales_funnel',
+        req.body.name,
+        req.user!.id
+      );
+      res.status(201).json({ success: true, board });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async updateBoard(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const board = await db.updateBoard(wsId, String(req.params.id), req.body);
+      res.json({ success: true, board });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async deleteBoard(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      await db.deleteBoard(wsId, String(req.params.id));
+      res.json({ success: true, deleted: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async duplicateBoard(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+
+      const quotaCheck = await CrmEntitlementService.checkAndConsumeQuota(db, wsId, 'boards', 1);
+      if (!quotaCheck.allowed) {
+        res.status(402).json({ error: quotaCheck.rejection_reason, code: 'QUOTA_EXCEEDED' });
+        return;
+      }
+
+      const clone = await db.duplicateBoard(wsId, String(req.params.id), req.body.name);
+      res.status(201).json({ success: true, board: clone });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async listBoardColumns(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const columns = await db.listBoardColumns(wsId, String(req.params.id));
+      res.json({ success: true, columns });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async createBoardColumn(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const column = await db.createBoardColumn(wsId, {
+        ...req.body,
+        board_id: String(req.params.id)
+      });
+      res.status(201).json({ success: true, column });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async updateBoardColumn(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const column = await db.updateBoardColumn(wsId, String(req.params.columnId), req.body);
+      res.json({ success: true, column });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async deleteBoardColumn(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      await db.deleteBoardColumn(wsId, String(req.params.columnId), req.body.fallback_column_id);
+      res.json({ success: true, deleted: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async reorderBoardColumns(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      await db.reorderBoardColumns(wsId, String(req.params.id), req.body.column_ids || []);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async listBoardCards(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const boardId = String(req.params.id);
+      const columnId = req.query.column_id as string | undefined;
+      const cursor = req.query.cursor as string | undefined;
+      const limit = parseInt(req.query.limit as string, 10) || 50;
+
+      const result = await db.listBoardCards(wsId, boardId, columnId, cursor, limit);
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async addBoardCard(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const card = await db.addCardToBoard(wsId, {
+        board_id: String(req.params.id),
+        column_id: req.body.column_id,
+        entity_type: req.body.entity_type || 'contact',
+        entity_id: req.body.entity_id,
+        rank: req.body.rank || CrmLexoRankService.between()
+      });
+      res.status(201).json({ success: true, card });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async moveBoardCard(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const { card_id, target_column_id, prev_rank, next_rank } = req.body;
+
+      const card = await CrmBoardManager.moveCard(
+        db,
+        wsId,
+        card_id,
+        target_column_id,
+        prev_rank,
+        next_rank,
+        req.user?.id
+      );
+
+      res.json({ success: true, card });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async removeBoardCard(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      await db.removeCardFromBoard(wsId, String(req.params.id), String(req.params.entityType), String(req.params.entityId));
+      res.json({ success: true, removed: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async getBoardStats(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const stats = await db.getBoardStats(wsId, String(req.params.id));
+      res.json({ success: true, stats });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  // =========================================================================
+  // CRM V2: TAGS EXTENDED
+  // =========================================================================
+  public static async listTagsWithCounts(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const tags = await db.listTagsWithCounts(wsId);
+      res.json({ success: true, tags });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async mergeTags(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const result = await db.mergeTags(wsId, {
+        source_tag_id: req.body.source_tag_id,
+        target_tag_id: req.body.target_tag_id
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async listTagGroups(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const groups = await db.listTagGroups(wsId);
+      res.json({ success: true, groups });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async saveTagGroup(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const group = await db.saveTagGroup(wsId, req.body);
+      res.json({ success: true, group });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async listAutoTagRules(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const rules = await db.listAutoTagRules(wsId);
+      res.json({ success: true, rules });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async saveAutoTagRule(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const rule = await db.saveAutoTagRule(wsId, req.body);
+      res.json({ success: true, rule });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  // =========================================================================
+  // CRM V2: SUPER FIELDS
+  // =========================================================================
+  public static async listSuperFields(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const entityType = (req.query.entity_type as string) || 'contact';
+      const fields = await db.listSuperFields(wsId, entityType);
+      res.json({ success: true, fields });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async getSuperField(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const field = await db.getSuperField(wsId, String(req.params.id));
+      if (!field) {
+        res.status(404).json({ error: 'Super field not found' });
+        return;
+      }
+      res.json({ success: true, field });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async createSuperField(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+
+      const quotaCheck = await CrmEntitlementService.checkAndConsumeQuota(db, wsId, 'super_fields', 1);
+      if (!quotaCheck.allowed) {
+        res.status(402).json({ error: quotaCheck.rejection_reason, code: 'QUOTA_EXCEEDED' });
+        return;
+      }
+
+      const field = await db.createSuperField(wsId, req.body);
+      res.status(201).json({ success: true, field });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async updateSuperField(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const field = await db.updateSuperField(wsId, String(req.params.id), req.body);
+      res.json({ success: true, field });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async deleteSuperField(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      await db.deleteSuperField(wsId, String(req.params.id));
+      res.json({ success: true, deleted: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async promoteSuperField(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const isPromoted = req.body.is_promoted !== false;
+      const field = await db.promoteSuperField(wsId, String(req.params.id), isPromoted);
+      res.json({ success: true, field });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async evaluateFormula(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { expression, context } = req.body;
+      const evaluated = CrmSuperFieldService.evaluateFormula(expression, context || {});
+      res.json({ success: true, value: evaluated });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  // =========================================================================
+  // CRM V2: PLAN-BASED BILLING & HARD ENTITLEMENTS (WALLET-ONLY)
+  // =========================================================================
+  public static async listBillingPlans(_req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const plans = await db.listBillingPlans(false);
+      res.json({ success: true, plans });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async listBillingAddons(_req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const addons = await db.listBillingAddons();
+      res.json({ success: true, addons });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async getActiveSubscription(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const subscription = await db.getActiveSubscription(wsId);
+      const usage = await db.getUsageCounters(wsId);
+      res.json({ success: true, subscription, usage });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async subscribeToPlan(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const { plan_id, coupon_code, auto_renew } = req.body;
+
+      const result = await CrmBillingService.subscribeToPlan(
+        db,
+        wsId,
+        req.user!.id,
+        plan_id,
+        coupon_code,
+        auto_renew !== false
+      );
+
+      res.json({
+        success: true,
+        message: `Successfully subscribed to ${result.subscription.plan?.name || 'plan'} using wallet balance.`,
+        subscription: result.subscription,
+        invoice: result.invoice
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async purchaseAddon(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const { addon_id } = req.body;
+
+      const result = await CrmBillingService.purchaseAddon(db, wsId, req.user!.id, addon_id);
+      res.json({
+        success: true,
+        message: `Successfully purchased add-on pack using wallet balance.`,
+        invoice: result.invoice
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async listInvoices(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const invoices = await db.listInvoices(wsId);
+      res.json({ success: true, invoices });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async getInvoiceReceipt(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const invoice = await db.getInvoice(String(req.params.id));
+      if (!invoice) {
+        res.status(404).json({ error: 'Invoice not found' });
+        return;
+      }
+      const settings = await db.getBillingSettings();
+      const html = CrmBillingService.generateInvoiceHtml(invoice, settings);
+      res.setHeader('Content-Type', 'text/html');
+      res.send(html);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async getUsageCounters(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const usage = await db.getUsageCounters(wsId);
+      res.json({ success: true, usage });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async reconcileUsageCounters(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const wsId = await CrmInternalController.getWorkspaceId(req);
+      const reconciled = await db.reconcileUsageCounters(wsId);
+      res.json({ success: true, reconciled });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async checkCoupon(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const coupon = await db.getBillingCoupon(String(req.params.code));
+      if (!coupon || !coupon.is_active) {
+        res.status(404).json({ error: 'Invalid or expired coupon code' });
+        return;
+      }
+      res.json({ success: true, coupon });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  // =========================================================================
+  // ADMIN BILLING MANAGEMENT
+  // =========================================================================
+  public static async saveBillingPlan(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const plan = await db.saveBillingPlan(req.body);
+      res.json({ success: true, plan });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async getBillingSettings(_req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const settings = await db.getBillingSettings();
+      res.json({ success: true, settings });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  public static async updateBillingSettings(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const settings = await db.updateBillingSettings(req.body);
+      res.json({ success: true, settings });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async saveBillingAddon(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const addon = await db.saveBillingAddon(req.body);
+      res.json({ success: true, addon });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  public static async saveBillingCoupon(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const db = getCrmDb();
+      const coupon = await db.saveBillingCoupon(req.body);
+      res.json({ success: true, coupon });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  }
 }
+

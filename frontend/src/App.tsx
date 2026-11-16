@@ -25,6 +25,7 @@ import { SchedulerView } from './components/scheduler/SchedulerView';
 import { SubscriptionView } from './components/subscription/SubscriptionView';
 import { AdminControlCenter } from './components/admin/AdminControlCenter';
 import { LoginView } from './components/auth/LoginView';
+import { SharedExtractionView } from './components/marketplace/SharedExtractionView';
 import { Contact } from './types';
 import { MappedContact } from './components/common/CsvUploaderModal';
 import { RefreshCw, ShieldAlert, LogOut } from 'lucide-react';
@@ -264,6 +265,12 @@ const AuthenticatedProviders: React.FC = () => {
 };
 
 export const App: React.FC = () => {
+  const isSharedPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/shared/extraction/');
+  if (isSharedPath) {
+    const token = window.location.pathname.replace('/shared/extraction/', '').split('/')[0];
+    return <SharedExtractionView token={token} />;
+  }
+
   return (
     <AuthProvider>
       <AuthenticatedProviders />

@@ -80,5 +80,40 @@ export class WalletController {
       res.status(400).json({ error: err.message });
     }
   };
+
+  public getSpendLimits = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const status = this.walletService.getSpendLimitStatus(userId);
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  public setSpendLimits = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const { daily, monthly, perJob } = req.body;
+      const updated = this.walletService.setSpendLimits(userId, {
+        daily: daily !== undefined ? Number(daily) : undefined,
+        monthly: monthly !== undefined ? Number(monthly) : undefined,
+        perJob: perJob !== undefined ? Number(perJob) : undefined
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  };
+
+  public reconcile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const result = this.walletService.reconcileUserWallet(userId);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
 }
 

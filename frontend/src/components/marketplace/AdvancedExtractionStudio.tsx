@@ -39,7 +39,14 @@ import {
   Folder,
   ExternalLink,
   Share2,
-  Code
+  Code,
+  MapPin,
+  Image,
+  UserPlus,
+  Calendar,
+  Command,
+  Zap,
+  Link2
 } from 'lucide-react';
 
 interface InputField {
@@ -249,6 +256,34 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
+  // Power Features State (v3)
+  const [isInlineAddFundsOpen, setIsInlineAddFundsOpen] = useState<boolean>(false);
+  const [topUpAmountInput, setTopUpAmountInput] = useState<number>(0);
+  const [toppingUp, setToppingUp] = useState<boolean>(false);
+  const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
+  const [paletteSearch, setPaletteSearch] = useState<string>('');
+  const [resultViewMode, setResultViewMode] = useState<'table' | 'map' | 'gallery' | 'json'>('table');
+
+  // CRM Sync State
+  const [showCrmModal, setShowCrmModal] = useState<boolean>(false);
+  const [crmLists, setCrmLists] = useState<any[]>([]);
+  const [selectedCrmListId, setSelectedCrmListId] = useState<string>('');
+  const [crmDedupeRule, setCrmDedupeRule] = useState<'skip' | 'update' | 'merge'>('update');
+  const [crmSyncing, setCrmSyncing] = useState<boolean>(false);
+  const [crmSyncSuccess, setCrmSyncSuccess] = useState<any | null>(null);
+
+  // Signed Share Link State
+  const [showShareModal, setShowShareModal] = useState<boolean>(false);
+  const [shareLinkData, setShareLinkData] = useState<{ token: string; shareUrl: string; expiresAt: string } | null>(null);
+  const [generatingShare, setGeneratingShare] = useState<boolean>(false);
+
+  // Recurring Runs Schedule State
+  const [showScheduleModal, setShowScheduleModal] = useState<boolean>(false);
+  const [scheduleCron, setScheduleCron] = useState<string>('0 9 * * 1'); // Every Monday 9am
+  const [scheduleName, setScheduleName] = useState<string>('');
+  const [scheduleBudget, setScheduleBudget] = useState<number>(500);
+  const [savingSchedule, setSavingSchedule] = useState<boolean>(false);
+
   // Polling ref for active job
   const pollTimerRef = useRef<any>(null);
 
@@ -348,6 +383,110 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
       } catch {}
     }
   }, [formValues, product.slug]);
+
+  // Keyboard Shortcuts: Cmd+K / Ctrl+K for Palette, Cmd+Enter for Run
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandPalette((prev) => !prev);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        if (activeTab === 'configure' && !submitting) {
+          e.preventDefault();
+          handleLaunchExtraction();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, submitting]);
+
+  // In-Studio Inline Add Funds
+  const handleInlineTopUp = async (amount: number) => {
+    if (amount <= 0) return;
+    setToppingUp(true);
+    try {
+      await api.wallet.topUp(amount, 'In-Studio Instant Top-Up');
+      await fetchWallet();
+      await fetchQuote(requestedItems, selectedCurrency);
+      setIsInlineAddFundsOpen(false);
+      appendLog(`Successfully topped up ${currencySymbol}${amount.toFixed(2)} to wallet!`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to top up wallet');
+    } finally {
+      setToppingUp(false);
+    }
+  };
+
+  // CRM List Integration
+  const loadCrmLists = async () => {
+    try {
+      const res = await api.get('/api/crm/lists');
+      setCrmLists(res.data?.lists || res.data || []);
+    } catch {}
+  };
+
+  const handleSyncToCrm = async () => {
+    if (!activeJob) return;
+    setCrmSyncing(true);
+    try {
+      const res = await api.post(`/api/marketplace/jobs/${activeJob.id}/crm-sync`, {
+        listId: selectedCrmListId || null,
+        dedupeRule: crmDedupeRule
+      });
+      setCrmSyncSuccess(res.data);
+      appendLog(`Synced ${res.data.inserted} new leads directly into CRM!`);
+    } catch (err: any) {
+      alert(err.message || 'CRM sync failed');
+    } finally {
+      setCrmSyncing(false);
+    }
+  };
+
+  // Signed Share Link
+  const handleCreateShareLink = async () => {
+    if (!activeJob) return;
+    setGeneratingShare(true);
+    try {
+      const res = await api.post(`/api/marketplace/jobs/${activeJob.id}/share`, {
+        hoursValid: 72
+      });
+      setShareLinkData({
+        token: res.data.token,
+        shareUrl: `${window.location.origin}${res.data.shareUrl}`,
+        expiresAt: res.data.expiresAt
+      });
+      setShowShareModal(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to generate share link');
+    } finally {
+      setGeneratingShare(false);
+    }
+  };
+
+  // Recurring Runs Schedule
+  const handleSaveSchedule = async () => {
+    if (!scheduleName.trim()) return;
+    setSavingSchedule(true);
+    try {
+      await api.post('/api/marketplace/schedules', {
+        productSlug: product.slug,
+        name: scheduleName.trim(),
+        cronExpression: scheduleCron,
+        inputJson: formValues,
+        requestedItems,
+        maxBudget: scheduleBudget
+      });
+      setShowScheduleModal(false);
+      appendLog(`Created recurring schedule "${scheduleName}"!`);
+      alert('Extraction schedule created successfully!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to save schedule');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
 
   // Quote TTL Timer
   useEffect(() => {
@@ -729,10 +868,14 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
     return list;
   }, [results, resultFilter, dedupeKey, resultsColumns]);
 
-  // Wallet check
-  const walletBalance = Number((user as any)?.balance || 0);
+  // Wallet checks with Available vs Reserved balance
+  const totalBalance = wallet ? Number(wallet.balance) : Number((user as any)?.balance || 0);
+  const reservedBalance = wallet ? Number(wallet.reserved_balance || 0) : 0;
+  const availableBalance = Math.max(0, totalBalance - reservedBalance);
   const requiredBalance = quote?.sellPrice || 0;
-  const isBalanceSufficient = walletBalance >= requiredBalance;
+  const shortfall = Math.max(0, Number((requiredBalance - availableBalance).toFixed(2)));
+  const isBalanceSufficient = availableBalance >= requiredBalance;
+  const walletBalance = availableBalance;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-24 text-slate-800 dark:text-slate-100">
@@ -789,26 +932,32 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
             </button>
           </div>
 
-          {/* Wallet Balance Pill */}
+          {/* Wallet Balance Pill (Available vs Held) */}
           <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs shadow-inner">
             <Wallet className="w-4 h-4 text-emerald-400" />
-            <span className="text-slate-400">Balance:</span>
-            <span className="font-bold text-white">
-              {walletLoading ? '...' : `${currencySymbol}${walletBalance.toFixed(2)}`}
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono uppercase">{wallet?.currency || currencyCode}</span>
+            <div className="flex items-center gap-1.5 font-mono">
+              <span className="text-slate-400 font-sans text-[11px]">Available:</span>
+              <span className="font-bold text-emerald-400">
+                {walletLoading ? '...' : `${currencySymbol}${availableBalance.toFixed(2)}`}
+              </span>
+              {reservedBalance > 0 && (
+                <span className="text-slate-500 text-[10px] ml-1" title="Funds currently held for running extractions">
+                  (Held: {currencySymbol}{reservedBalance.toFixed(2)})
+                </span>
+              )}
+            </div>
             <button
               type="button"
-              onClick={() => setIsTopUpModalOpen(true)}
+              onClick={() => setIsInlineAddFundsOpen(true)}
               className="ml-1 px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition flex items-center gap-1 shadow-sm"
               title="Add funds to wallet"
             >
               <Plus className="w-3 h-3" />
-              <span>Top Up</span>
+              <span>Add Funds</span>
             </button>
           </div>
 
-          {/* Presets & Deep-link Export */}
+          {/* Quick Tools: Presets, Recurring Schedule, Command Palette */}
           <div className="flex items-center gap-1.5">
             <select
               value={selectedPresetId}
@@ -829,6 +978,26 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
               title="Save current parameters as preset"
             >
               <Save className="w-3.5 h-3.5 text-emerald-400" />
+            </button>
+
+            <button
+              onClick={() => {
+                setScheduleName(`${product.display_name} Run`);
+                setShowScheduleModal(true);
+              }}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition"
+              title="Schedule Recurring Run (Cron)"
+            >
+              <Calendar className="w-3.5 h-3.5 text-purple-400" />
+            </button>
+
+            <button
+              onClick={() => setShowCommandPalette(true)}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition flex items-center gap-1 text-xs font-mono"
+              title="Command Palette (Cmd+K)"
+            >
+              <Command className="w-3.5 h-3.5 text-slate-300" />
+              <span className="hidden sm:inline text-[10px] text-slate-400 font-bold">⌘K</span>
             </button>
 
             <button
@@ -1213,19 +1382,90 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
                       : `${currencySymbol}${(def.pricing?.sell?.per_1000_items || 0)} / 1k`}
                   </span>
                 </div>
-                <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                  <span>Available Balance</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">
-                    {currencySymbol}{walletBalance.toFixed(2)} {wallet?.currency || currencyCode}
+                <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 font-mono">
+                  <span className="font-sans">Available Funds</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {currencySymbol}{availableBalance.toFixed(2)} {selectedCurrency}
                   </span>
                 </div>
-                <div className="border-t border-slate-200 dark:border-slate-700 pt-2 flex justify-between items-baseline">
-                  <span className="font-bold text-xs text-slate-900 dark:text-white">Total Reserve Lock</span>
-                  <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                {reservedBalance > 0 && (
+                  <div className="flex justify-between text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+                    <span className="font-sans">On-Hold (Active Runs)</span>
+                    <span>{currencySymbol}{reservedBalance.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-2 flex justify-between items-baseline font-mono">
+                  <span className="font-bold text-xs text-slate-900 dark:text-white font-sans">Required Hold Lock</span>
+                  <span className="text-lg font-black text-slate-900 dark:text-white">
                     {loadingQuote ? '...' : `${currencySymbol}${quote?.sellPrice?.toFixed(2) || '0.00'} ${selectedCurrency}`}
                   </span>
                 </div>
               </div>
+
+              {/* Inline Add Funds Drawer */}
+              {isInlineAddFundsOpen && (
+                <div className="bg-slate-900 border border-emerald-500/40 rounded-xl p-4 space-y-3 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Instant Wallet Top-Up</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsInlineAddFundsOpen(false)}
+                      className="text-slate-400 hover:text-white text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-slate-300">
+                    Shortfall for this run: <strong className="text-rose-400 font-mono">{currencySymbol}{shortfall.toFixed(2)}</strong>
+                  </div>
+
+                  {/* Quick Add Buttons */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {shortfall > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleInlineTopUp(shortfall)}
+                        disabled={toppingUp}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600/30 border border-emerald-500/50 hover:bg-emerald-600 text-emerald-300 hover:text-white text-[11px] font-bold transition flex items-center justify-center gap-1 disabled:opacity-50"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Exact ({currencySymbol}{shortfall.toFixed(2)})
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleInlineTopUp(selectedCurrency === 'INR' ? 500 : 10)}
+                      disabled={toppingUp}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold transition flex items-center justify-center gap-1 disabled:opacity-50"
+                    >
+                      <Plus className="w-3 h-3" />
+                      +{currencySymbol}{selectedCurrency === 'INR' ? '500' : '10'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInlineTopUp(selectedCurrency === 'INR' ? 1000 : 25)}
+                      disabled={toppingUp}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold transition flex items-center justify-center gap-1 disabled:opacity-50"
+                    >
+                      <Plus className="w-3 h-3" />
+                      +{currencySymbol}{selectedCurrency === 'INR' ? '1,000' : '25'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInlineTopUp(selectedCurrency === 'INR' ? 2500 : 50)}
+                      disabled={toppingUp}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold transition flex items-center justify-center gap-1 disabled:opacity-50"
+                    >
+                      <Plus className="w-3 h-3" />
+                      +{currencySymbol}{selectedCurrency === 'INR' ? '2,500' : '50'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Launch Run Button */}
               <div className="space-y-2">
@@ -1243,22 +1483,22 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
                   <span>{submitting ? 'Initiating Task...' : 'Start Extraction Run'}</span>
                 </button>
 
-                {!isBalanceSufficient && (
+                {!isBalanceSufficient && !isInlineAddFundsOpen && (
                   <div className="p-3.5 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 rounded-xl text-center space-y-2.5">
                     <div className="flex items-center justify-center gap-1.5 text-rose-600 dark:text-rose-400 font-semibold text-xs">
                       <AlertTriangle className="w-4 h-4 shrink-0" />
                       <span>Insufficient wallet balance</span>
                     </div>
                     <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                      Available: <span className="font-bold text-slate-800 dark:text-slate-200">{currencySymbol}{walletBalance.toFixed(2)}</span> • Needed: <span className="font-bold text-rose-600 dark:text-rose-400">{currencySymbol}{requiredBalance.toFixed(2)}</span>
+                      Available: <span className="font-bold text-slate-800 dark:text-slate-200">{currencySymbol}{availableBalance.toFixed(2)}</span> • Needed: <span className="font-bold text-rose-600 dark:text-rose-400">{currencySymbol}{requiredBalance.toFixed(2)}</span>
                     </p>
                     <button
                       type="button"
-                      onClick={() => setIsTopUpModalOpen(true)}
+                      onClick={() => setIsInlineAddFundsOpen(true)}
                       className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center justify-center gap-1.5"
                     >
                       <Wallet className="w-3.5 h-3.5" />
-                      <span>Top Up Wallet Credits</span>
+                      <span>Add Funds ({currencySymbol}{shortfall.toFixed(2)} Shortfall)</span>
                     </button>
                   </div>
                 )}
@@ -1392,9 +1632,9 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
             </div>
           )}
 
-          {/* Controls: Search, Dedupe, and Export Buttons */}
+          {/* Controls: Search, Dedupe, View Switcher, Actions, and Export Buttons */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
                 <input
@@ -1419,53 +1659,146 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
                   </option>
                 ))}
               </select>
+
+              {/* View Switcher: Table / Map / Gallery / JSON */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setResultViewMode('table')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                    resultViewMode === 'table'
+                      ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Table</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResultViewMode('map')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                    resultViewMode === 'map'
+                      ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Map</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResultViewMode('gallery')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                    resultViewMode === 'gallery'
+                      ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Image className="w-3.5 h-3.5" />
+                  <span>Gallery</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResultViewMode('json')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                    resultViewMode === 'json'
+                      ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Code className="w-3.5 h-3.5" />
+                  <span>JSON</span>
+                </button>
+              </div>
             </div>
 
-            {/* Export buttons */}
-            {activeJob && (
-              <div className="flex items-center gap-2">
-                <a
-                  href={api.dataMarketplace.getExportUrl(activeJob.id, 'csv')}
-                  download
-                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
-                >
-                  <FileText className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>CSV</span>
-                </a>
-                <a
-                  href={api.dataMarketplace.getExportUrl(activeJob.id, 'xlsx')}
-                  download
-                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Excel</span>
-                </a>
-                <a
-                  href={api.dataMarketplace.getExportUrl(activeJob.id, 'json')}
-                  download
-                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
-                >
-                  <FileCode className="w-3.5 h-3.5 text-amber-500" />
-                  <span>JSON</span>
-                </a>
-                <a
-                  href={api.dataMarketplace.getExportUrl(activeJob.id, 'jsonl')}
-                  download
-                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
-                >
-                  <Code className="w-3.5 h-3.5 text-purple-500" />
-                  <span>JSONL</span>
-                </a>
-              </div>
-            )}
+            {/* Actions & Export buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              {activeJob && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      loadCrmLists();
+                      setShowCrmModal(true);
+                    }}
+                    className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 text-xs font-bold rounded-xl flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Save to CRM</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCreateShareLink}
+                    disabled={generatingShare}
+                    className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 text-xs font-bold rounded-xl flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-blue-600" />
+                    <span>{generatingShare ? 'Generating...' : 'Share (72h)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowScheduleModal(true)}
+                    className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 text-xs font-bold rounded-xl flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Schedule</span>
+                  </button>
+
+                  {/* Standard Exports */}
+                  <div className="flex items-center gap-1 border-l border-slate-200 dark:border-slate-700 pl-2">
+                    <a
+                      href={api.dataMarketplace.getExportUrl(activeJob.id, 'csv')}
+                      download
+                      className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold rounded-xl flex items-center gap-1 transition"
+                      title="Download CSV"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>CSV</span>
+                    </a>
+                    <a
+                      href={api.dataMarketplace.getExportUrl(activeJob.id, 'xlsx')}
+                      download
+                      className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold rounded-xl flex items-center gap-1 transition"
+                      title="Download Excel"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Excel</span>
+                    </a>
+                    <a
+                      href={api.dataMarketplace.getExportUrl(activeJob.id, 'json')}
+                      download
+                      className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold rounded-xl flex items-center gap-1 transition"
+                      title="Download JSON"
+                    >
+                      <FileCode className="w-3.5 h-3.5 text-amber-500" />
+                      <span>JSON</span>
+                    </a>
+                    <a
+                      href={api.dataMarketplace.getExportUrl(activeJob.id, 'jsonl')}
+                      download
+                      className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold rounded-xl flex items-center gap-1 transition"
+                      title="Download JSONL"
+                    >
+                      <Code className="w-3.5 h-3.5 text-purple-500" />
+                      <span>JSONL</span>
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Results Table */}
+          {/* Results Views Switcher Rendering */}
           {filteredResults.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs">
               No results extracted yet. Configure inputs and start an extraction run above.
             </div>
-          ) : (
+          ) : resultViewMode === 'table' ? (
+            /* Table View */
             <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 max-h-[500px] overflow-y-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold sticky top-0 border-b border-slate-200 dark:border-slate-700 z-10">
@@ -1532,6 +1865,167 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
                   ))}
                 </tbody>
               </table>
+            </div>
+          ) : resultViewMode === 'map' ? (
+            /* Map View */
+            <div className="space-y-4">
+              <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-xl text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>Showing geographical and location-aware records from extraction results.</span>
+                </span>
+                <span className="font-bold">{filteredResults.length} records mapped</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[500px] overflow-y-auto p-1">
+                {filteredResults.map((row, idx) => {
+                  const lat = row.latitude || row.lat || row.location?.lat || row.coordinates?.latitude;
+                  const lng = row.longitude || row.lng || row.lon || row.location?.lng || row.coordinates?.longitude;
+                  const address = row.address || row.formatted_address || row.street || row.city || row.location?.address;
+                  const title = row.title || row.name || row.company || row.businessName || `Record #${idx + 1}`;
+                  const mapsUrl = lat && lng 
+                    ? `https://maps.google.com/?q=${lat},${lng}` 
+                    : address 
+                    ? `https://maps.google.com/?q=${encodeURIComponent(String(address))}` 
+                    : null;
+
+                  return (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-emerald-500/50 transition space-y-2.5 flex flex-col justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-bold text-xs text-slate-900 dark:text-white line-clamp-1">{title}</h4>
+                          <span className="text-[10px] font-mono text-slate-400">#{idx + 1}</span>
+                        </div>
+                        {address && (
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 flex items-start gap-1">
+                            <MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+                            <span>{String(address)}</span>
+                          </p>
+                        )}
+                        {lat && lng && (
+                          <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded w-fit">
+                            {lat.toFixed ? lat.toFixed(5) : lat}, {lng.toFixed ? lng.toFixed(5) : lng}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                        {mapsUrl ? (
+                          <a
+                            href={mapsUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-500 hover:text-blue-600 flex items-center gap-1 font-semibold text-[11px]"
+                          >
+                            <span>Open in Maps</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        ) : (
+                          <span className="text-slate-400 text-[10px]">No geodata</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRowDetail(row)}
+                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 rounded text-[11px] font-semibold"
+                        >
+                          View Details
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : resultViewMode === 'gallery' ? (
+            /* Image Gallery View */
+            <div className="space-y-4">
+              <div className="p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900 rounded-xl text-xs text-purple-700 dark:text-purple-300 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Image className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>Showing extracted images, screenshots, logos, and media files.</span>
+                </span>
+                <span className="font-bold">{filteredResults.length} records</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 max-h-[500px] overflow-y-auto p-1">
+                {filteredResults.map((row, idx) => {
+                  // Find first image URL in row
+                  let imgUrl: string | null = null;
+                  for (const key of Object.keys(row)) {
+                    const val = String(row[key] ?? '');
+                    if (val.startsWith('http') && (val.includes('.png') || val.includes('.jpg') || val.includes('.jpeg') || val.includes('.webp') || key.toLowerCase().includes('image') || key.toLowerCase().includes('photo') || key.toLowerCase().includes('avatar') || key.toLowerCase().includes('logo'))) {
+                      imgUrl = val;
+                      break;
+                    }
+                  }
+                  const title = row.title || row.name || row.company || `Item #${idx + 1}`;
+
+                  return (
+                    <div
+                      key={idx}
+                      className="group relative rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col"
+                    >
+                      <div className="aspect-square bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden">
+                        {imgUrl ? (
+                          <img
+                            src={imgUrl}
+                            alt=""
+                            loading="lazy"
+                            className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-slate-400 p-2 text-center">
+                            <Image className="w-8 h-8 stroke-1 mb-1 opacity-50" />
+                            <span className="text-[10px]">No image</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-2 space-y-1">
+                        <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs truncate">
+                          {title}
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-400 font-mono">#{idx + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRowDetail(row)}
+                            className="text-emerald-600 hover:underline font-semibold"
+                          >
+                            Details
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            /* Raw JSON View */
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-slate-950 px-4 py-2 rounded-t-xl border border-slate-800">
+                <span className="text-xs font-mono text-slate-400">
+                  {filteredResults.length} records (JSON format)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(filteredResults, null, 2));
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 2000);
+                  }}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedLink ? 'Copied!' : 'Copy All JSON'}</span>
+                </button>
+              </div>
+              <pre className="bg-slate-950 p-4 rounded-b-xl border border-t-0 border-slate-800 text-xs font-mono text-emerald-400 max-h-[500px] overflow-auto whitespace-pre">
+                {JSON.stringify(filteredResults, null, 2)}
+              </pre>
             </div>
           )}
         </div>
@@ -1852,6 +2346,470 @@ export const AdvancedExtractionStudio: React.FC<Props> = ({ product, onBack, onJ
                 className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 rounded-xl font-bold"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          POWER FEATURES MODALS (v3)
+         ===================================================================== */}
+
+      {/* 1. Command Palette Modal (Cmd+K / Ctrl+K) */}
+      {showCommandPalette && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-24 p-4"
+          onClick={() => setShowCommandPalette(false)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center px-4 py-3 border-b border-slate-100 dark:border-slate-800 gap-3">
+              <Command className="w-4 h-4 text-emerald-500 shrink-0" />
+              <input
+                type="text"
+                autoFocus
+                placeholder="Type a command or search action (e.g. 'run', 'crm', 'share', 'topup')..."
+                value={paletteSearch}
+                onChange={(e) => setPaletteSearch(e.target.value)}
+                className="w-full bg-transparent text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none"
+              />
+              <kbd className="px-2 py-0.5 text-[10px] font-mono bg-slate-100 dark:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700">
+                ESC
+              </kbd>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto p-2 space-y-1 text-xs">
+              {[
+                {
+                  id: 'run',
+                  title: 'Run Extraction',
+                  shortcut: 'Cmd + Enter',
+                  icon: Play,
+                  action: () => {
+                    setShowCommandPalette(false);
+                    if (activeTab !== 'configure') setActiveTab('configure');
+                    handleLaunchExtraction();
+                  }
+                },
+                {
+                  id: 'save-preset',
+                  title: 'Save Current Configuration as Preset',
+                  shortcut: 'Preset',
+                  icon: Save,
+                  action: () => {
+                    setShowCommandPalette(false);
+                    setShowSavePresetModal(true);
+                  }
+                },
+                {
+                  id: 'results',
+                  title: 'View Extracted Results',
+                  shortcut: 'Tab 2',
+                  icon: Eye,
+                  action: () => {
+                    setShowCommandPalette(false);
+                    setActiveTab('results');
+                  }
+                },
+                {
+                  id: 'crm',
+                  title: 'Save Delivered Leads to CRM Contacts List',
+                  shortcut: 'CRM',
+                  icon: UserPlus,
+                  action: () => {
+                    setShowCommandPalette(false);
+                    loadCrmLists();
+                    setShowCrmModal(true);
+                  }
+                },
+                {
+                  id: 'share',
+                  title: 'Create 72-Hour White-Labeled Share Link',
+                  shortcut: 'Share',
+                  icon: Share2,
+                  action: () => {
+                    setShowCommandPalette(false);
+                    handleCreateShareLink();
+                  }
+                },
+                {
+                  id: 'schedule',
+                  title: 'Schedule Recurring Automated Extraction',
+                  shortcut: 'Cron',
+                  icon: Calendar,
+                  action: () => {
+                    setShowCommandPalette(false);
+                    setShowScheduleModal(true);
+                  }
+                },
+                {
+                  id: 'topup',
+                  title: 'Instant In-Studio Wallet Top-Up',
+                  shortcut: 'Wallet',
+                  icon: Wallet,
+                  action: () => {
+                    setShowCommandPalette(false);
+                    setIsInlineAddFundsOpen(true);
+                  }
+                },
+                {
+                  id: 'export-csv',
+                  title: 'Export Active Job Results as CSV',
+                  shortcut: 'CSV',
+                  icon: FileText,
+                  disabled: !activeJob,
+                  action: () => {
+                    setShowCommandPalette(false);
+                    if (activeJob) window.location.href = api.dataMarketplace.getExportUrl(activeJob.id, 'csv');
+                  }
+                },
+                {
+                  id: 'export-xlsx',
+                  title: 'Export Active Job Results as Excel',
+                  shortcut: 'XLSX',
+                  icon: FileSpreadsheet,
+                  disabled: !activeJob,
+                  action: () => {
+                    setShowCommandPalette(false);
+                    if (activeJob) window.location.href = api.dataMarketplace.getExportUrl(activeJob.id, 'xlsx');
+                  }
+                }
+              ]
+                .filter(
+                  (item) =>
+                    !paletteSearch.trim() ||
+                    item.title.toLowerCase().includes(paletteSearch.toLowerCase()) ||
+                    item.id.includes(paletteSearch.toLowerCase())
+                )
+                .map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={item.disabled}
+                      onClick={item.action}
+                      className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left disabled:opacity-40"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{item.title}</span>
+                      </div>
+                      <kbd className="px-2 py-0.5 text-[10px] font-mono bg-slate-50 dark:bg-slate-800/80 text-slate-400 rounded border border-slate-200 dark:border-slate-700">
+                        {item.shortcut}
+                      </kbd>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Save to CRM List Modal */}
+      {showCrmModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center">
+                  <UserPlus className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">Save Leads to Contacts CRM</h3>
+                  <p className="text-[11px] text-slate-500">Flow extracted records directly into your CRM database</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCrmModal(false);
+                  setCrmSyncSuccess(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {crmSyncSuccess ? (
+              <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span>CRM Sync Completed Successfully!</span>
+                </div>
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-300 space-y-1 font-mono">
+                  <div>• Leads Inserted: {crmSyncSuccess.inserted}</div>
+                  <div>• Leads Updated/Deduplicated: {crmSyncSuccess.updated}</div>
+                  <div>• Total Processed: {crmSyncSuccess.total}</div>
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCrmModal(false);
+                      setCrmSyncSuccess(null);
+                    }}
+                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Target CRM List (Optional)
+                  </label>
+                  <select
+                    value={selectedCrmListId}
+                    onChange={(e) => setSelectedCrmListId(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                  >
+                    <option value="">Default (All Workspace Contacts)</option>
+                    {crmLists.map((l: any) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name} ({l.contact_count ?? l.member_count ?? 0} leads)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Deduplication Rule
+                  </label>
+                  <select
+                    value={crmDedupeRule}
+                    onChange={(e) => setCrmDedupeRule(e.target.value as any)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                  >
+                    <option value="update">Update existing contacts with newest info</option>
+                    <option value="skip">Skip duplicates (keep original contact)</option>
+                    <option value="merge">Merge new fields without overwriting existing data</option>
+                  </select>
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-[11px] text-slate-500 space-y-1">
+                  <div>• Email & Phone will be normalized automatically (E.164 standard).</div>
+                  <div>• All extra schema fields will be preserved in contact custom attributes.</div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCrmModal(false)}
+                    className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={crmSyncing}
+                    onClick={handleSyncToCrm}
+                    className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 disabled:opacity-50 transition"
+                  >
+                    {crmSyncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+                    <span>{crmSyncing ? 'Syncing...' : 'Sync Leads Now'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 3. Signed Share Link Modal (72 Hours White-Labeled) */}
+      {showShareModal && shareLinkData && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950 flex items-center justify-center">
+                  <Share2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">Share Extraction Results</h3>
+                  <p className="text-[11px] text-slate-500">72-Hour White-Labeled Public Results Link</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowShareModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+                Anyone with this secure signed link can view and download the extracted records without needing an account. Upstream providers and internal pricing are strictly hidden.
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Signed Link (Expires in 72 hours)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={shareLinkData.shareUrl}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareLinkData.shareUrl);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition"
+                  >
+                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center text-[11px] text-slate-400 pt-1">
+                <span>Expires: {new Date(shareLinkData.expiresAt).toLocaleString()}</span>
+                <a
+                  href={shareLinkData.shareUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-500 hover:underline flex items-center gap-1"
+                >
+                  <span>Open Preview</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowShareModal(false)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Schedule Recurring Run Modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950 flex items-center justify-center">
+                  <Calendar className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">Schedule Recurring Extraction</h3>
+                  <p className="text-[11px] text-slate-500">Automate recurring data collection on a cron schedule</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Schedule Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Weekly Verified Tech Leads"
+                  value={scheduleName}
+                  onChange={(e) => setScheduleName(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Frequency (Cron Expression)
+                </label>
+                <select
+                  value={scheduleCron}
+                  onChange={(e) => setScheduleCron(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                >
+                  <option value="0 9 * * 1">Every Monday at 9:00 AM</option>
+                  <option value="0 9 * * *">Every Day at 9:00 AM</option>
+                  <option value="0 0 1 * *">First Day of Every Month</option>
+                  <option value="0 */6 * * *">Every 6 Hours</option>
+                </select>
+                <input
+                  type="text"
+                  value={scheduleCron}
+                  onChange={(e) => setScheduleCron(e.target.value)}
+                  placeholder="Custom Cron (e.g. 0 9 * * 1)"
+                  className="w-full mt-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Items Target
+                  </label>
+                  <input
+                    type="number"
+                    value={requestedItems}
+                    disabled
+                    className="w-full bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-500 font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Max Budget ({selectedCurrency})
+                  </label>
+                  <input
+                    type="number"
+                    value={scheduleBudget}
+                    onChange={(e) => setScheduleBudget(Math.max(1, Number(e.target.value)))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 font-mono focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-purple-50/50 dark:bg-purple-950/20 rounded-xl text-[11px] text-purple-700 dark:text-purple-300">
+                Scheduled runs reserve wallet funds at trigger time. If available balance is insufficient, the schedule will skip and notify you.
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={savingSchedule || !scheduleName.trim()}
+                onClick={handleSaveSchedule}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1.5 disabled:opacity-50 transition"
+              >
+                {savingSchedule ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Calendar className="w-3.5 h-3.5" />}
+                <span>{savingSchedule ? 'Saving...' : 'Save Schedule'}</span>
               </button>
             </div>
           </div>

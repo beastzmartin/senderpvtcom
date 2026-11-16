@@ -1,6 +1,7 @@
 import { getDatabase } from '../../db/database.js';
 import { WalletService } from '../walletService.js';
 import { MarketplacePricingService } from './MarketplacePricingService.js';
+import { AdvancedMarginEngine } from './AdvancedMarginEngine.js';
 import { ProductDefinition, MarketplaceJobRecord } from '../../types/marketplace.js';
 
 export class MarketplaceChargingService {
@@ -167,6 +168,16 @@ export class MarketplaceChargingService {
     });
 
     settleTx();
+
+    // Record margin trace for auditing & dispute defense
+    try {
+      const resolved = AdvancedMarginEngine.getInstance().resolveQuote({
+        product,
+        requestedItems: Math.max(1, itemsDelivered),
+        targetCurrency: job.currency
+      });
+      AdvancedMarginEngine.getInstance().recordMarginTrace(resolved, job.user_id, jobId);
+    } catch {}
 
     return {
       finalCharge: settlement.finalCharge,

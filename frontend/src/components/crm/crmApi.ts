@@ -589,6 +589,230 @@ export const crmApi = {
     crmRequest<{ success: boolean; report: any }>('/crm/analytics/report', {
       method: 'POST',
       body: JSON.stringify(spec)
+    }),
+
+  // =========================================================================
+  // CRM V2: BOARDS (KANBAN)
+  // =========================================================================
+  listBoards: (includeArchived: boolean = false) =>
+    crmRequest<{ success: boolean; boards: any[] }>(`/crm/boards${includeArchived ? '?include_archived=true' : ''}`),
+
+  getBoard: (id: string) =>
+    crmRequest<{ success: boolean; board: any }>(`/crm/boards/${id}`),
+
+  listBoardTemplates: () =>
+    crmRequest<{ success: boolean; templates: any[] }>('/crm/boards/templates'),
+
+  createBoard: (data: any) =>
+    crmRequest<{ success: boolean; board: any }>('/crm/boards', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  createBoardFromTemplate: (templateId: string, name?: string) =>
+    crmRequest<{ success: boolean; board: any }>('/crm/boards/from-template', {
+      method: 'POST',
+      body: JSON.stringify({ template_id: templateId, name })
+    }),
+
+  updateBoard: (id: string, updates: any) =>
+    crmRequest<{ success: boolean; board: any }>(`/crm/boards/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    }),
+
+  deleteBoard: (id: string) =>
+    crmRequest<{ success: boolean; deleted: boolean }>(`/crm/boards/${id}`, {
+      method: 'DELETE'
+    }),
+
+  duplicateBoard: (id: string, name?: string) =>
+    crmRequest<{ success: boolean; board: any }>(`/crm/boards/${id}/duplicate`, {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    }),
+
+  listBoardColumns: (boardId: string) =>
+    crmRequest<{ success: boolean; columns: any[] }>(`/crm/boards/${boardId}/columns`),
+
+  createBoardColumn: (boardId: string, data: any) =>
+    crmRequest<{ success: boolean; column: any }>(`/crm/boards/${boardId}/columns`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  updateBoardColumn: (boardId: string, columnId: string, updates: any) =>
+    crmRequest<{ success: boolean; column: any }>(`/crm/boards/${boardId}/columns/${columnId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    }),
+
+  deleteBoardColumn: (boardId: string, columnId: string, fallbackColumnId?: string) =>
+    crmRequest<{ success: boolean; deleted: boolean }>(`/crm/boards/${boardId}/columns/${columnId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ fallback_column_id: fallbackColumnId })
+    }),
+
+  reorderBoardColumns: (boardId: string, columnIds: string[]) =>
+    crmRequest<{ success: boolean }>(`/crm/boards/${boardId}/columns/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ column_ids: columnIds })
+    }),
+
+  listBoardCards: (boardId: string, columnId?: string, cursor?: string, limit: number = 50) => {
+    const params = new URLSearchParams();
+    if (columnId) params.append('column_id', columnId);
+    if (cursor) params.append('cursor', cursor);
+    params.append('limit', String(limit));
+    return crmRequest<{ success: boolean; cards: any[]; next_cursor: string | null; total: number }>(
+      `/crm/boards/${boardId}/cards?${params.toString()}`
+    );
+  },
+
+  addBoardCard: (boardId: string, data: any) =>
+    crmRequest<{ success: boolean; card: any }>(`/crm/boards/${boardId}/cards`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  moveBoardCard: (cardId: string, targetColumnId: string, prevRank?: string | null, nextRank?: string | null) =>
+    crmRequest<{ success: boolean; card: any }>('/crm/boards/cards/move', {
+      method: 'POST',
+      body: JSON.stringify({
+        card_id: cardId,
+        target_column_id: targetColumnId,
+        prev_rank: prevRank,
+        next_rank: nextRank
+      })
+    }),
+
+  removeBoardCard: (boardId: string, entityType: string, entityId: string) =>
+    crmRequest<{ success: boolean; removed: boolean }>(`/crm/boards/${boardId}/cards/${entityType}/${entityId}`, {
+      method: 'DELETE'
+    }),
+
+  getBoardStats: (boardId: string) =>
+    crmRequest<{ success: boolean; stats: any }>(`/crm/boards/${boardId}/stats`),
+
+  // =========================================================================
+  // CRM V2: TAGS EXTENDED
+  // =========================================================================
+  listTagsWithCounts: () =>
+    crmRequest<{ success: boolean; tags: any[] }>('/crm/tags/with-counts'),
+
+  mergeTags: (sourceTagId: string, targetTagId: string) =>
+    crmRequest<{ success: boolean; affected_contacts: number }>('/crm/tags/merge', {
+      method: 'POST',
+      body: JSON.stringify({ source_tag_id: sourceTagId, target_tag_id: targetTagId })
+    }),
+
+  listTagGroups: () =>
+    crmRequest<{ success: boolean; groups: any[] }>('/crm/tags/groups'),
+
+  saveTagGroup: (group: any) =>
+    crmRequest<{ success: boolean; group: any }>('/crm/tags/groups', {
+      method: 'POST',
+      body: JSON.stringify(group)
+    }),
+
+  listAutoTagRules: () =>
+    crmRequest<{ success: boolean; rules: any[] }>('/crm/tags/rules'),
+
+  saveAutoTagRule: (rule: any) =>
+    crmRequest<{ success: boolean; rule: any }>('/crm/tags/rules', {
+      method: 'POST',
+      body: JSON.stringify(rule)
+    }),
+
+  // =========================================================================
+  // CRM V2: SUPER FIELDS
+  // =========================================================================
+  listSuperFields: (entityType: string = 'contact') =>
+    crmRequest<{ success: boolean; fields: any[] }>(`/crm/super-fields?entity_type=${entityType}`),
+
+  getSuperField: (id: string) =>
+    crmRequest<{ success: boolean; field: any }>(`/crm/super-fields/${id}`),
+
+  createSuperField: (data: any) =>
+    crmRequest<{ success: boolean; field: any }>('/crm/super-fields', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  updateSuperField: (id: string, updates: any) =>
+    crmRequest<{ success: boolean; field: any }>(`/crm/super-fields/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    }),
+
+  deleteSuperField: (id: string) =>
+    crmRequest<{ success: boolean; deleted: boolean }>(`/crm/super-fields/${id}`, {
+      method: 'DELETE'
+    }),
+
+  promoteSuperField: (id: string, isPromoted: boolean) =>
+    crmRequest<{ success: boolean; field: any }>(`/crm/super-fields/${id}/promote`, {
+      method: 'POST',
+      body: JSON.stringify({ is_promoted: isPromoted })
+    }),
+
+  evaluateFormula: (expression: string, context: Record<string, any>) =>
+    crmRequest<{ success: boolean; value: any }>('/crm/super-fields/evaluate-formula', {
+      method: 'POST',
+      body: JSON.stringify({ expression, context })
+    }),
+
+  // =========================================================================
+  // CRM V2: PLAN-BASED BILLING & HARD ENTITLEMENTS (WALLET-ONLY)
+  // =========================================================================
+  listBillingPlans: () =>
+    crmRequest<{ success: boolean; plans: any[] }>('/crm/billing/plans'),
+
+  listBillingAddons: () =>
+    crmRequest<{ success: boolean; addons: any[] }>('/crm/billing/addons'),
+
+  getActiveSubscription: () =>
+    crmRequest<{ success: boolean; subscription: any; usage: any[] }>('/crm/billing/subscription'),
+
+  subscribeToPlan: (planId: string, couponCode?: string, autoRenew: boolean = true) =>
+    crmRequest<{ success: boolean; message: string; subscription: any; invoice: any }>('/crm/billing/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ plan_id: planId, coupon_code: couponCode, auto_renew: autoRenew })
+    }),
+
+  purchaseAddon: (addonId: string) =>
+    crmRequest<{ success: boolean; message: string; invoice: any }>('/crm/billing/addons/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ addon_id: addonId })
+    }),
+
+  listInvoices: () =>
+    crmRequest<{ success: boolean; invoices: any[] }>('/crm/billing/invoices'),
+
+  getUsageCounters: () =>
+    crmRequest<{ success: boolean; usage: any[] }>('/crm/billing/usage'),
+
+  reconcileUsageCounters: () =>
+    crmRequest<{ success: boolean; reconciled: any }>('/crm/billing/usage/reconcile', {
+      method: 'POST'
+    }),
+
+  checkCoupon: (code: string) =>
+    crmRequest<{ success: boolean; coupon: any }>(`/crm/billing/coupon/${encodeURIComponent(code)}`),
+
+  getBillingSettings: () =>
+    crmRequest<{ success: boolean; settings: any }>('/crm/admin/billing/settings'),
+
+  updateBillingSettings: (settings: any) =>
+    crmRequest<{ success: boolean; settings: any }>('/crm/admin/billing/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings)
+    }),
+
+  saveBillingPlan: (plan: any) =>
+    crmRequest<{ success: boolean; plan: any }>('/crm/admin/billing/plans', {
+      method: 'POST',
+      body: JSON.stringify(plan)
     })
 };
 

@@ -11,6 +11,7 @@ import { ProviderRegistry } from './provider/ProviderRegistry.js';
 import { MarketplacePricingService } from './MarketplacePricingService.js';
 import { WhiteLabelSanitizer } from './WhiteLabelSanitizer.js';
 import { OutputFlattener } from './OutputFlattener.js';
+import { CrmExtractorPipelineService } from '../../crm/services/CrmExtractorPipelineService.js';
 
 export class MarketplaceJobService {
   private static instance: MarketplaceJobService | null = null;
@@ -487,6 +488,226 @@ export class MarketplaceJobService {
     `).run(jobId);
 
     return true;
+  }
+
+  /**
+   * Create an expiring signed share link for job results (Zero provider branding)
+   */
+  public createShareLink(jobId: string, userId: string, hoursValid: number = 72): {
+    token: string;
+    shareUrl: string;
+    expiresAt: string;
+  } {
+    const job = this.getJobById(jobId, userId, false);
+    const db = getDatabase();
+    const token = `share_${crypto.randomBytes(16).toString('hex')}`;
+    const expiresAt = new Date(Date.now() + hoursValid * 60 * 60 * 1000).toISOString();
+
+    db.prepare(`
+      INSERT INTO marketplace_shared_links (id, token, job_id, user_id, title, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `sh_${crypto.randomBytes(6).toString('hex')}`,
+      token,
+      jobId,
+      userId,
+      job.product_name,
+      expiresAt
+    );
+
+    return {
+      token,
+      shareUrl: `/shared/extraction/${token}`,
+      expiresAt
+    };
+  }
+
+  /**
+   * Public retrieval of shared job results (Zero provider branding)
+   */
+  public getSharedJob(token: string): {
+    job: Partial<MarketplaceJobRecord>;
+    results: any[];
+    total: number;
+    expiresAt: string;
+  } {
+    const db = getDatabase();
+    const link = db.prepare(`
+      SELECT * FROM marketplace_shared_links
+      WHERE token = ? AND expires_at > datetime('now')
+    `).get(token) as any;
+
+    if (!link) {
+      throw new Error('Share link is invalid or has expired.');
+    }
+
+    // Increment view count
+    db.prepare('UPDATE marketplace_shared_links SET views_count = views_count + 1 WHERE id = ?').run(link.id);
+
+    const job = db.prepare('SELECT * FROM marketplace_jobs WHERE id = ?').get(link.job_id) as any;
+    if (!job) {
+      throw new Error('Shared extraction job no longer exists.');
+    }
+
+    const rows = db.prepare(`
+      SELECT data_json FROM marketplace_job_results
+      WHERE job_id = ?
+      ORDER BY row_index ASC
+      LIMIT 1000
+    `).all(link.job_id) as any[];
+
+    const results = rows.map(r => JSON.parse(r.data_json));
+
+    return {
+      job: {
+        id: job.id,
+        product_name: job.product_name,
+        product_slug: job.product_slug,
+        status: job.status,
+        items_delivered: job.items_delivered,
+        runtime_seconds: job.runtime_seconds,
+        created_at: job.created_at
+      },
+      results: WhiteLabelSanitizer.sanitizeData(results),
+      total: results.length,
+      expiresAt: link.expires_at
+    };
+  }
+
+  /**
+   * Bridge extraction results directly into CRM Contact List
+   */
+  public async syncJobToCrm(
+    jobId: string,
+    userId: string,
+    options: {
+      workspaceId?: string;
+      listId?: string | null;
+      dedupeRule?: 'skip' | 'update' | 'merge';
+    }
+  ): Promise<{
+    total: number;
+    inserted: number;
+    updated: number;
+    skipped: number;
+  }> {
+    const job = this.getJobById(jobId, userId, false);
+    const db = getDatabase();
+
+    const rows = db.prepare(`
+      SELECT data_json FROM marketplace_job_results
+      WHERE job_id = ?
+      ORDER BY row_index ASC
+    `).all(jobId) as any[];
+
+    if (rows.length === 0) {
+      throw new Error('No extracted rows found for this job to sync.');
+    }
+
+    const records = rows.map(r => JSON.parse(r.data_json));
+    const workspaceId = options.workspaceId || 'default-workspace';
+    const listId = options.listId || null;
+    const dedupeRule = options.dedupeRule || 'update';
+
+    const pipeline = CrmExtractorPipelineService.getInstance();
+    const result = await pipeline.ingestExtractorResults(
+      workspaceId,
+      listId,
+      records,
+      `extraction_${job.product_slug}`,
+      jobId,
+      dedupeRule
+    );
+
+    // Update job with CRM sync stats
+    db.prepare(`
+      UPDATE marketplace_jobs
+      SET crm_list_id = ?, crm_synced_count = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(listId, result.inserted + result.updated, jobId);
+
+    return {
+      total: result.total,
+      inserted: result.inserted,
+      updated: result.updated,
+      skipped: result.skipped
+    };
+  }
+
+  /**
+   * Schedule management for recurring extractions
+   */
+  public createScheduledRun(
+    userId: string,
+    data: {
+      productSlug: string;
+      name: string;
+      cronExpression: string;
+      inputJson: Record<string, any>;
+      requestedItems: number;
+      maxBudget?: number;
+      targetCrmListId?: string;
+    }
+  ): string {
+    const db = getDatabase();
+    const id = `sched_${crypto.randomBytes(6).toString('hex')}`;
+
+    db.prepare(`
+      INSERT INTO marketplace_scheduled_runs (
+        id, user_id, product_slug, name, cron_expression, input_json,
+        requested_items, max_budget, target_crm_list_id, status, created_at, updated_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, 'active', datetime('now'), datetime('now')
+      )
+    `).run(
+      id,
+      userId,
+      data.productSlug,
+      data.name,
+      data.cronExpression,
+      JSON.stringify(data.inputJson),
+      data.requestedItems,
+      data.maxBudget || null,
+      data.targetCrmListId || null
+    );
+
+    return id;
+  }
+
+  public listScheduledRuns(userId: string): any[] {
+    const db = getDatabase();
+    const rows = db.prepare(`
+      SELECT * FROM marketplace_scheduled_runs
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+    `).all(userId) as any[];
+
+    return rows.map(r => ({
+      ...r,
+      input: JSON.parse(r.input_json)
+    }));
+  }
+
+  public deleteScheduledRun(id: string, userId: string): boolean {
+    const db = getDatabase();
+    const info = db.prepare('DELETE FROM marketplace_scheduled_runs WHERE id = ? AND user_id = ?').run(id, userId);
+    return info.changes > 0;
+  }
+
+  public toggleScheduledRun(id: string, userId: string): string {
+    const db = getDatabase();
+    const run = db.prepare('SELECT status FROM marketplace_scheduled_runs WHERE id = ? AND user_id = ?').get(id, userId) as any;
+    if (!run) throw new Error('Schedule not found');
+
+    const nextStatus = run.status === 'active' ? 'paused' : 'active';
+    db.prepare(`
+      UPDATE marketplace_scheduled_runs
+      SET status = ?, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?
+    `).run(nextStatus, id, userId);
+
+    return nextStatus;
   }
 }
 

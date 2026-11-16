@@ -47,6 +47,14 @@ router.get('/jobs/:id/files', requireAuth, WhiteLabelSanitizer.middleware(), con
 router.get('/files/:id/download', controller.downloadJobFile);
 router.get('/jobs/:id/export', requireAuth, controller.exportJob);
 router.post('/jobs/:id/abort', requireAuth, WhiteLabelSanitizer.middleware(), controller.abortJob);
+router.post('/jobs/:id/share', requireAuth, WhiteLabelSanitizer.middleware(), controller.createShareLink);
+router.get('/shared/:token', WhiteLabelSanitizer.middleware(), controller.getSharedJob);
+router.post('/jobs/:id/crm-sync', requireAuth, WhiteLabelSanitizer.middleware(), controller.syncJobToCrm);
+
+router.get('/schedules', requireAuth, WhiteLabelSanitizer.middleware(), controller.listScheduledRuns);
+router.post('/schedules', requireAuth, WhiteLabelSanitizer.middleware(), controller.createScheduledRun);
+router.delete('/schedules/:id', requireAuth, WhiteLabelSanitizer.middleware(), controller.deleteScheduledRun);
+router.post('/schedules/:id/toggle', requireAuth, WhiteLabelSanitizer.middleware(), controller.toggleScheduledRun);
 
 // -------------------------------------------------------------------------
 // DATA EXTRACTION MARKETPLACE ADMIN CONTROLS

@@ -21,8 +21,12 @@ export interface WalletRecord {
   base_balance?: number;
   base_currency?: string;
   reserved_balance: number;
+  available_balance: number;
   total_spent: number;
   total_topped_up: number;
+  daily_spend_limit?: number;
+  monthly_spend_limit?: number;
+  per_job_spend_limit?: number;
   updated_at: string;
 }
 
@@ -113,8 +117,12 @@ export class WalletService {
       base_balance: baseBalance,
       base_currency: baseCurrency,
       reserved_balance: Number(row.reserved_balance || 0),
+      available_balance: Math.max(0, Number((Number(row.balance || 0) - Number(row.reserved_balance || 0)).toFixed(2))),
       total_spent: Number(row.total_spent || 0),
       total_topped_up: Number(row.total_topped_up || 0),
+      daily_spend_limit: Number(row.daily_spend_limit || 0),
+      monthly_spend_limit: Number(row.monthly_spend_limit || 0),
+      per_job_spend_limit: Number(row.per_job_spend_limit || 0),
       updated_at: row.updated_at
     };
   }
@@ -296,9 +304,48 @@ export class WalletService {
     }
 
     const available = Number((current.balance - current.reserved_balance).toFixed(2));
+    const sym = current.currency === 'INR' ? '₹' : current.currency === 'USD' ? '$' : current.currency;
+
+    // Spend limits checks
+    if (current.per_job_spend_limit && current.per_job_spend_limit > 0 && amountToReserve > current.per_job_spend_limit) {
+      throw new Error(
+        `Per-job spend limit exceeded. Required: ${sym}${amountToReserve.toFixed(2)}, Maximum allowed per job: ${sym}${current.per_job_spend_limit.toFixed(2)}.`
+      );
+    }
+
+    if (current.daily_spend_limit && current.daily_spend_limit > 0) {
+      const todaySpentRow = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM wallet_transactions
+        WHERE user_id = ? AND transaction_type IN ('usage_deduction', 'usage_reservation')
+          AND status IN ('completed', 'pending')
+          AND date(created_at) = date('now')
+      `).get(userId) as any;
+      const todayTotal = (todaySpentRow?.total || 0) + amountToReserve;
+      if (todayTotal > current.daily_spend_limit) {
+        throw new Error(
+          `Daily spend limit exceeded. Current daily usage with this run: ${sym}${todayTotal.toFixed(2)}, Daily limit: ${sym}${current.daily_spend_limit.toFixed(2)}.`
+        );
+      }
+    }
+
+    if (current.monthly_spend_limit && current.monthly_spend_limit > 0) {
+      const monthSpentRow = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM wallet_transactions
+        WHERE user_id = ? AND transaction_type IN ('usage_deduction', 'usage_reservation')
+          AND status IN ('completed', 'pending')
+          AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+      `).get(userId) as any;
+      const monthTotal = (monthSpentRow?.total || 0) + amountToReserve;
+      if (monthTotal > current.monthly_spend_limit) {
+        throw new Error(
+          `Monthly spend limit exceeded. Current monthly usage with this run: ${sym}${monthTotal.toFixed(2)}, Monthly limit: ${sym}${current.monthly_spend_limit.toFixed(2)}.`
+        );
+      }
+    }
 
     if (available < amountToReserve) {
-      const sym = current.currency === 'INR' ? '₹' : current.currency === 'USD' ? '$' : current.currency;
       throw new Error(
         `Insufficient available wallet balance. Required: ${sym}${amountToReserve.toFixed(2)}, Available: ${sym}${available.toFixed(2)}. Please top up your wallet to continue.`
       );
@@ -376,7 +423,12 @@ export class WalletService {
 
     const newBaseBalance = Math.max(0, Number(((current.base_balance || current.balance) - deductInBase).toFixed(4)));
     const newBalance = Number((current.balance - amount).toFixed(2));
-    const newReserved = Number(Math.max(0, current.reserved_balance - amount).toFixed(2));
+
+    // Release the full original reservation hold from reserved_balance (settle actual, release excess)
+    const resTx = db.prepare('SELECT amount FROM wallet_transactions WHERE id = ?').get(reservationId) as any;
+    const originalReserved = resTx ? Number(resTx.amount || 0) : amount;
+    const holdToRelease = Math.max(originalReserved, amount);
+    const newReserved = Number(Math.max(0, current.reserved_balance - holdToRelease).toFixed(2));
     const newSpent = Number((current.total_spent + amount).toFixed(2));
 
     const commitTx = db.transaction(() => {
@@ -617,6 +669,182 @@ export class WalletService {
       metadata: r.metadata ? JSON.parse(r.metadata) : null,
       created_at: r.created_at
     }));
+  }
+
+  /**
+   * Set user spend limits
+   */
+  public setSpendLimits(
+    userId: string,
+    limits: { daily?: number; monthly?: number; perJob?: number }
+  ): WalletRecord {
+    const db = getDatabase();
+    const current = this.getOrCreateWallet(userId);
+
+    const daily = limits.daily !== undefined ? Math.max(0, limits.daily) : (current.daily_spend_limit || 0);
+    const monthly = limits.monthly !== undefined ? Math.max(0, limits.monthly) : (current.monthly_spend_limit || 0);
+    const perJob = limits.perJob !== undefined ? Math.max(0, limits.perJob) : (current.per_job_spend_limit || 0);
+
+    db.prepare(`
+      UPDATE user_wallets
+      SET daily_spend_limit = ?, monthly_spend_limit = ?, per_job_spend_limit = ?, updated_at = datetime('now')
+      WHERE user_id = ?
+    `).run(daily, monthly, perJob, userId);
+
+    return this.getOrCreateWallet(userId);
+  }
+
+  /**
+   * Get user spend limit status (limit vs spent today / this month)
+   */
+  public getSpendLimitStatus(userId: string): {
+    currency: string;
+    dailyLimit: number;
+    spentToday: number;
+    dailyRemaining: number;
+    monthlyLimit: number;
+    spentThisMonth: number;
+    monthlyRemaining: number;
+    perJobLimit: number;
+  } {
+    const db = getDatabase();
+    const wallet = this.getOrCreateWallet(userId);
+
+    const todayRow = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM wallet_transactions
+      WHERE user_id = ? AND transaction_type IN ('usage_deduction', 'usage_reservation')
+        AND status IN ('completed', 'pending')
+        AND date(created_at) = date('now')
+    `).get(userId) as any;
+
+    const monthRow = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM wallet_transactions
+      WHERE user_id = ? AND transaction_type IN ('usage_deduction', 'usage_reservation')
+        AND status IN ('completed', 'pending')
+        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+    `).get(userId) as any;
+
+    const spentToday = Number(todayRow?.total || 0);
+    const spentThisMonth = Number(monthRow?.total || 0);
+    const dailyLimit = Number(wallet.daily_spend_limit || 0);
+    const monthlyLimit = Number(wallet.monthly_spend_limit || 0);
+    const perJobLimit = Number(wallet.per_job_spend_limit || 0);
+
+    return {
+      currency: wallet.currency,
+      dailyLimit,
+      spentToday,
+      dailyRemaining: dailyLimit > 0 ? Math.max(0, dailyLimit - spentToday) : Infinity,
+      monthlyLimit,
+      spentThisMonth,
+      monthlyRemaining: monthlyLimit > 0 ? Math.max(0, monthlyLimit - spentThisMonth) : Infinity,
+      perJobLimit
+    };
+  }
+
+  /**
+   * Reconcile active reservations and repair any orphaned/stale holds
+   * Ensures available = balance - reserved_balance invariant holds true
+   */
+  public reconcileUserWallet(userId: string): {
+    repaired: boolean;
+    previousReserved: number;
+    correctedReserved: number;
+    orphansReleased: number;
+  } {
+    const db = getDatabase();
+    const current = this.getOrCreateWallet(userId);
+
+    // 1. Find all pending usage_reservation records
+    const pendingReservations = db.prepare(`
+      SELECT * FROM wallet_transactions
+      WHERE user_id = ? AND transaction_type = 'usage_reservation' AND status = 'pending'
+    `).all(userId) as any[];
+
+    let orphansReleased = 0;
+    let actualValidReserved = 0;
+
+    for (const res of pendingReservations) {
+      let isOrphan = false;
+
+      // Check if associated with a marketplace job
+      if (res.reference_id) {
+        const job = db.prepare('SELECT status FROM marketplace_jobs WHERE id = ?').get(res.reference_id) as any;
+        if (job) {
+          if (['COMPLETED', 'PARTIAL', 'FAILED', 'ABORTED'].includes(job.status)) {
+            // Job already finished, but reservation was left as pending!
+            isOrphan = true;
+          }
+        }
+      }
+
+      // Check if reservation is older than 24 hours (stale hold timeout)
+      const resAgeMs = Date.now() - new Date(res.created_at).getTime();
+      if (resAgeMs > 24 * 60 * 60 * 1000) {
+        isOrphan = true;
+      }
+
+      if (isOrphan) {
+        db.prepare(`
+          UPDATE wallet_transactions
+          SET status = 'reversed',
+              description = description || ' [AUTO_RECONCILED: Stale hold released]'
+          WHERE id = ?
+        `).run(res.id);
+        orphansReleased++;
+      } else {
+        actualValidReserved += Number(res.amount || 0);
+      }
+    }
+
+    actualValidReserved = Number(actualValidReserved.toFixed(2));
+    const repaired = current.reserved_balance !== actualValidReserved;
+
+    if (repaired) {
+      db.prepare(`
+        UPDATE user_wallets
+        SET reserved_balance = ?, updated_at = datetime('now')
+        WHERE user_id = ?
+      `).run(actualValidReserved, userId);
+
+      try {
+        getSocketIO()?.to(`user:${userId}`).emit('wallet:updated', {
+          balance: current.balance,
+          reservedBalance: actualValidReserved,
+          availableBalance: Math.max(0, current.balance - actualValidReserved),
+          currency: current.currency,
+          type: 'reconciliation'
+        });
+      } catch {}
+    }
+
+    return {
+      repaired,
+      previousReserved: current.reserved_balance,
+      correctedReserved: actualValidReserved,
+      orphansReleased
+    };
+  }
+
+  /**
+   * Periodic reconciliation across all user wallets
+   */
+  public reconcileAllWallets(): { checked: number; repaired: number; totalOrphansReleased: number } {
+    const db = getDatabase();
+    const userIds = db.prepare('SELECT user_id FROM user_wallets WHERE reserved_balance > 0').all() as any[];
+
+    let repairedCount = 0;
+    let totalOrphans = 0;
+
+    for (const row of userIds) {
+      const res = this.reconcileUserWallet(row.user_id);
+      if (res.repaired) repairedCount++;
+      totalOrphans += res.orphansReleased;
+    }
+
+    return { checked: userIds.length, repaired: repairedCount, totalOrphansReleased: totalOrphans };
   }
 }
 

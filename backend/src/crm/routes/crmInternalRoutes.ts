@@ -324,5 +324,69 @@ router.get('/analytics/attribution', CrmInternalController.getAttributionMetrics
 router.get('/analytics/cohorts', CrmInternalController.getCohortRetention);
 router.post('/analytics/report', CrmInternalController.runCustomReport);
 
+// =========================================================================
+// CRM V2: BOARDS (KANBAN)
+// =========================================================================
+router.get('/boards', CrmInternalController.listBoards);
+router.get('/boards/templates', CrmInternalController.listBoardTemplates);
+router.post('/boards', CrmInternalController.createBoard);
+router.post('/boards/from-template', CrmInternalController.createBoardFromTemplate);
+router.get('/boards/:id', CrmInternalController.getBoard);
+router.put('/boards/:id', CrmInternalController.updateBoard);
+router.delete('/boards/:id', CrmInternalController.deleteBoard);
+router.post('/boards/:id/duplicate', CrmInternalController.duplicateBoard);
+router.get('/boards/:id/columns', CrmInternalController.listBoardColumns);
+router.post('/boards/:id/columns', CrmInternalController.createBoardColumn);
+router.put('/boards/:id/columns/:columnId', CrmInternalController.updateBoardColumn);
+router.delete('/boards/:id/columns/:columnId', CrmInternalController.deleteBoardColumn);
+router.post('/boards/:id/columns/reorder', CrmInternalController.reorderBoardColumns);
+router.get('/boards/:id/cards', CrmInternalController.listBoardCards);
+router.post('/boards/:id/cards', CrmInternalController.addBoardCard);
+router.post('/boards/:id/cards/move', CrmInternalController.moveBoardCard);
+router.delete('/boards/:id/cards/:entityType/:entityId', CrmInternalController.removeBoardCard);
+router.get('/boards/:id/stats', CrmInternalController.getBoardStats);
+
+// =========================================================================
+// CRM V2: EXTENDED TAGS
+// =========================================================================
+router.get('/tags/with-counts', CrmInternalController.listTagsWithCounts);
+router.post('/tags/merge', CrmInternalController.mergeTags);
+router.get('/tags/groups', CrmInternalController.listTagGroups);
+router.post('/tags/groups', CrmInternalController.saveTagGroup);
+router.get('/tags/rules', CrmInternalController.listAutoTagRules);
+router.post('/tags/rules', CrmInternalController.saveAutoTagRule);
+
+// =========================================================================
+// CRM V2: SUPER FIELDS
+// =========================================================================
+router.get('/super-fields', CrmInternalController.listSuperFields);
+router.post('/super-fields', CrmInternalController.createSuperField);
+router.get('/super-fields/:id', CrmInternalController.getSuperField);
+router.put('/super-fields/:id', CrmInternalController.updateSuperField);
+router.delete('/super-fields/:id', CrmInternalController.deleteSuperField);
+router.post('/super-fields/:id/promote', CrmInternalController.promoteSuperField);
+router.post('/super-fields/evaluate-formula', CrmInternalController.evaluateFormula);
+
+// =========================================================================
+// CRM V2: PLAN-BASED BILLING & HARD ENTITLEMENTS (WALLET-ONLY)
+// =========================================================================
+router.get('/billing/plans', CrmInternalController.listBillingPlans);
+router.get('/billing/addons', CrmInternalController.listBillingAddons);
+router.get('/billing/subscription', CrmInternalController.getActiveSubscription);
+router.post('/billing/subscribe', CrmInternalController.subscribeToPlan);
+router.post('/billing/addons/purchase', CrmInternalController.purchaseAddon);
+router.get('/billing/invoices', CrmInternalController.listInvoices);
+router.get('/billing/invoices/:id/receipt', CrmInternalController.getInvoiceReceipt);
+router.get('/billing/usage', CrmInternalController.getUsageCounters);
+router.post('/billing/usage/reconcile', CrmInternalController.reconcileUsageCounters);
+router.get('/billing/coupon/:code', CrmInternalController.checkCoupon);
+
+// Admin Billing Management
+router.post('/admin/billing/plans', CrmInternalController.saveBillingPlan);
+router.get('/admin/billing/settings', CrmInternalController.getBillingSettings);
+router.put('/admin/billing/settings', CrmInternalController.updateBillingSettings);
+router.post('/admin/billing/addons', CrmInternalController.saveBillingAddon);
+router.post('/admin/billing/coupons', CrmInternalController.saveBillingCoupon);
+
 export default router;
 

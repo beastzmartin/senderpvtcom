@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { ProductDefinition, PricingMode, MarginType, MarketplacePriceQuote } from '../../types/marketplace.js';
 import { CurrencyService } from '../virtualNumber/CurrencyService.js';
 import { getDatabase } from '../../db/database.js';
+import { AdvancedMarginEngine } from './AdvancedMarginEngine.js';
 
 export interface PriceEstimateResult {
   requestedItems: number;
@@ -72,82 +73,23 @@ export class MarketplacePricingService {
     targetCurrency?: string
   ): PriceEstimateResult {
     const currency = (targetCurrency || 'INR').toUpperCase();
-    const pricing = product.pricing;
     const items = Math.max(1, requestedItems);
 
-    // 1. Calculate base sell price in platform base currency (INR)
-    let rawSellPriceBase = 0;
-    if (pricing.mode === 'per_item') {
-      rawSellPriceBase = (items / 1000) * (pricing.sell.per_1000_items || 0);
-    } else if (pricing.mode === 'per_run') {
-      rawSellPriceBase = pricing.sell.per_run_flat || 0;
-    } else if (pricing.mode === 'per_item_plus_run') {
-      rawSellPriceBase = ((items / 1000) * (pricing.sell.per_1000_items || 0)) + (pricing.sell.per_run_flat || 0);
-    }
-
-    // Apply minimum charge threshold in base currency
-    const minChargeBase = pricing.min_charge || 0;
-    const minChargeApplied = rawSellPriceBase < minChargeBase;
-    const finalSellPriceBase = Math.max(rawSellPriceBase, minChargeBase);
-
-    // Convert sell price from base (INR) to requested target currency
-    const finalSellPrice = Number(
-      (currency === 'INR'
-        ? finalSellPriceBase
-        : this.currencyService.convertBetween(finalSellPriceBase, 'INR', currency)
-      ).toFixed(2)
-    );
-
-    // 2. Calculate estimated provider cost in USD
-    const ref = pricing.provider_cost_reference;
-    let providerCostUsd = 0;
-
-    if (ref.model === 'pay_per_event') {
-      // PPE Worst-Case Estimator
-      const runStart = ref.usd_per_run_start || 0;
-      let eventSum = 0;
-      if (ref.pricing_per_event?.actorChargeEvents) {
-        for (const evt of Object.values(ref.pricing_per_event.actorChargeEvents as Record<string, any>)) {
-          const price = Number(evt.eventPriceUsd || evt.eventTieredPricingUsd?.FREE?.tieredEventPriceUsd || 0);
-          eventSum += (evt.isPrimaryEvent ? items * price : 1 * price);
-        }
-      } else if (ref.usd_per_1000_items) {
-        eventSum = (items / 1000) * ref.usd_per_1000_items;
-      }
-      providerCostUsd = runStart + eventSum;
-    } else if (ref.model === 'rental') {
-      // Rental fixed monthly cost (usage is flat)
-      providerCostUsd = 0; // Marginal run cost is zero
-    } else if (ref.model === 'free_usage_based') {
-      // Platform compute usage cost estimator: (memory/1024) * (expectedDurationSecs/3600) * $0.25/GB-hr
-      const memGb = (product.limits?.memory_mb || 1024) / 1024;
-      const expectedSecs = Math.min(product.limits?.timeout_secs || 300, 300); // 5 min conservative estimate
-      providerCostUsd = Number(((memGb * (expectedSecs / 3600) * 0.25) + 0.01).toFixed(4));
-    } else {
-      // Default: pay_per_result
-      if (ref.usd_per_1000_items) {
-        providerCostUsd += (items / 1000) * ref.usd_per_1000_items;
-      }
-      if (ref.usd_per_run_start) {
-        providerCostUsd += ref.usd_per_run_start;
-      }
-    }
-    providerCostUsd = Number(providerCostUsd.toFixed(4));
-
-    // Convert cost to platform currency
-    const providerCostConverted = this.convertUsdToPlatform(providerCostUsd, currency);
-    const estimatedProfit = Number((finalSellPrice - providerCostConverted).toFixed(2));
-    const isBelowCost = finalSellPrice < providerCostConverted;
+    const resolved = AdvancedMarginEngine.getInstance().resolveQuote({
+      product,
+      requestedItems: items,
+      targetCurrency: currency
+    });
 
     return {
       requestedItems: items,
-      sellPrice: finalSellPrice,
-      providerCostUsd,
-      providerCostConverted,
-      estimatedProfit,
-      currency,
-      isBelowCost,
-      minChargeApplied
+      sellPrice: resolved.finalSellPrice,
+      providerCostUsd: resolved.rawProviderCostUsd,
+      providerCostConverted: resolved.loadedCostConverted,
+      estimatedProfit: resolved.profitConverted,
+      currency: resolved.currency,
+      isBelowCost: resolved.finalSellPrice < resolved.loadedCostConverted,
+      minChargeApplied: resolved.floorApplied
     };
   }
 
@@ -170,7 +112,7 @@ export class MarketplacePricingService {
       const db = getDatabase();
       const setting = db.prepare("SELECT value FROM marketplace_settings WHERE key = 'charge_on_zero_results'").get() as any;
       chargeOnZero = setting?.value === '1';
-    } catch {}
+    } catch { }
 
     let finalChargeBase = 0;
     if (itemsDelivered === 0 && !chargeOnZero) {
@@ -266,32 +208,28 @@ export class MarketplacePricingService {
     requestedItems: number,
     targetCurrency?: string
   ): MarketplacePriceQuote {
-    const currency = targetCurrency || 'INR';
-    const est = this.calculateEstimatedPrice(product, requestedItems, currency);
+    const currency = (targetCurrency || 'INR').toUpperCase();
+    const resolved = AdvancedMarginEngine.getInstance().resolveQuote({
+      product,
+      requestedItems,
+      targetCurrency: currency
+    });
 
-    const ttlSecs = product.pricing?.quote_ttl_secs || 300; // default 5 minutes
-    const fxBufferPct = product.pricing?.fx_safety_buffer_percent || 5; // 5% FX safety buffer
-    const fxBufferAmount = Number((est.providerCostConverted * (fxBufferPct / 100)).toFixed(2));
-
-    const rate = this.convertUsdToPlatform(1.0, currency);
-    const expiresAt = new Date(Date.now() + ttlSecs * 1000).toISOString();
-    const quoteId = `quote_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-
-    const quotePayload = `${quoteId}|${product.slug}|${est.requestedItems}|${est.sellPrice}|${expiresAt}`;
+    const quotePayload = `${resolved.quoteId}|${product.slug}|${resolved.requestedItems}|${resolved.finalSellPrice}|${resolved.expiresAt}`;
     const signature = crypto.createHash('sha256').update(quotePayload).digest('hex').slice(0, 16);
 
     return {
-      quoteId,
+      quoteId: resolved.quoteId,
       productSlug: product.slug,
-      requestedItems: est.requestedItems,
-      currency,
-      sellPrice: est.sellPrice,
-      providerCostUsd: est.providerCostUsd,
-      providerCostConverted: est.providerCostConverted,
-      exchangeRate: Number(rate.toFixed(4)),
-      fxBufferAmount,
-      expiresAt,
-      minChargeApplied: est.minChargeApplied,
+      requestedItems: resolved.requestedItems,
+      currency: resolved.currency,
+      sellPrice: resolved.finalSellPrice,
+      providerCostUsd: resolved.rawProviderCostUsd,
+      providerCostConverted: resolved.loadedCostConverted,
+      exchangeRate: Number(resolved.exchangeRate.toFixed(4)),
+      fxBufferAmount: Number((resolved.fxBufferUsd * resolved.exchangeRate).toFixed(2)),
+      expiresAt: resolved.expiresAt,
+      minChargeApplied: resolved.floorApplied,
       signature
     };
   }

@@ -62,7 +62,24 @@ import {
   AttributionSourceRow,
   CohortRow,
   CustomReportSpec,
-  CustomReportResult
+  CustomReportResult,
+  CrmBoard,
+  CrmBoardColumn,
+  CrmBoardCard,
+  BoardStatsSummary,
+  CrmTagGroup,
+  CrmAutoTagRule,
+  MergeTagsRequest,
+  CrmSuperField,
+  CrmPromotedFieldValue,
+  CrmBillingPlan,
+  CrmBillingAddon,
+  CrmBillingCoupon,
+  CrmSubscription,
+  CrmUsageCounter,
+  CrmInvoice,
+  CrmBillingSettings,
+  BillingResourceType
 } from '../models/types.js';
 import { CrmNormalizer } from '../services/crmNormalizer.js';
 import { CrmFilterBuilder } from '../services/crmFilterBuilder.js';
@@ -3811,7 +3828,1381 @@ export class CrmPgAdapter implements CrmStorageAdapter {
       }))
     };
   }
+
+  // =========================================================================
+  // CRM V2: BOARDS (KANBAN)
+  // =========================================================================
+  public async listBoards(workspaceId: string, includeArchived: boolean = false): Promise<CrmBoard[]> {
+    let sql = 'SELECT * FROM crm_boards WHERE workspace_id = $1';
+    if (!includeArchived) sql += ' AND is_archived = FALSE';
+    sql += ' ORDER BY created_at DESC';
+
+    const res = await this.pool.query(sql, [workspaceId]);
+    return res.rows.map((r) => this.mapBoard(r));
+  }
+
+  public async getBoard(workspaceId: string, boardId: string): Promise<CrmBoard | null> {
+    const res = await this.pool.query('SELECT * FROM crm_boards WHERE workspace_id = $1 AND id = $2', [workspaceId, boardId]);
+    if (res.rows.length === 0) return null;
+    const board = this.mapBoard(res.rows[0]);
+    board.columns = await this.listBoardColumns(workspaceId, boardId);
+    return board;
+  }
+
+  public async createBoard(workspaceId: string, data: Partial<CrmBoard>): Promise<CrmBoard> {
+    const id = data.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_boards (
+        id, workspace_id, name, description, color, icon, owner_user_id, visibility,
+        is_archived, card_layout, filter_criteria, auto_add_matching, auto_remove_unmatched
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *
+    `, [
+      id,
+      workspaceId,
+      data.name || 'Untitled Board',
+      data.description || null,
+      data.color || '#4f46e5',
+      data.icon || 'kanban',
+      data.owner_user_id || null,
+      data.visibility || 'workspace',
+      data.is_archived || false,
+      JSON.stringify(data.card_layout || {}),
+      JSON.stringify(data.filter_criteria || {}),
+      data.auto_add_matching || false,
+      data.auto_remove_unmatched || false
+    ]);
+
+    return (await this.getBoard(workspaceId, id))!;
+  }
+
+  public async updateBoard(workspaceId: string, boardId: string, updates: Partial<CrmBoard>): Promise<CrmBoard> {
+    const res = await this.pool.query(`
+      UPDATE crm_boards SET
+        name = COALESCE($1, name),
+        description = COALESCE($2, description),
+        color = COALESCE($3, color),
+        icon = COALESCE($4, icon),
+        owner_user_id = COALESCE($5, owner_user_id),
+        visibility = COALESCE($6, visibility),
+        is_archived = COALESCE($7, is_archived),
+        card_layout = COALESCE($8, card_layout),
+        filter_criteria = COALESCE($9, filter_criteria),
+        auto_add_matching = COALESCE($10, auto_add_matching),
+        auto_remove_unmatched = COALESCE($11, auto_remove_unmatched),
+        updated_at = NOW()
+      WHERE workspace_id = $12 AND id = $13
+      RETURNING *
+    `, [
+      updates.name ?? null,
+      updates.description ?? null,
+      updates.color ?? null,
+      updates.icon ?? null,
+      updates.owner_user_id ?? null,
+      updates.visibility ?? null,
+      updates.is_archived ?? null,
+      updates.card_layout ? JSON.stringify(updates.card_layout) : null,
+      updates.filter_criteria ? JSON.stringify(updates.filter_criteria) : null,
+      updates.auto_add_matching ?? null,
+      updates.auto_remove_unmatched ?? null,
+      workspaceId,
+      boardId
+    ]);
+
+    if (res.rows.length === 0) throw new Error(`Board '${boardId}' not found.`);
+    return (await this.getBoard(workspaceId, boardId))!;
+  }
+
+  public async deleteBoard(workspaceId: string, boardId: string): Promise<boolean> {
+    const res = await this.pool.query('DELETE FROM crm_boards WHERE workspace_id = $1 AND id = $2', [workspaceId, boardId]);
+    return (res.rowCount || 0) > 0;
+  }
+
+  public async duplicateBoard(workspaceId: string, boardId: string, newName?: string): Promise<CrmBoard> {
+    const orig = await this.getBoard(workspaceId, boardId);
+    if (!orig) throw new Error(`Board '${boardId}' not found.`);
+
+    const clone = await this.createBoard(workspaceId, {
+      name: newName || `${orig.name} (Copy)`,
+      description: orig.description,
+      color: orig.color,
+      icon: orig.icon,
+      owner_user_id: orig.owner_user_id,
+      visibility: orig.visibility,
+      card_layout: orig.card_layout,
+      filter_criteria: orig.filter_criteria,
+      auto_add_matching: orig.auto_add_matching,
+      auto_remove_unmatched: orig.auto_remove_unmatched
+    });
+
+    const cols = await this.listBoardColumns(workspaceId, boardId);
+    for (const c of cols) {
+      await this.createBoardColumn(workspaceId, {
+        board_id: clone.id,
+        name: c.name,
+        color: c.color,
+        order_index: c.order_index,
+        wip_limit: c.wip_limit,
+        stage_type: c.stage_type,
+        auto_actions: c.auto_actions
+      });
+    }
+
+    return (await this.getBoard(workspaceId, clone.id))!;
+  }
+
+  public async listBoardColumns(workspaceId: string, boardId: string): Promise<CrmBoardColumn[]> {
+    const res = await this.pool.query(`
+      SELECT 
+        c.*,
+        (SELECT COUNT(*) FROM crm_board_cards bc WHERE bc.column_id = c.id AND bc.is_archived = FALSE) as card_count
+      FROM crm_board_columns c
+      WHERE c.board_id = $1 AND c.workspace_id = $2
+      ORDER BY c.order_index ASC
+    `, [boardId, workspaceId]);
+
+    return res.rows.map((r) => ({
+      id: r.id,
+      board_id: r.board_id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      color: r.color || '#94a3b8',
+      order_index: Number(r.order_index) || 0,
+      wip_limit: r.wip_limit !== null ? Number(r.wip_limit) : null,
+      stage_type: r.stage_type || 'standard',
+      auto_actions: rowPayload(r.auto_actions),
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      card_count: Number(r.card_count) || 0
+    }));
+  }
+
+  public async createBoardColumn(workspaceId: string, data: Partial<CrmBoardColumn>): Promise<CrmBoardColumn> {
+    const id = data.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_board_columns (
+        id, board_id, workspace_id, name, color, order_index, wip_limit, stage_type, auto_actions
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+    `, [
+      id,
+      data.board_id,
+      workspaceId,
+      data.name || 'New Column',
+      data.color || '#94a3b8',
+      data.order_index || 0,
+      data.wip_limit || null,
+      data.stage_type || 'standard',
+      JSON.stringify(data.auto_actions || [])
+    ]);
+
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      board_id: r.board_id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      color: r.color,
+      order_index: Number(r.order_index) || 0,
+      wip_limit: r.wip_limit,
+      stage_type: r.stage_type,
+      auto_actions: rowPayload(r.auto_actions),
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  }
+
+  public async updateBoardColumn(workspaceId: string, columnId: string, updates: Partial<CrmBoardColumn>): Promise<CrmBoardColumn> {
+    const res = await this.pool.query(`
+      UPDATE crm_board_columns SET
+        name = COALESCE($1, name),
+        color = COALESCE($2, color),
+        order_index = COALESCE($3, order_index),
+        wip_limit = COALESCE($4, wip_limit),
+        stage_type = COALESCE($5, stage_type),
+        auto_actions = COALESCE($6, auto_actions),
+        updated_at = NOW()
+      WHERE workspace_id = $7 AND id = $8
+      RETURNING *
+    `, [
+      updates.name ?? null,
+      updates.color ?? null,
+      updates.order_index ?? null,
+      updates.wip_limit ?? null,
+      updates.stage_type ?? null,
+      updates.auto_actions ? JSON.stringify(updates.auto_actions) : null,
+      workspaceId,
+      columnId
+    ]);
+
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      board_id: r.board_id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      color: r.color,
+      order_index: Number(r.order_index) || 0,
+      wip_limit: r.wip_limit,
+      stage_type: r.stage_type,
+      auto_actions: rowPayload(r.auto_actions),
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  }
+
+  public async deleteBoardColumn(workspaceId: string, columnId: string, fallbackColumnId?: string): Promise<boolean> {
+    if (fallbackColumnId) {
+      await this.pool.query('UPDATE crm_board_cards SET column_id = $1 WHERE column_id = $2 AND workspace_id = $3', [
+        fallbackColumnId,
+        columnId,
+        workspaceId
+      ]);
+    }
+    const res = await this.pool.query('DELETE FROM crm_board_columns WHERE workspace_id = $1 AND id = $2', [workspaceId, columnId]);
+    return (res.rowCount || 0) > 0;
+  }
+
+  public async reorderBoardColumns(workspaceId: string, boardId: string, columnIds: string[]): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (let i = 0; i < columnIds.length; i++) {
+        await client.query('UPDATE crm_board_columns SET order_index = $1 WHERE id = $2 AND board_id = $3 AND workspace_id = $4', [
+          i,
+          columnIds[i],
+          boardId,
+          workspaceId
+        ]);
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  public async listBoardCards(
+    workspaceId: string,
+    boardId: string,
+    columnId?: string,
+    cursor?: string,
+    limit: number = 50
+  ): Promise<{ cards: CrmBoardCard[]; next_cursor: string | null; total: number }> {
+    let sql = `
+      SELECT bc.*, c.first_name, c.last_name, c.email, c.phone, c.lead_score, c.status, c.custom_fields
+      FROM crm_board_cards bc
+      LEFT JOIN crm_contacts c ON bc.entity_type = 'contact' AND c.id = bc.entity_id AND c.workspace_id = bc.workspace_id
+      WHERE bc.board_id = $1 AND bc.workspace_id = $2 AND bc.is_archived = FALSE
+    `;
+    const params: any[] = [boardId, workspaceId];
+    let idx = 3;
+
+    if (columnId) {
+      sql += ` AND bc.column_id = $${idx++}`;
+      params.push(columnId);
+    }
+
+    if (cursor) {
+      sql += ` AND bc.rank > $${idx++}`;
+      params.push(cursor);
+    }
+
+    sql += ` ORDER BY bc.rank ASC LIMIT $${idx++}`;
+    params.push(limit + 1);
+
+    const res = await this.pool.query(sql, params);
+    const hasNext = res.rows.length > limit;
+    const items = hasNext ? res.rows.slice(0, limit) : res.rows;
+    const nextCursor = hasNext ? items[items.length - 1].rank : null;
+
+    const countRes = await this.pool.query(`
+      SELECT COUNT(*) as c FROM crm_board_cards WHERE board_id = $1 AND workspace_id = $2 AND is_archived = FALSE ${columnId ? 'AND column_id = $3' : ''}
+    `, columnId ? [boardId, workspaceId, columnId] : [boardId, workspaceId]);
+
+    const cards: CrmBoardCard[] = items.map((r) => ({
+      id: r.id,
+      board_id: r.board_id,
+      column_id: r.column_id,
+      workspace_id: r.workspace_id,
+      entity_type: r.entity_type,
+      entity_id: r.entity_id,
+      rank: r.rank,
+      is_archived: Boolean(r.is_archived),
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      entity_data: {
+        id: r.entity_id,
+        first_name: r.first_name,
+        last_name: r.last_name,
+        email: r.email,
+        phone: r.phone,
+        lead_score: r.lead_score,
+        status: r.status,
+        custom_fields: rowPayload(r.custom_fields)
+      }
+    }));
+
+    return { cards, next_cursor: nextCursor, total: Number(countRes.rows[0]?.c) || 0 };
+  }
+
+  public async moveBoardCard(
+    workspaceId: string,
+    cardId: string,
+    targetColumnId: string,
+    newRank: string
+  ): Promise<CrmBoardCard> {
+    const res = await this.pool.query(`
+      UPDATE crm_board_cards
+      SET column_id = $1, rank = $2, updated_at = NOW()
+      WHERE workspace_id = $3 AND id = $4
+      RETURNING *
+    `, [targetColumnId, newRank, workspaceId, cardId]);
+
+    if (res.rows.length === 0) throw new Error(`Card '${cardId}' not found.`);
+    const updated = res.rows[0];
+
+    return {
+      id: updated.id,
+      board_id: updated.board_id,
+      column_id: updated.column_id,
+      workspace_id: updated.workspace_id,
+      entity_type: updated.entity_type,
+      entity_id: updated.entity_id,
+      rank: updated.rank,
+      is_archived: Boolean(updated.is_archived),
+      created_at: updated.created_at,
+      updated_at: updated.updated_at
+    };
+  }
+
+  public async addCardToBoard(workspaceId: string, data: Partial<CrmBoardCard>): Promise<CrmBoardCard> {
+    const id = data.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_board_cards (
+        id, board_id, column_id, workspace_id, entity_type, entity_id, rank, is_archived
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT(board_id, entity_type, entity_id) DO UPDATE SET
+        column_id = EXCLUDED.column_id,
+        rank = EXCLUDED.rank,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      id,
+      data.board_id,
+      data.column_id,
+      workspaceId,
+      data.entity_type || 'contact',
+      data.entity_id,
+      data.rank || '0|hzzzzz:',
+      data.is_archived || false
+    ]);
+
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      board_id: row.board_id,
+      column_id: row.column_id,
+      workspace_id: row.workspace_id,
+      entity_type: row.entity_type,
+      entity_id: row.entity_id,
+      rank: row.rank,
+      is_archived: Boolean(row.is_archived),
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+  }
+
+  public async removeCardFromBoard(workspaceId: string, boardId: string, entityType: string, entityId: string): Promise<boolean> {
+    const res = await this.pool.query(`
+      DELETE FROM crm_board_cards WHERE workspace_id = $1 AND board_id = $2 AND entity_type = $3 AND entity_id = $4
+    `, [workspaceId, boardId, entityType, entityId]);
+    return (res.rowCount || 0) > 0;
+  }
+
+  public async getBoardStats(workspaceId: string, boardId: string): Promise<BoardStatsSummary> {
+    const cols = await this.listBoardColumns(workspaceId, boardId);
+    let totalCards = 0;
+    let wonCount = 0;
+    let lostCount = 0;
+
+    const columnMetrics = cols.map((col, index) => {
+      const cnt = col.card_count || 0;
+      totalCards += cnt;
+      if (col.stage_type === 'won') wonCount += cnt;
+      if (col.stage_type === 'lost') lostCount += cnt;
+
+      const prevCnt = index > 0 ? (cols[index - 1].card_count || 0) : cnt;
+      const convRate = prevCnt > 0 ? Number(((cnt / prevCnt) * 100).toFixed(1)) : 100;
+
+      return {
+        column_id: col.id,
+        name: col.name,
+        card_count: cnt,
+        total_value_usd: 0,
+        conversion_rate: convRate,
+        avg_time_in_stage_hours: 24
+      };
+    });
+
+    const winRate = totalCards > 0 ? Number(((wonCount / totalCards) * 100).toFixed(1)) : 0;
+
+    return {
+      board_id: boardId,
+      total_cards: totalCards,
+      columns: columnMetrics,
+      won_count: wonCount,
+      lost_count: lostCount,
+      win_rate_percent: winRate
+    };
+  }
+
+  private mapBoard(r: any): CrmBoard {
+    return {
+      id: r.id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      description: r.description,
+      color: r.color || '#4f46e5',
+      icon: r.icon || 'kanban',
+      owner_user_id: r.owner_user_id,
+      visibility: r.visibility || 'workspace',
+      is_archived: Boolean(r.is_archived),
+      card_layout: rowPayload(r.card_layout),
+      filter_criteria: rowPayload(r.filter_criteria),
+      auto_add_matching: Boolean(r.auto_add_matching),
+      auto_remove_unmatched: Boolean(r.auto_remove_unmatched),
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  }
+
+  // =========================================================================
+  // CRM V2: TAGS EXTENDED
+  // =========================================================================
+  public async listTagsWithCounts(workspaceId: string): Promise<Array<CrmTag & { usage_count: number }>> {
+    const res = await this.pool.query(`
+      SELECT t.*, COUNT(ct.contact_id) as usage_count
+      FROM crm_tags t
+      LEFT JOIN crm_contact_tags ct ON ct.tag_id = t.id AND ct.workspace_id = t.workspace_id
+      WHERE t.workspace_id = $1
+      GROUP BY t.id
+      ORDER BY usage_count DESC, t.name ASC
+    `, [workspaceId]);
+
+    return res.rows.map((r) => ({
+      id: r.id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      color: r.color,
+      created_at: r.created_at,
+      contacts_count: Number(r.usage_count) || 0,
+      usage_count: Number(r.usage_count) || 0
+    }));
+  }
+
+  public async mergeTags(workspaceId: string, req: MergeTagsRequest): Promise<{ affected_contacts: number }> {
+    const { source_tag_id, target_tag_id } = req;
+    if (source_tag_id === target_tag_id) return { affected_contacts: 0 };
+
+    const client = await this.pool.connect();
+    let count = 0;
+    try {
+      await client.query('BEGIN');
+      const contactsWithSource = await client.query(`
+        SELECT contact_id FROM crm_contact_tags WHERE workspace_id = $1 AND tag_id = $2
+      `, [workspaceId, source_tag_id]);
+
+      count = contactsWithSource.rows.length;
+
+      for (const row of contactsWithSource.rows) {
+        await client.query(`
+          INSERT INTO crm_contact_tags (workspace_id, contact_id, tag_id, created_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT DO NOTHING
+        `, [workspaceId, row.contact_id, target_tag_id]);
+      }
+
+      await client.query('DELETE FROM crm_contact_tags WHERE workspace_id = $1 AND tag_id = $2', [workspaceId, source_tag_id]);
+      await client.query('DELETE FROM crm_tags WHERE workspace_id = $1 AND id = $2', [workspaceId, source_tag_id]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+    return { affected_contacts: count };
+  }
+
+  public async listTagGroups(workspaceId: string): Promise<CrmTagGroup[]> {
+    const res = await this.pool.query('SELECT * FROM crm_tag_groups WHERE workspace_id = $1 ORDER BY sort_order ASC', [workspaceId]);
+    return res.rows.map((r) => ({
+      id: r.id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      color: r.color,
+      sort_order: Number(r.sort_order) || 0,
+      created_at: r.created_at
+    }));
+  }
+
+  public async saveTagGroup(workspaceId: string, group: Partial<CrmTagGroup>): Promise<CrmTagGroup> {
+    const id = group.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_tag_groups (id, workspace_id, name, color, sort_order)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT(id) DO UPDATE SET
+        name = EXCLUDED.name,
+        color = EXCLUDED.color,
+        sort_order = EXCLUDED.sort_order
+      RETURNING *
+    `, [id, workspaceId, group.name || 'New Group', group.color || '#64748b', group.sort_order || 0]);
+
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      workspace_id: row.workspace_id,
+      name: row.name,
+      color: row.color,
+      sort_order: row.sort_order,
+      created_at: row.created_at
+    };
+  }
+
+  public async listAutoTagRules(workspaceId: string): Promise<CrmAutoTagRule[]> {
+    const res = await this.pool.query('SELECT * FROM crm_auto_tag_rules WHERE workspace_id = $1 ORDER BY created_at DESC', [workspaceId]);
+    return res.rows.map((r) => ({
+      id: r.id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      trigger: r.trigger,
+      condition_value: rowPayload(r.condition_value),
+      tag_name: r.tag_name,
+      is_active: Boolean(r.is_active),
+      created_at: r.created_at
+    }));
+  }
+
+  public async saveAutoTagRule(workspaceId: string, rule: Partial<CrmAutoTagRule>): Promise<CrmAutoTagRule> {
+    const id = rule.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_auto_tag_rules (id, workspace_id, name, trigger, condition_value, tag_name, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT(id) DO UPDATE SET
+        name = EXCLUDED.name,
+        trigger = EXCLUDED.trigger,
+        condition_value = EXCLUDED.condition_value,
+        tag_name = EXCLUDED.tag_name,
+        is_active = EXCLUDED.is_active
+      RETURNING *
+    `, [
+      id,
+      workspaceId,
+      rule.name || 'Auto Tag Rule',
+      rule.trigger || 'score_threshold',
+      JSON.stringify(rule.condition_value || {}),
+      rule.tag_name || 'Hot',
+      rule.is_active ?? true
+    ]);
+
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      workspace_id: row.workspace_id,
+      name: row.name,
+      trigger: row.trigger,
+      condition_value: rowPayload(row.condition_value),
+      tag_name: row.tag_name,
+      is_active: Boolean(row.is_active),
+      created_at: row.created_at
+    };
+  }
+
+  // =========================================================================
+  // CRM V2: SUPER FIELDS
+  // =========================================================================
+  public async listSuperFields(workspaceId: string, entityType: string = 'contact'): Promise<CrmSuperField[]> {
+    const res = await this.pool.query(`
+      SELECT * FROM crm_super_fields WHERE workspace_id = $1 AND entity_type = $2 ORDER BY group_name ASC, name ASC
+    `, [workspaceId, entityType]);
+
+    return res.rows.map((r) => this.mapSuperField(r));
+  }
+
+  public async getSuperField(workspaceId: string, id: string): Promise<CrmSuperField | null> {
+    const res = await this.pool.query('SELECT * FROM crm_super_fields WHERE workspace_id = $1 AND id = $2', [workspaceId, id]);
+    if (res.rows.length === 0) return null;
+    return this.mapSuperField(res.rows[0]);
+  }
+
+  public async createSuperField(workspaceId: string, data: Partial<CrmSuperField>): Promise<CrmSuperField> {
+    const id = data.id || crypto.randomUUID();
+    const slug = data.slug || data.name?.toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'custom_field';
+
+    const res = await this.pool.query(`
+      INSERT INTO crm_super_fields (
+        id, workspace_id, entity_type, name, slug, description, field_type,
+        is_required, is_unique, min_value, max_value, validation_regex, default_value,
+        options, formula_expression, lookup_config, auto_number_prefix, auto_number_padding,
+        group_name, is_searchable, is_filterable, is_promoted, visibility_roles, linked_board_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+      RETURNING *
+    `, [
+      id,
+      workspaceId,
+      data.entity_type || 'contact',
+      data.name || 'Field',
+      slug,
+      data.description || null,
+      data.field_type || 'text',
+      data.is_required || false,
+      data.is_unique || false,
+      data.min_value ?? null,
+      data.max_value ?? null,
+      data.validation_regex ?? null,
+      data.default_value ?? null,
+      JSON.stringify(data.options || []),
+      data.formula_expression ?? null,
+      JSON.stringify(data.lookup_config || {}),
+      data.auto_number_prefix ?? null,
+      data.auto_number_padding ?? 4,
+      data.group_name || 'General',
+      data.is_searchable ?? true,
+      data.is_filterable ?? true,
+      data.is_promoted || false,
+      JSON.stringify(data.visibility_roles || ['owner', 'admin', 'member', 'read_only']),
+      data.linked_board_id ?? null
+    ]);
+
+    return this.mapSuperField(res.rows[0]);
+  }
+
+  public async updateSuperField(workspaceId: string, id: string, updates: Partial<CrmSuperField>): Promise<CrmSuperField> {
+    const res = await this.pool.query(`
+      UPDATE crm_super_fields SET
+        name = COALESCE($1, name),
+        description = COALESCE($2, description),
+        is_required = COALESCE($3, is_required),
+        min_value = COALESCE($4, min_value),
+        max_value = COALESCE($5, max_value),
+        validation_regex = COALESCE($6, validation_regex),
+        default_value = COALESCE($7, default_value),
+        options = COALESCE($8, options),
+        formula_expression = COALESCE($9, formula_expression),
+        lookup_config = COALESCE($10, lookup_config),
+        group_name = COALESCE($11, group_name),
+        is_promoted = COALESCE($12, is_promoted),
+        visibility_roles = COALESCE($13, visibility_roles),
+        linked_board_id = COALESCE($14, linked_board_id),
+        updated_at = NOW()
+      WHERE workspace_id = $15 AND id = $16
+      RETURNING *
+    `, [
+      updates.name ?? null,
+      updates.description ?? null,
+      updates.is_required ?? null,
+      updates.min_value ?? null,
+      updates.max_value ?? null,
+      updates.validation_regex ?? null,
+      updates.default_value ?? null,
+      updates.options ? JSON.stringify(updates.options) : null,
+      updates.formula_expression ?? null,
+      updates.lookup_config ? JSON.stringify(updates.lookup_config) : null,
+      updates.group_name ?? null,
+      updates.is_promoted ?? null,
+      updates.visibility_roles ? JSON.stringify(updates.visibility_roles) : null,
+      updates.linked_board_id ?? null,
+      workspaceId,
+      id
+    ]);
+
+    if (res.rows.length === 0) throw new Error(`Super field '${id}' not found.`);
+    return this.mapSuperField(res.rows[0]);
+  }
+
+  public async deleteSuperField(workspaceId: string, id: string): Promise<boolean> {
+    const field = await this.getSuperField(workspaceId, id);
+    if (field) {
+      await this.pool.query('DELETE FROM crm_promoted_field_values WHERE workspace_id = $1 AND field_slug = $2', [workspaceId, field.slug]);
+    }
+    const res = await this.pool.query('DELETE FROM crm_super_fields WHERE workspace_id = $1 AND id = $2', [workspaceId, id]);
+    return (res.rowCount || 0) > 0;
+  }
+
+  public async promoteSuperField(workspaceId: string, id: string, isPromoted: boolean): Promise<CrmSuperField> {
+    const updated = await this.updateSuperField(workspaceId, id, { is_promoted: isPromoted });
+    if (isPromoted) {
+      // Backfill into crm_promoted_field_values
+      await this.pool.query(`
+        INSERT INTO crm_promoted_field_values (
+          id, workspace_id, entity_type, entity_id, field_slug, field_type, value_text, value_numeric
+        )
+        SELECT 
+          gen_random_uuid(),
+          workspace_id,
+          'contact',
+          id,
+          $1,
+          $2,
+          custom_fields->>$1,
+          CASE WHEN custom_fields->>$1 ~ '^[0-9.]+$' THEN (custom_fields->>$1)::numeric ELSE NULL END
+        FROM crm_contacts
+        WHERE workspace_id = $3 AND deleted_at IS NULL AND custom_fields ? $1
+        ON CONFLICT (workspace_id, entity_type, entity_id, field_slug) DO UPDATE SET
+          value_text = EXCLUDED.value_text,
+          value_numeric = EXCLUDED.value_numeric,
+          updated_at = NOW()
+      `, [updated.slug, updated.field_type, workspaceId]);
+    } else {
+      await this.pool.query('DELETE FROM crm_promoted_field_values WHERE workspace_id = $1 AND field_slug = $2', [workspaceId, updated.slug]);
+    }
+    return updated;
+  }
+
+  public async upsertPromotedFieldValue(entry: Partial<CrmPromotedFieldValue>): Promise<void> {
+    const id = entry.id || crypto.randomUUID();
+    await this.pool.query(`
+      INSERT INTO crm_promoted_field_values (
+        id, workspace_id, entity_type, entity_id, field_slug, field_type,
+        value_text, value_numeric, value_timestamp, value_json
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT(workspace_id, entity_type, entity_id, field_slug) DO UPDATE SET
+        value_text = EXCLUDED.value_text,
+        value_numeric = EXCLUDED.value_numeric,
+        value_timestamp = EXCLUDED.value_timestamp,
+        value_json = EXCLUDED.value_json,
+        updated_at = NOW()
+    `, [
+      id,
+      entry.workspace_id,
+      entry.entity_type,
+      entry.entity_id,
+      entry.field_slug,
+      entry.field_type,
+      entry.value_text ?? null,
+      entry.value_numeric ?? null,
+      entry.value_timestamp ?? null,
+      entry.value_json ? JSON.stringify(entry.value_json) : null
+    ]);
+  }
+
+  public async getPromotedFieldValues(workspaceId: string, entityType: string, entityId: string): Promise<Record<string, any>> {
+    const res = await this.pool.query(`
+      SELECT field_slug, value_text, value_numeric, value_timestamp, value_json FROM crm_promoted_field_values
+      WHERE workspace_id = $1 AND entity_type = $2 AND entity_id = $3
+    `, [workspaceId, entityType, entityId]);
+
+    const result: Record<string, any> = {};
+    for (const r of res.rows) {
+      if (r.value_numeric !== null) result[r.field_slug] = Number(r.value_numeric);
+      else if (r.value_timestamp !== null) result[r.field_slug] = r.value_timestamp;
+      else if (r.value_json !== null) result[r.field_slug] = rowPayload(r.value_json);
+      else result[r.field_slug] = r.value_text;
+    }
+    return result;
+  }
+
+  private mapSuperField(r: any): CrmSuperField {
+    return {
+      id: r.id,
+      workspace_id: r.workspace_id,
+      entity_type: r.entity_type,
+      name: r.name,
+      slug: r.slug,
+      description: r.description,
+      field_type: r.field_type,
+      is_required: Boolean(r.is_required),
+      is_unique: Boolean(r.is_unique),
+      min_value: r.min_value !== null ? Number(r.min_value) : null,
+      max_value: r.max_value !== null ? Number(r.max_value) : null,
+      validation_regex: r.validation_regex,
+      default_value: r.default_value,
+      options: rowPayload(r.options),
+      formula_expression: r.formula_expression,
+      lookup_config: rowPayload(r.lookup_config),
+      auto_number_prefix: r.auto_number_prefix,
+      auto_number_padding: Number(r.auto_number_padding) || 4,
+      group_name: r.group_name || 'General',
+      is_searchable: Boolean(r.is_searchable),
+      is_filterable: Boolean(r.is_filterable),
+      is_promoted: Boolean(r.is_promoted),
+      visibility_roles: rowPayload(r.visibility_roles),
+      linked_board_id: r.linked_board_id,
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  }
+
+  // =========================================================================
+  // CRM V2: PLAN-BASED BILLING & HARD ENTITLEMENTS (WALLET-ONLY)
+  // =========================================================================
+  public async listBillingPlans(includeInactive: boolean = false): Promise<CrmBillingPlan[]> {
+    let sql = 'SELECT * FROM crm_billing_plans';
+    if (!includeInactive) sql += ' WHERE is_active = TRUE';
+    sql += ' ORDER BY sort_order ASC, price_usd ASC';
+
+    const res = await this.pool.query(sql);
+    return res.rows.map((r) => this.mapBillingPlan(r));
+  }
+
+  public async getBillingPlan(planIdOrSlug: string): Promise<CrmBillingPlan | null> {
+    const res = await this.pool.query('SELECT * FROM crm_billing_plans WHERE id = $1 OR slug = $1', [planIdOrSlug]);
+    if (res.rows.length === 0) return null;
+    return this.mapBillingPlan(res.rows[0]);
+  }
+
+  public async saveBillingPlan(plan: Partial<CrmBillingPlan>): Promise<CrmBillingPlan> {
+    const id = plan.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_billing_plans (
+        id, name, slug, description, price_usd, duration_days, quota_contacts,
+        quota_boards, quota_columns_per_board, quota_super_fields, quota_tags,
+        quota_team_seats, quota_api_calls_per_month, quota_automations_per_month,
+        quota_messages_per_month, quota_storage_mb, quota_enrichment_credits,
+        quota_export_rows_per_month, feature_flags, version, is_active, is_visible,
+        trial_days, is_recurring, sort_order
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+      ON CONFLICT(id) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        price_usd = EXCLUDED.price_usd,
+        duration_days = EXCLUDED.duration_days,
+        quota_contacts = EXCLUDED.quota_contacts,
+        quota_boards = EXCLUDED.quota_boards,
+        quota_columns_per_board = EXCLUDED.quota_columns_per_board,
+        quota_super_fields = EXCLUDED.quota_super_fields,
+        quota_tags = EXCLUDED.quota_tags,
+        quota_team_seats = EXCLUDED.quota_team_seats,
+        quota_api_calls_per_month = EXCLUDED.quota_api_calls_per_month,
+        quota_automations_per_month = EXCLUDED.quota_automations_per_month,
+        quota_messages_per_month = EXCLUDED.quota_messages_per_month,
+        quota_storage_mb = EXCLUDED.quota_storage_mb,
+        quota_enrichment_credits = EXCLUDED.quota_enrichment_credits,
+        quota_export_rows_per_month = EXCLUDED.quota_export_rows_per_month,
+        feature_flags = EXCLUDED.feature_flags,
+        version = EXCLUDED.version + 1,
+        is_active = EXCLUDED.is_active,
+        is_visible = EXCLUDED.is_visible,
+        sort_order = EXCLUDED.sort_order,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      id,
+      plan.name || 'Custom Plan',
+      plan.slug || 'custom-plan',
+      plan.description || null,
+      plan.price_usd ?? 0.0,
+      plan.duration_days ?? 30,
+      plan.quota_contacts ?? 1000,
+      plan.quota_boards ?? 5,
+      plan.quota_columns_per_board ?? 10,
+      plan.quota_super_fields ?? 25,
+      plan.quota_tags ?? 50,
+      plan.quota_team_seats ?? 3,
+      plan.quota_api_calls_per_month ?? 10000,
+      plan.quota_automations_per_month ?? 5000,
+      plan.quota_messages_per_month ?? 2000,
+      plan.quota_storage_mb ?? 1024,
+      plan.quota_enrichment_credits ?? 100,
+      plan.quota_export_rows_per_month ?? 50000,
+      JSON.stringify(plan.feature_flags || {}),
+      plan.version || 1,
+      plan.is_active ?? true,
+      plan.is_visible ?? true,
+      plan.trial_days ?? 0,
+      plan.is_recurring ?? true,
+      plan.sort_order ?? 0
+    ]);
+
+    return this.mapBillingPlan(res.rows[0]);
+  }
+
+  public async listBillingAddons(): Promise<CrmBillingAddon[]> {
+    const res = await this.pool.query('SELECT * FROM crm_billing_addons WHERE is_active = TRUE ORDER BY price_usd ASC');
+    return res.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      resource_type: r.resource_type,
+      quantity: Number(r.quantity),
+      price_usd: Number(r.price_usd),
+      validity_days: r.validity_days !== null ? Number(r.validity_days) : null,
+      is_active: Boolean(r.is_active),
+      created_at: r.created_at
+    }));
+  }
+
+  public async saveBillingAddon(addon: Partial<CrmBillingAddon>): Promise<CrmBillingAddon> {
+    const id = addon.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_billing_addons (id, name, slug, resource_type, quantity, price_usd, validity_days, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT(id) DO UPDATE SET
+        name = EXCLUDED.name,
+        quantity = EXCLUDED.quantity,
+        price_usd = EXCLUDED.price_usd,
+        is_active = EXCLUDED.is_active
+      RETURNING *
+    `, [
+      id,
+      addon.name || 'Add-on Pack',
+      addon.slug || 'addon',
+      addon.resource_type || 'contacts',
+      addon.quantity || 1000,
+      addon.price_usd || 10.0,
+      addon.validity_days ?? null,
+      addon.is_active ?? true
+    ]);
+
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      resource_type: r.resource_type,
+      quantity: Number(r.quantity),
+      price_usd: Number(r.price_usd),
+      validity_days: r.validity_days !== null ? Number(r.validity_days) : null,
+      is_active: Boolean(r.is_active),
+      created_at: r.created_at
+    };
+  }
+
+  public async getBillingCoupon(code: string): Promise<CrmBillingCoupon | null> {
+    const res = await this.pool.query('SELECT * FROM crm_billing_coupons WHERE UPPER(code) = $1', [code.toUpperCase().trim()]);
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      code: row.code,
+      discount_type: row.discount_type,
+      discount_value: Number(row.discount_value),
+      max_uses: Number(row.max_uses),
+      current_uses: Number(row.current_uses),
+      plan_ids: rowPayload(row.plan_ids),
+      valid_until: row.valid_until,
+      is_active: Boolean(row.is_active),
+      created_at: row.created_at
+    };
+  }
+
+  public async saveBillingCoupon(coupon: Partial<CrmBillingCoupon>): Promise<CrmBillingCoupon> {
+    const id = coupon.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_billing_coupons (id, code, discount_type, discount_value, max_uses, current_uses, plan_ids, valid_until, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT(id) DO UPDATE SET
+        discount_value = EXCLUDED.discount_value,
+        max_uses = EXCLUDED.max_uses,
+        current_uses = EXCLUDED.current_uses,
+        valid_until = EXCLUDED.valid_until,
+        is_active = EXCLUDED.is_active
+      RETURNING *
+    `, [
+      id,
+      coupon.code?.toUpperCase().trim() || 'PROMO',
+      coupon.discount_type || 'percent',
+      coupon.discount_value || 10,
+      coupon.max_uses || 100,
+      coupon.current_uses || 0,
+      JSON.stringify(coupon.plan_ids || []),
+      coupon.valid_until || null,
+      coupon.is_active ?? true
+    ]);
+
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      code: row.code,
+      discount_type: row.discount_type,
+      discount_value: Number(row.discount_value),
+      max_uses: Number(row.max_uses),
+      current_uses: Number(row.current_uses),
+      plan_ids: rowPayload(row.plan_ids),
+      valid_until: row.valid_until,
+      is_active: Boolean(row.is_active),
+      created_at: row.created_at
+    };
+  }
+
+  public async getActiveSubscription(workspaceId: string): Promise<CrmSubscription | null> {
+    const res = await this.pool.query(`
+      SELECT * FROM crm_subscriptions
+      WHERE workspace_id = $1 AND status IN ('active', 'grace', 'expiring_soon')
+      ORDER BY created_at DESC LIMIT 1
+    `, [workspaceId]);
+
+    if (res.rows.length === 0) {
+      const ws = await this.getWorkspace(workspaceId);
+      if (!ws) return null;
+      const freePlan = await this.getBillingPlan('free');
+      if (!freePlan) return null;
+      return {
+        id: `sub_free_${workspaceId}`,
+        workspace_id: workspaceId,
+        user_id: ws.owner_user_id,
+        plan_id: freePlan.id,
+        plan_version: freePlan.version,
+        status: 'active',
+        starts_at: ws.created_at,
+        ends_at: '2099-12-31T23:59:59.000Z',
+        auto_renew: false,
+        renew_retry_count: 0,
+        custom_quotas: {},
+        metadata: { tier: 'free' },
+        created_at: ws.created_at,
+        updated_at: ws.created_at,
+        plan: freePlan
+      };
+    }
+
+    const row = res.rows[0];
+    const plan = await this.getBillingPlan(row.plan_id);
+    return {
+      id: row.id,
+      workspace_id: row.workspace_id,
+      user_id: row.user_id,
+      plan_id: row.plan_id,
+      plan_version: Number(row.plan_version),
+      status: row.status,
+      starts_at: row.starts_at,
+      ends_at: row.ends_at,
+      grace_ends_at: row.grace_ends_at,
+      auto_renew: Boolean(row.auto_renew),
+      renew_retry_count: Number(row.renew_retry_count),
+      custom_quotas: rowPayload(row.custom_quotas),
+      metadata: rowPayload(row.metadata),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      plan: plan || undefined
+    };
+  }
+
+  public async saveSubscription(sub: Partial<CrmSubscription>): Promise<CrmSubscription> {
+    const id = sub.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_subscriptions (
+        id, workspace_id, user_id, plan_id, plan_version, status,
+        starts_at, ends_at, grace_ends_at, auto_renew, renew_retry_count,
+        custom_quotas, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      ON CONFLICT(id) DO UPDATE SET
+        status = EXCLUDED.status,
+        ends_at = EXCLUDED.ends_at,
+        grace_ends_at = EXCLUDED.grace_ends_at,
+        auto_renew = EXCLUDED.auto_renew,
+        custom_quotas = EXCLUDED.custom_quotas,
+        metadata = EXCLUDED.metadata,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      id,
+      sub.workspace_id,
+      sub.user_id,
+      sub.plan_id,
+      sub.plan_version || 1,
+      sub.status || 'active',
+      sub.starts_at || new Date().toISOString(),
+      sub.ends_at || new Date().toISOString(),
+      sub.grace_ends_at ?? null,
+      sub.auto_renew ?? true,
+      sub.renew_retry_count || 0,
+      JSON.stringify(sub.custom_quotas || {}),
+      JSON.stringify(sub.metadata || {})
+    ]);
+
+    const row = res.rows[0];
+    const plan = await this.getBillingPlan(row.plan_id);
+    return {
+      id: row.id,
+      workspace_id: row.workspace_id,
+      user_id: row.user_id,
+      plan_id: row.plan_id,
+      plan_version: Number(row.plan_version),
+      status: row.status,
+      starts_at: row.starts_at,
+      ends_at: row.ends_at,
+      grace_ends_at: row.grace_ends_at,
+      auto_renew: Boolean(row.auto_renew),
+      renew_retry_count: Number(row.renew_retry_count),
+      custom_quotas: rowPayload(row.custom_quotas),
+      metadata: rowPayload(row.metadata),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      plan: plan || undefined
+    };
+  }
+
+  public async consumeQuotaAtomic(
+    workspaceId: string,
+    resourceType: BillingResourceType | string,
+    incrementBy: number,
+    limitFallback: number = 1000
+  ): Promise<{ success: boolean; used_count: number; quota_limit: number }> {
+    // 1. Ensure counter row exists
+    await this.pool.query(`
+      INSERT INTO crm_usage_counters (id, workspace_id, resource_type, used_count, quota_limit)
+      VALUES ($1, $2, $3, 0, $4)
+      ON CONFLICT (workspace_id, resource_type) DO NOTHING
+    `, [crypto.randomUUID(), workspaceId, resourceType, limitFallback]);
+
+    if (incrementBy === 0) {
+      const res = await this.pool.query(`
+        UPDATE crm_usage_counters SET quota_limit = $1, last_updated_at = NOW()
+        WHERE workspace_id = $2 AND resource_type = $3
+        RETURNING used_count, quota_limit
+      `, [limitFallback, workspaceId, resourceType]);
+      const row = res.rows[0];
+      return { success: true, used_count: Number(row?.used_count) || 0, quota_limit: Number(row?.quota_limit) || limitFallback };
+    }
+
+    // 2. ATOMIC Hard-limit check & increment in a single statement
+    const res = await this.pool.query(`
+      UPDATE crm_usage_counters
+      SET used_count = used_count + $1, last_updated_at = NOW()
+      WHERE workspace_id = $2 AND resource_type = $3 AND (quota_limit = -1 OR used_count + $1 <= quota_limit)
+      RETURNING used_count, quota_limit
+    `, [incrementBy, workspaceId, resourceType]);
+
+    if (res.rows.length > 0) {
+      const updated = res.rows[0];
+      return {
+        success: true,
+        used_count: Number(updated.used_count),
+        quota_limit: Number(updated.quota_limit)
+      };
+    }
+
+    // Quota exceeded
+    const currentRes = await this.pool.query(`
+      SELECT used_count, quota_limit FROM crm_usage_counters
+      WHERE workspace_id = $1 AND resource_type = $2
+    `, [workspaceId, resourceType]);
+
+    const current = currentRes.rows[0];
+    return {
+      success: false,
+      used_count: Number(current?.used_count) || 0,
+      quota_limit: Number(current?.quota_limit) || limitFallback
+    };
+  }
+
+  public async getUsageCounters(workspaceId: string): Promise<CrmUsageCounter[]> {
+    const res = await this.pool.query('SELECT * FROM crm_usage_counters WHERE workspace_id = $1', [workspaceId]);
+    return res.rows.map((r) => ({
+      id: r.id,
+      workspace_id: r.workspace_id,
+      resource_type: r.resource_type,
+      used_count: Number(r.used_count) || 0,
+      quota_limit: Number(r.quota_limit),
+      period_start: r.period_start,
+      period_end: r.period_end,
+      last_updated_at: r.last_updated_at
+    }));
+  }
+
+  public async reconcileUsageCounters(workspaceId: string): Promise<Record<string, number>> {
+    const contactCountRes = await this.pool.query(`
+      SELECT COUNT(*) as c FROM crm_contacts WHERE workspace_id = $1 AND deleted_at IS NULL AND (is_archived = FALSE OR is_archived IS NULL)
+    `, [workspaceId]);
+    const contactCount = Number(contactCountRes.rows[0]?.c) || 0;
+
+    const boardCountRes = await this.pool.query(`
+      SELECT COUNT(*) as c FROM crm_boards WHERE workspace_id = $1 AND is_archived = FALSE
+    `, [workspaceId]);
+    const boardCount = Number(boardCountRes.rows[0]?.c) || 0;
+
+    const fieldCountRes = await this.pool.query(`
+      SELECT COUNT(*) as c FROM crm_super_fields WHERE workspace_id = $1
+    `, [workspaceId]);
+    const fieldCount = Number(fieldCountRes.rows[0]?.c) || 0;
+
+    const tagCountRes = await this.pool.query(`
+      SELECT COUNT(*) as c FROM crm_tags WHERE workspace_id = $1
+    `, [workspaceId]);
+    const tagCount = Number(tagCountRes.rows[0]?.c) || 0;
+
+    await this.pool.query("UPDATE crm_usage_counters SET used_count = $1, last_updated_at = NOW() WHERE workspace_id = $2 AND resource_type = 'contacts'", [contactCount, workspaceId]);
+    await this.pool.query("UPDATE crm_usage_counters SET used_count = $1, last_updated_at = NOW() WHERE workspace_id = $2 AND resource_type = 'boards'", [boardCount, workspaceId]);
+    await this.pool.query("UPDATE crm_usage_counters SET used_count = $1, last_updated_at = NOW() WHERE workspace_id = $2 AND resource_type = 'super_fields'", [fieldCount, workspaceId]);
+    await this.pool.query("UPDATE crm_usage_counters SET used_count = $1, last_updated_at = NOW() WHERE workspace_id = $2 AND resource_type = 'tags'", [tagCount, workspaceId]);
+
+    return {
+      contacts: contactCount,
+      boards: boardCount,
+      super_fields: fieldCount,
+      tags: tagCount
+    };
+  }
+
+  public async createInvoice(invoice: Partial<CrmInvoice>): Promise<CrmInvoice> {
+    const id = invoice.id || crypto.randomUUID();
+    const res = await this.pool.query(`
+      INSERT INTO crm_invoices (
+        id, invoice_number, workspace_id, user_id, subscription_id, plan_name,
+        amount_usd, amount_charged, currency_charged, exchange_rate_snapshot,
+        subtotal_usd, discount_usd, tax_rate_percent, tax_amount_usd, gstin,
+        status, ledger_tx_id, line_items
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      RETURNING *
+    `, [
+      id,
+      invoice.invoice_number || `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      invoice.workspace_id,
+      invoice.user_id,
+      invoice.subscription_id ?? null,
+      invoice.plan_name || 'CRM Subscription',
+      invoice.amount_usd ?? 0.0,
+      invoice.amount_charged ?? 0.0,
+      invoice.currency_charged || 'USD',
+      invoice.exchange_rate_snapshot ?? 1.0,
+      invoice.subtotal_usd ?? 0.0,
+      invoice.discount_usd ?? 0.0,
+      invoice.tax_rate_percent ?? 18.0,
+      invoice.tax_amount_usd ?? 0.0,
+      invoice.gstin ?? null,
+      invoice.status || 'paid',
+      invoice.ledger_tx_id ?? null,
+      JSON.stringify(invoice.line_items || [])
+    ]);
+
+    return this.mapInvoice(res.rows[0]);
+  }
+
+  public async listInvoices(workspaceId: string): Promise<CrmInvoice[]> {
+    const res = await this.pool.query('SELECT * FROM crm_invoices WHERE workspace_id = $1 ORDER BY created_at DESC', [workspaceId]);
+    return res.rows.map((r) => this.mapInvoice(r));
+  }
+
+  public async getInvoice(invoiceIdOrNumber: string): Promise<CrmInvoice | null> {
+    const res = await this.pool.query('SELECT * FROM crm_invoices WHERE id = $1 OR invoice_number = $1', [invoiceIdOrNumber]);
+    if (res.rows.length === 0) return null;
+    return this.mapInvoice(res.rows[0]);
+  }
+
+  public async getBillingSettings(): Promise<CrmBillingSettings> {
+    const res = await this.pool.query('SELECT * FROM crm_billing_settings LIMIT 1');
+    if (res.rows.length === 0) {
+      return {
+        id: 'global',
+        gst_vat_rate_percent: 18.0,
+        company_gstin: '07AAAAA0000A1Z5',
+        company_legal_name: 'PVTSender Enterprise',
+        invoice_footer: 'Thank you for choosing PVTSender Enterprise!',
+        grace_period_days: 3,
+        renewal_reminder_days: 7,
+        stacking_rule: 'extend',
+        refund_policy: 'pro_rata_wallet',
+        quota_definition_archived_frees_quota: true,
+        quota_overflow_policy: 'partial_accept',
+        updated_at: new Date().toISOString()
+      };
+    }
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      gst_vat_rate_percent: Number(row.gst_vat_rate_percent) || 18.0,
+      company_gstin: row.company_gstin || '07AAAAA0000A1Z5',
+      company_legal_name: row.company_legal_name || 'PVTSender Enterprise',
+      invoice_footer: row.invoice_footer || 'Thank you for choosing PVTSender Enterprise!',
+      grace_period_days: Number(row.grace_period_days) || 3,
+      renewal_reminder_days: Number(row.renewal_reminder_days) || 7,
+      stacking_rule: row.stacking_rule || 'extend',
+      refund_policy: row.refund_policy || 'pro_rata_wallet',
+      quota_definition_archived_frees_quota: Boolean(row.quota_definition_archived_frees_quota),
+      quota_overflow_policy: row.quota_overflow_policy || 'partial_accept',
+      updated_at: row.updated_at
+    };
+  }
+
+  public async updateBillingSettings(settings: Partial<CrmBillingSettings>): Promise<CrmBillingSettings> {
+    await this.pool.query(`
+      UPDATE crm_billing_settings SET
+        gst_vat_rate_percent = COALESCE($1, gst_vat_rate_percent),
+        company_gstin = COALESCE($2, company_gstin),
+        company_legal_name = COALESCE($3, company_legal_name),
+        invoice_footer = COALESCE($4, invoice_footer),
+        grace_period_days = COALESCE($5, grace_period_days),
+        renewal_reminder_days = COALESCE($6, renewal_reminder_days),
+        stacking_rule = COALESCE($7, stacking_rule),
+        refund_policy = COALESCE($8, refund_policy),
+        quota_overflow_policy = COALESCE($9, quota_overflow_policy),
+        updated_at = NOW()
+    `, [
+      settings.gst_vat_rate_percent ?? null,
+      settings.company_gstin ?? null,
+      settings.company_legal_name ?? null,
+      settings.invoice_footer ?? null,
+      settings.grace_period_days ?? null,
+      settings.renewal_reminder_days ?? null,
+      settings.stacking_rule ?? null,
+      settings.refund_policy ?? null,
+      settings.quota_overflow_policy ?? null
+    ]);
+
+    return this.getBillingSettings();
+  }
+
+  private mapBillingPlan(r: any): CrmBillingPlan {
+    return {
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      description: r.description,
+      price_usd: Number(r.price_usd),
+      duration_days: Number(r.duration_days),
+      quota_contacts: Number(r.quota_contacts),
+      quota_boards: Number(r.quota_boards),
+      quota_columns_per_board: Number(r.quota_columns_per_board),
+      quota_super_fields: Number(r.quota_super_fields),
+      quota_tags: Number(r.quota_tags),
+      quota_team_seats: Number(r.quota_team_seats),
+      quota_api_calls_per_month: Number(r.quota_api_calls_per_month),
+      quota_automations_per_month: Number(r.quota_automations_per_month),
+      quota_messages_per_month: Number(r.quota_messages_per_month),
+      quota_storage_mb: Number(r.quota_storage_mb),
+      quota_enrichment_credits: Number(r.quota_enrichment_credits),
+      quota_export_rows_per_month: Number(r.quota_export_rows_per_month),
+      feature_flags: rowPayload(r.feature_flags),
+      version: Number(r.version) || 1,
+      is_active: Boolean(r.is_active),
+      is_visible: Boolean(r.is_visible),
+      trial_days: Number(r.trial_days) || 0,
+      is_recurring: Boolean(r.is_recurring),
+      sort_order: Number(r.sort_order) || 0,
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  }
+
+  private mapInvoice(r: any): CrmInvoice {
+    return {
+      id: r.id,
+      invoice_number: r.invoice_number,
+      workspace_id: r.workspace_id,
+      user_id: r.user_id,
+      subscription_id: r.subscription_id,
+      plan_name: r.plan_name,
+      amount_usd: Number(r.amount_usd),
+      amount_charged: Number(r.amount_charged),
+      currency_charged: r.currency_charged,
+      exchange_rate_snapshot: Number(r.exchange_rate_snapshot),
+      subtotal_usd: Number(r.subtotal_usd),
+      discount_usd: Number(r.discount_usd),
+      tax_rate_percent: Number(r.tax_rate_percent),
+      tax_amount_usd: Number(r.tax_amount_usd),
+      gstin: r.gstin,
+      status: r.status,
+      ledger_tx_id: r.ledger_tx_id,
+      line_items: rowPayload(r.line_items),
+      created_at: r.created_at
+    };
+  }
 }
+
 
 function rowPayload(val: any): any {
   if (typeof val === 'string') {

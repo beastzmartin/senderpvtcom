@@ -139,6 +139,120 @@ CREATE TABLE IF NOT EXISTS product_circuit_breakers (
   trip_reason TEXT,
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Master Prompt v3: Advanced Margin Rules (Volume Tiers, Scopes, Plan Adjustments)
+CREATE TABLE IF NOT EXISTS marketplace_margin_rules_v3 (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  priority INTEGER DEFAULT 100,
+  scope TEXT NOT NULL CHECK(scope IN ('global', 'category', 'product', 'pricing_model')),
+  target_id TEXT,
+  rule_type TEXT NOT NULL CHECK(rule_type IN ('percent', 'fixed', 'percent_plus_fixed', 'multiplier')),
+  percent_value REAL DEFAULT 0.0,
+  fixed_value REAL DEFAULT 0.0,
+  multiplier_value REAL DEFAULT 1.0,
+  tier_mode TEXT DEFAULT 'flat' CHECK(tier_mode IN ('flat', 'marginal', 'cliff')),
+  volume_tiers_json TEXT,
+  customer_plan_discounts_json TEXT,
+  min_margin_percent REAL DEFAULT 15.0,
+  min_sell_price REAL DEFAULT 0.50,
+  maker_checker_status TEXT DEFAULT 'approved' CHECK(maker_checker_status IN ('approved', 'pending_approval', 'rejected')),
+  maker_checker_threshold_min REAL DEFAULT 15.0,
+  approved_by TEXT,
+  enabled INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mkt_margin_rules_scope ON marketplace_margin_rules_v3(scope, target_id);
+CREATE INDEX IF NOT EXISTS idx_mkt_margin_rules_prio ON marketplace_margin_rules_v3(priority);
+
+-- Master Prompt v3: Promo Codes & Coupons
+CREATE TABLE IF NOT EXISTS marketplace_coupons (
+  id TEXT PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  description TEXT,
+  discount_type TEXT NOT NULL CHECK(discount_type IN ('percent', 'fixed')),
+  discount_value REAL NOT NULL,
+  max_discount_amount REAL,
+  min_order_amount REAL DEFAULT 0.0,
+  max_uses INTEGER DEFAULT 100,
+  current_uses INTEGER DEFAULT 0,
+  starts_at TEXT,
+  expires_at TEXT,
+  enabled INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mkt_coupons_code ON marketplace_coupons(code);
+
+-- Master Prompt v3: Margin Calculation Audit Traces
+CREATE TABLE IF NOT EXISTS marketplace_margin_traces (
+  id TEXT PRIMARY KEY,
+  job_id TEXT REFERENCES marketplace_jobs(id) ON DELETE CASCADE,
+  quote_id TEXT,
+  user_id TEXT NOT NULL,
+  product_slug TEXT NOT NULL,
+  raw_provider_cost_usd REAL NOT NULL,
+  overhead_cost_usd REAL NOT NULL,
+  fx_buffer_usd REAL NOT NULL,
+  loaded_cost_usd REAL NOT NULL,
+  rule_id TEXT,
+  rule_name TEXT,
+  base_margin_amount REAL NOT NULL,
+  volume_tier_applied TEXT,
+  plan_discount_applied REAL DEFAULT 0.0,
+  coupon_code TEXT,
+  coupon_discount REAL DEFAULT 0.0,
+  floor_applied INTEGER DEFAULT 0,
+  rounding_adjustment REAL DEFAULT 0.0,
+  tax_amount REAL DEFAULT 0.0,
+  final_sell_price REAL NOT NULL,
+  currency TEXT NOT NULL,
+  profit_amount REAL NOT NULL,
+  profit_margin_pct REAL NOT NULL,
+  waterfall_json TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mkt_traces_job ON marketplace_margin_traces(job_id);
+CREATE INDEX IF NOT EXISTS idx_mkt_traces_user ON marketplace_margin_traces(user_id);
+CREATE INDEX IF NOT EXISTS idx_mkt_traces_slug ON marketplace_margin_traces(product_slug);
+
+-- Master Prompt v3: Recurring Scheduled Runs
+CREATE TABLE IF NOT EXISTS marketplace_scheduled_runs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_slug TEXT NOT NULL,
+  name TEXT NOT NULL,
+  cron_expression TEXT NOT NULL,
+  input_json TEXT NOT NULL,
+  requested_items INTEGER NOT NULL DEFAULT 100,
+  max_budget REAL,
+  target_crm_list_id TEXT,
+  last_run_at TEXT,
+  next_run_at TEXT,
+  status TEXT DEFAULT 'active' CHECK(status IN ('active', 'paused', 'failed')),
+  failure_count INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mkt_scheduled_user ON marketplace_scheduled_runs(user_id);
+
+-- Master Prompt v3: Expiring Signed Share Links (Zero Provider Branding)
+CREATE TABLE IF NOT EXISTS marketplace_shared_links (
+  id TEXT PRIMARY KEY,
+  token TEXT UNIQUE NOT NULL,
+  job_id TEXT NOT NULL REFERENCES marketplace_jobs(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  title TEXT,
+  expires_at TEXT NOT NULL,
+  views_count INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mkt_shared_token ON marketplace_shared_links(token);
 `;
 
 /**
@@ -286,7 +400,15 @@ export function initMarketplaceSchema(db: Database.Database): void {
     'ALTER TABLE marketplace_jobs ADD COLUMN output_files_json TEXT',
     'ALTER TABLE marketplace_jobs ADD COLUMN runtime_seconds REAL DEFAULT 0.0',
     'ALTER TABLE extraction_marketplace_products ADD COLUMN profile_json TEXT',
-    'ALTER TABLE extraction_marketplace_products ADD COLUMN pinned_build TEXT'
+    'ALTER TABLE extraction_marketplace_products ADD COLUMN pinned_build TEXT',
+    // Master Prompt v3 migrations:
+    'ALTER TABLE user_wallets ADD COLUMN daily_spend_limit REAL DEFAULT 0.0',
+    'ALTER TABLE user_wallets ADD COLUMN monthly_spend_limit REAL DEFAULT 0.0',
+    'ALTER TABLE user_wallets ADD COLUMN per_job_spend_limit REAL DEFAULT 0.0',
+    'ALTER TABLE marketplace_jobs ADD COLUMN schedule_id TEXT',
+    'ALTER TABLE marketplace_jobs ADD COLUMN trace_id TEXT',
+    'ALTER TABLE marketplace_jobs ADD COLUMN crm_list_id TEXT',
+    'ALTER TABLE marketplace_jobs ADD COLUMN crm_synced_count INTEGER DEFAULT 0'
   ];
 
   for (const m of migrations) {
@@ -337,5 +459,37 @@ export function initMarketplaceSchema(db: Database.Database): void {
       JSON.stringify(demo)
     );
   }
+
+  // Seed default margin rule v3 if none exist
+  try {
+    const marginRulesCount = (db.prepare('SELECT count(*) as cnt FROM marketplace_margin_rules_v3').get() as any)?.cnt || 0;
+    if (marginRulesCount === 0) {
+      db.prepare(`
+        INSERT INTO marketplace_margin_rules_v3 (
+          id, name, priority, scope, target_id, rule_type, percent_value, fixed_value,
+          multiplier_value, tier_mode, volume_tiers_json, customer_plan_discounts_json,
+          min_margin_percent, min_sell_price, maker_checker_status, enabled
+        ) VALUES (
+          'rule_default_global', 'Global Standard Margin', 100, 'global', NULL, 'percent', 35.0, 0.0,
+          1.0, 'marginal', '[{"min_items":0,"max_items":1000,"percent":35.0,"fixed":0},{"min_items":1001,"max_items":5000,"percent":30.0,"fixed":0},{"min_items":5001,"max_items":999999,"percent":25.0,"fixed":0}]',
+          '{"enterprise":10.0,"pro":5.0,"starter":0.0}', 15.0, 0.50, 'approved', 1
+        )
+      `).run();
+    }
+  } catch {}
+
+  // Seed sample promo coupon if none exist
+  try {
+    const couponCount = (db.prepare('SELECT count(*) as cnt FROM marketplace_coupons').get() as any)?.cnt || 0;
+    if (couponCount === 0) {
+      db.prepare(`
+        INSERT INTO marketplace_coupons (
+          id, code, description, discount_type, discount_value, max_discount_amount, min_order_amount, max_uses, enabled
+        ) VALUES (
+          'cpn_welcome20', 'WELCOME20', '20% off your first data extraction run', 'percent', 20.0, 50.0, 5.0, 500, 1
+        )
+      `).run();
+    }
+  } catch {}
 }
 
