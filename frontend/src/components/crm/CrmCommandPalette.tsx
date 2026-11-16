@@ -4,7 +4,6 @@ import {
   Users,
   Kanban,
   BarChart3,
-  ShieldCheck,
   FolderPlus,
   Download,
   Command,
@@ -16,7 +15,7 @@ import { crmApi, CrmContact } from './crmApi';
 interface CrmCommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onNavigateTab: (tab: 'contacts' | 'pipeline' | 'analytics' | 'health' | 'lists' | 'developer') => void;
+  onNavigateTab: (tab: 'contacts' | 'pipeline' | 'analytics' | 'lists' | 'developer') => void;
   onSelectContact: (contactId: string) => void;
   onOpenImport: () => void;
   onOpenExport: () => void;
@@ -178,18 +177,6 @@ export const CrmCommandPalette: React.FC<CrmCommandPaletteProps> = ({
               >
                 <BarChart3 className="w-4 h-4 text-indigo-600" />
                 <span>Jump to Funnels & Analytics</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  onNavigateTab('health');
-                  onClose();
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-slate-100 text-xs font-semibold text-slate-800 transition"
-              >
-                <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                <span>Jump to Data Quality & Health</span>
               </button>
             </div>
           </div>

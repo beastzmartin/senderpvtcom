@@ -27,7 +27,6 @@ import { SuppressionListView } from './SuppressionListView';
 import { DeveloperPortalView } from './DeveloperPortalView';
 import { PipelineKanbanView } from './PipelineKanbanView';
 import { AnalyticsDashboardView } from './AnalyticsDashboardView';
-import { DataHealthDashboardView } from './DataHealthDashboardView';
 import { CrmCommandPalette } from './CrmCommandPalette';
 import { FilterBuilderModal } from './FilterBuilderModal';
 import { ContactDetailModal } from './ContactDetailModal';
@@ -44,7 +43,7 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
   onStartWhatsAppChat,
   onLaunchBulkWhatsApp
 }) => {
-  const [activeTab, setActiveTab] = useState<'contacts' | 'pipeline' | 'analytics' | 'health' | 'lists' | 'dedupe' | 'fields' | 'suppression' | 'developer'>('contacts');
+  const [activeTab, setActiveTab] = useState<'contacts' | 'pipeline' | 'analytics' | 'lists' | 'dedupe' | 'fields' | 'suppression' | 'developer'>('contacts');
 
   // Global CRM state
   const [lists, setLists] = useState<CrmList[]>([]);
@@ -277,19 +276,6 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab('health')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
-              activeTab === 'health'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            Data Health & Score
-          </button>
-
-          <button
-            type="button"
             onClick={() => setActiveTab('lists')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'lists'
@@ -378,8 +364,6 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
           )}
 
           {activeTab === 'analytics' && <AnalyticsDashboardView />}
-
-          {activeTab === 'health' && <DataHealthDashboardView />}
 
           {activeTab === 'lists' && (
             <ListsSegmentsView
