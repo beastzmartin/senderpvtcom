@@ -115,6 +115,7 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
 
   // Dragging state
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null);
 
   useEffect(() => {
     loadBoards();
@@ -195,11 +196,17 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
     e.dataTransfer.setData('text/plain', card.id);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
+    setDragOverColumnId(columnId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverColumnId(null);
   };
 
   const handleDropOnColumn = async (targetColumnId: string) => {
+    setDragOverColumnId(null);
     if (!draggedCardId) return;
 
     let targetCard: BoardCard | null = null;
@@ -316,9 +323,9 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
       {/* ========================================================================= */}
       {/* 1. TOP TOOLBAR & STATS HEADER */}
       {/* ========================================================================= */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-950/60 border border-indigo-800/50 flex items-center justify-center text-indigo-400">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
             <Kanban className="w-5 h-5" />
           </div>
           <div>
@@ -326,10 +333,10 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
               <select
                 value={selectedBoardId}
                 onChange={(e) => setSelectedBoardId(e.target.value)}
-                className="bg-transparent font-bold text-slate-100 text-base focus:outline-none cursor-pointer border-b border-dashed border-slate-700 hover:border-indigo-400 pb-0.5"
+                className="bg-transparent font-bold text-slate-800 text-base focus:outline-none cursor-pointer border-b border-dashed border-slate-300 hover:border-indigo-400 pb-0.5"
               >
                 {boards.map((b) => (
-                  <option key={b.id} value={b.id} className="bg-slate-900 text-slate-200">
+                  <option key={b.id} value={b.id} className="bg-white text-slate-800">
                     {b.name}
                   </option>
                 ))}
@@ -343,14 +350,14 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
         </div>
 
         {/* Stats Summary Strip */}
-        <div className="flex items-center gap-4 text-xs divide-x divide-slate-800">
+        <div className="flex items-center gap-4 text-xs divide-x divide-slate-200">
           <div className="pr-4">
-            <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold block">Total Cards</span>
-            <span className="font-bold text-slate-200 font-mono text-sm">{stats?.total_cards ?? 0}</span>
+            <span className="text-slate-400 uppercase tracking-wider text-[10px] font-bold block">Total Cards</span>
+            <span className="font-bold text-slate-800 font-mono text-sm">{stats?.total_cards ?? 0}</span>
           </div>
           <div className="px-4">
-            <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold block">Win Rate</span>
-            <span className="font-bold text-emerald-400 font-mono text-sm">{stats?.win_rate_percent ?? 0}%</span>
+            <span className="text-slate-400 uppercase tracking-wider text-[10px] font-bold block">Win Rate</span>
+            <span className="font-bold text-emerald-600 font-mono text-sm">{stats?.win_rate_percent ?? 0}%</span>
           </div>
           <div className="pl-4 flex items-center gap-2">
             <Button
@@ -379,36 +386,36 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
       {/* Filter and Density Sub-Bar */}
       <div className="flex items-center justify-between gap-4">
         <div className="relative w-64">
-          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Search cards..."
             value={cardSearch}
             onChange={(e) => setCardSearch(e.target.value)}
-            className="w-full bg-slate-900/80 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
           />
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
           <span>Density:</span>
           <button
             onClick={() => setDensity('comfortable')}
-            className={`px-2 py-1 rounded ${density === 'comfortable' ? 'bg-slate-800 text-slate-200 font-bold' : 'hover:text-slate-200'}`}
+            className={`px-2 py-1 rounded transition-colors ${density === 'comfortable' ? 'bg-slate-100 text-slate-800 font-bold border border-slate-200' : 'hover:text-slate-700 hover:bg-slate-50'}`}
           >
             Comfortable
           </button>
           <button
             onClick={() => setDensity('compact')}
-            className={`px-2 py-1 rounded ${density === 'compact' ? 'bg-slate-800 text-slate-200 font-bold' : 'hover:text-slate-200'}`}
+            className={`px-2 py-1 rounded transition-colors ${density === 'compact' ? 'bg-slate-100 text-slate-800 font-bold border border-slate-200' : 'hover:text-slate-700 hover:bg-slate-50'}`}
           >
             Compact
           </button>
         </div>
       </div>
 
-      {/* Undo Toast Notification */}
+      {/* Undo Toast Notification — keep dark for contrast */}
       {lastMoveAction && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-900 border border-indigo-500/80 rounded-xl px-4 py-3 shadow-2xl text-xs text-slate-200 animate-in slide-in-from-bottom-4">
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-900 border border-indigo-500/80 rounded-xl px-4 py-3 shadow-2xl text-xs text-white animate-in slide-in-from-bottom-4">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>Moved card to <strong>{lastMoveAction.targetColumnName}</strong></span>
           <button
@@ -429,44 +436,60 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
             const rawCards = cardsByColumn[col.id] || [];
             const filtered = filterCards(rawCards);
             const isWipExceeded = col.wip_limit && rawCards.length > col.wip_limit;
+            const isDropTarget = dragOverColumnId === col.id;
 
             return (
               <div
                 key={col.id}
-                onDragOver={handleDragOver}
+                onDragOver={(e) => handleDragOver(e, col.id)}
+                onDragLeave={handleDragLeave}
                 onDrop={() => handleDropOnColumn(col.id)}
-                className={`w-72 sm:w-80 shrink-0 bg-slate-900/70 border rounded-2xl flex flex-col max-h-[80vh] transition-all ${isWipExceeded ? 'border-rose-800/80 shadow-rose-950/20 shadow-md' : 'border-slate-800'
-                  }`}
+                className={`w-72 sm:w-80 shrink-0 rounded-2xl flex flex-col max-h-[80vh] transition-all border ${
+                  isWipExceeded
+                    ? 'border-rose-400 bg-rose-50'
+                    : isDropTarget
+                    ? 'border-2 border-dashed border-indigo-300 bg-indigo-50/60'
+                    : 'border-slate-200 bg-slate-50'
+                }`}
               >
-                {/* Column Header */}
-                <div className="p-3.5 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-900/90 rounded-t-2xl">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: col.color || '#6366f1' }}
-                    />
-                    <span className="font-bold text-xs text-slate-200 tracking-tight">{col.name}</span>
-                    <span className="text-[11px] font-mono px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400">
-                      {rawCards.length}
-                    </span>
-                  </div>
+                {/* Column Header — white bg with colored top border stripe */}
+                <div
+                  className="shrink-0 rounded-t-2xl"
+                  style={{ borderTop: `3px solid ${col.color || '#6366f1'}` }}
+                >
+                  <div className="p-3.5 border-b border-slate-200 flex items-center justify-between bg-white rounded-t-2xl">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: col.color || '#6366f1' }}
+                      />
+                      <span className="font-bold text-xs text-slate-800 tracking-tight">{col.name}</span>
+                      <span className="text-[11px] font-mono px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                        {rawCards.length}
+                      </span>
+                    </div>
 
-                  {col.wip_limit && (
-                    <span
-                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${isWipExceeded ? 'bg-rose-950 text-rose-400 border border-rose-800' : 'text-slate-500'
+                    {col.wip_limit && (
+                      <span
+                        className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                          isWipExceeded
+                            ? 'bg-rose-50 text-rose-600 border border-rose-300'
+                            : 'text-slate-400 bg-slate-100'
                         }`}
-                    >
-                      WIP: {rawCards.length}/{col.wip_limit}
-                    </span>
-                  )}
+                      >
+                        WIP: {rawCards.length}/{col.wip_limit}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                {/* Cards List (Virtualized Scrollable) */}
+                {/* Cards List (Scrollable) */}
                 <div className="p-2 space-y-2 overflow-y-auto flex-1">
                   {filtered.map((card) => {
                     const d = card.entity_data || {};
                     const fullName = `${d.first_name || ''} ${d.last_name || ''}`.trim() || 'Unnamed Contact';
                     const initials = (d.first_name?.[0] || 'C') + (d.last_name?.[0] || '');
+                    const isDragging = draggedCardId === card.id;
 
                     return (
                       <div
@@ -474,28 +497,32 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                         draggable
                         onDragStart={(e) => handleDragStart(e, card)}
                         onClick={() => setSelectedCardForDrawer(card)}
-                        className={`bg-slate-950/90 border border-slate-800 hover:border-indigo-500/70 rounded-xl p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all group ${density === 'compact' ? 'py-2' : 'py-3'
-                          }`}
+                        className={`bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-md rounded-xl p-3 shadow-sm cursor-grab active:cursor-grabbing transition-all group ${
+                          density === 'compact' ? 'py-2' : 'py-3'
+                        } ${isDragging ? 'opacity-50 ring-2 ring-indigo-400' : ''}`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-6 h-6 rounded-full bg-indigo-950 border border-indigo-800 text-indigo-300 font-bold text-[10px] flex items-center justify-center shrink-0 uppercase">
+                            <div className="w-6 h-6 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-600 font-bold text-[10px] flex items-center justify-center shrink-0 uppercase">
                               {initials}
                             </div>
                             <div className="min-w-0">
-                              <h4 className="font-bold text-xs text-slate-200 truncate group-hover:text-indigo-400 transition-colors">
+                              <h4 className="font-bold text-xs text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
                                 {fullName}
                               </h4>
                               {d.company_name && (
-                                <p className="text-[11px] text-slate-500 truncate">{d.company_name}</p>
+                                <p className="text-[11px] text-slate-400 truncate">{d.company_name}</p>
                               )}
                             </div>
                           </div>
 
                           {d.lead_score !== undefined && d.lead_score > 0 && (
                             <span
-                              className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 ${d.lead_score >= 80 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50' : 'bg-slate-800 text-slate-300'
-                                }`}
+                              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                                d.lead_score >= 80
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-indigo-50 text-indigo-700'
+                              }`}
                             >
                               {d.lead_score}
                             </span>
@@ -503,21 +530,21 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                         </div>
 
                         {density === 'comfortable' && (
-                          <div className="mt-2.5 pt-2 border-t border-slate-900 text-xs text-slate-400 space-y-1">
-                            {d.email && <div className="text-[11px] truncate text-slate-400">{d.email}</div>}
-                            {d.phone && <div className="text-[11px] font-mono text-slate-500">{d.phone}</div>}
+                          <div className="mt-2.5 pt-2 border-t border-slate-100 text-xs text-slate-400 space-y-1">
+                            {d.email && <div className="text-[11px] truncate text-slate-500">{d.email}</div>}
+                            {d.phone && <div className="text-[11px] font-mono text-slate-400">{d.phone}</div>}
                           </div>
                         )}
 
                         {/* Quick Action Hover Bar */}
-                        <div className="mt-2 pt-2 border-t border-slate-900/60 flex items-center justify-between text-[11px] text-slate-500">
+                        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
                           {d.phone && onStartWhatsAppChat && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onStartWhatsAppChat(d.phone!);
                               }}
-                              className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold"
+                              className="text-emerald-600 hover:text-emerald-700 flex items-center gap-1 font-semibold"
                             >
                               <MessageCircle className="w-3 h-3" /> Chat
                             </button>
@@ -528,7 +555,7 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                               setCardToMove(card);
                               setIsMoveCardModalOpen(true);
                             }}
-                            className="text-slate-400 hover:text-slate-200 flex items-center gap-1 ml-auto"
+                            className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 flex items-center gap-1 ml-auto rounded-lg p-1 transition"
                           >
                             <MoveRight className="w-3 h-3" /> Move
                           </button>
@@ -538,7 +565,7 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                   })}
 
                   {filtered.length === 0 && (
-                    <div className="py-8 text-center text-slate-600 text-xs">
+                    <div className="py-8 text-center rounded-xl bg-slate-50 border-2 border-dashed border-slate-300 text-slate-400 text-xs">
                       {cardSearch ? 'No matches' : 'Drop cards here'}
                     </div>
                   )}
@@ -566,8 +593,8 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
         {selectedCardForDrawer && (
           <div className="space-y-6">
             {/* Stage Selector */}
-            <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400">Current Pipeline Stage</label>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+              <label className="text-xs font-semibold text-slate-500">Current Pipeline Stage</label>
               <select
                 value={selectedCardForDrawer.column_id}
                 onChange={async (e) => {
@@ -576,7 +603,7 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                   setSelectedCardForDrawer((prev) => prev ? { ...prev, column_id: newColId } : null);
                   loadBoardDetails(selectedBoardId);
                 }}
-                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2 text-xs text-slate-100 font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
               >
                 {columns.map((col) => (
                   <option key={col.id} value={col.id}>
@@ -601,36 +628,36 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
 
             {/* Field Details */}
             <div className="space-y-3 text-xs">
-              <h4 className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">Primary Contact Details</h4>
+              <h4 className="font-bold text-slate-500 uppercase tracking-wider text-[11px]">Primary Contact Details</h4>
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg">
-                  <span className="text-slate-500 block">Email</span>
-                  <span className="font-medium text-slate-200">{selectedCardForDrawer.entity_data?.email || 'N/A'}</span>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  <span className="text-slate-400 block text-[11px]">Email</span>
+                  <span className="font-medium text-slate-800">{selectedCardForDrawer.entity_data?.email || 'N/A'}</span>
                 </div>
-                <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg">
-                  <span className="text-slate-500 block">Phone</span>
-                  <span className="font-medium text-slate-200 font-mono">{selectedCardForDrawer.entity_data?.phone || 'N/A'}</span>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  <span className="text-slate-400 block text-[11px]">Phone</span>
+                  <span className="font-medium text-slate-800 font-mono">{selectedCardForDrawer.entity_data?.phone || 'N/A'}</span>
                 </div>
-                <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg">
-                  <span className="text-slate-500 block">Lead Score</span>
-                  <span className="font-medium text-emerald-400 font-bold">{selectedCardForDrawer.entity_data?.lead_score ?? 0}</span>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  <span className="text-slate-400 block text-[11px]">Lead Score</span>
+                  <span className="font-medium text-emerald-600 font-bold">{selectedCardForDrawer.entity_data?.lead_score ?? 0}</span>
                 </div>
-                <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg">
-                  <span className="text-slate-500 block">Company</span>
-                  <span className="font-medium text-slate-200">{selectedCardForDrawer.entity_data?.company_name || 'N/A'}</span>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  <span className="text-slate-400 block text-[11px]">Company</span>
+                  <span className="font-medium text-slate-800">{selectedCardForDrawer.entity_data?.company_name || 'N/A'}</span>
                 </div>
               </div>
             </div>
 
             {/* Custom Super Fields */}
             {selectedCardForDrawer.entity_data?.custom_fields && (
-              <div className="space-y-3 text-xs pt-4 border-t border-slate-800">
-                <h4 className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">Super Fields</h4>
+              <div className="space-y-3 text-xs pt-4 border-t border-slate-200">
+                <h4 className="font-bold text-slate-500 uppercase tracking-wider text-[11px]">Super Fields</h4>
                 <div className="space-y-2">
                   {Object.entries(selectedCardForDrawer.entity_data.custom_fields).map(([k, v]) => (
-                    <div key={k} className="flex justify-between p-2.5 rounded bg-slate-950/50 border border-slate-800">
-                      <span className="text-slate-400 font-mono">{k}</span>
-                      <strong className="text-slate-200">{String(v)}</strong>
+                    <div key={k} className="flex justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                      <span className="text-slate-500 font-mono">{k}</span>
+                      <strong className="text-slate-800">{String(v)}</strong>
                     </div>
                   ))}
                 </div>
@@ -658,7 +685,7 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
           />
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300">Choose Starting Template</label>
+            <label className="text-xs font-semibold text-slate-700">Choose Starting Template</label>
             <div className="grid grid-cols-2 gap-2">
               {[
                 { id: 'sales_funnel', name: 'Sales Pipeline', cols: '6 stages' },
@@ -669,19 +696,20 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                 <button
                   key={t.id}
                   onClick={() => setSelectedTemplate(t.id)}
-                  className={`p-3 text-left rounded-xl border transition-all ${selectedTemplate === t.id
-                    ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300'
-                    : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
+                  className={`p-3 text-left rounded-xl border transition-all ${
+                    selectedTemplate === t.id
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-200 hover:bg-slate-50'
+                  }`}
                 >
-                  <div className="font-bold text-xs text-slate-200">{t.name}</div>
-                  <div className="text-[10px] text-slate-500">{t.cols}</div>
+                  <div className={`font-bold text-xs ${selectedTemplate === t.id ? 'text-indigo-700' : 'text-slate-800'}`}>{t.name}</div>
+                  <div className={`text-[10px] ${selectedTemplate === t.id ? 'text-indigo-500' : 'text-slate-400'}`}>{t.cols}</div>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
             <Button variant="ghost" size="sm" onClick={() => setIsNewBoardWizardOpen(false)}>
               Cancel
             </Button>

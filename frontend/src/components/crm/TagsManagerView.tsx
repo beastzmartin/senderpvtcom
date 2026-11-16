@@ -170,15 +170,15 @@ export const TagsManagerView: React.FC = () => {
   return (
     <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto animate-in fade-in duration-200">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-black text-slate-100 tracking-tight">Tag Directory & Automation</h1>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Tag Directory & Automation</h1>
             <Badge variant="indigo" size="sm" dot>
               {tags.length} Workspace Tags
             </Badge>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Organize contacts by source, lifecycle, or campaign. Combine duplicates with 1-click merge.
           </p>
         </div>
@@ -187,7 +187,7 @@ export const TagsManagerView: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            icon={<GitMerge className="w-3.5 h-3.5 text-indigo-400" />}
+            icon={<GitMerge className="w-3.5 h-3.5 text-indigo-600" />}
             onClick={() => {
               if (tags.length >= 2) {
                 setSourceTagId(tags[0].id);
@@ -211,10 +211,10 @@ export const TagsManagerView: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Create Tag Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5 h-fit shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5 h-fit shadow-sm">
           <div>
-            <h3 className="text-base font-bold text-slate-100">Create Workspace Tag</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Assign tags manually or trigger them via automation.</p>
+            <h3 className="text-base font-bold text-slate-900">Create Workspace Tag</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Assign tags manually or trigger them via automation.</p>
           </div>
 
           <div className="space-y-4">
@@ -226,7 +226,7 @@ export const TagsManagerView: React.FC = () => {
             />
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300">Badge Color Accent</label>
+              <label className="text-xs font-semibold text-slate-700">Badge Color Accent</label>
               <div className="flex items-center gap-2 flex-wrap">
                 {PRESET_COLORS.map((c) => (
                   <button
@@ -234,7 +234,7 @@ export const TagsManagerView: React.FC = () => {
                     type="button"
                     onClick={() => setNewTagColor(c)}
                     className={`w-6 h-6 rounded-full transition-transform flex items-center justify-center ${
-                      newTagColor === c ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-slate-900' : 'hover:scale-105'
+                      newTagColor === c ? 'scale-110 ring-2 ring-indigo-600 ring-offset-2 ring-offset-white' : 'hover:scale-105'
                     }`}
                     style={{ backgroundColor: c }}
                   >
@@ -245,8 +245,8 @@ export const TagsManagerView: React.FC = () => {
             </div>
 
             {/* Live Tag Chip Preview */}
-            <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Live Preview</span>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Live Preview</span>
               <span
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold text-white shadow-sm"
                 style={{ backgroundColor: newTagColor }}
@@ -272,20 +272,20 @@ export const TagsManagerView: React.FC = () => {
         {/* Tags Directory & Auto-Tagging Rules (2 Cols) */}
         <div className="lg:col-span-2 space-y-6">
           {/* Tag Directory Card */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-base font-bold text-slate-100">All Tags Directory</h3>
-                <p className="text-xs text-slate-400">Total active tags with contact usage counts.</p>
+                <h3 className="text-base font-bold text-slate-900">All Tags Directory</h3>
+                <p className="text-xs text-slate-500">Total active tags with contact usage counts.</p>
               </div>
               <div className="relative w-48 sm:w-64">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="Filter tags..."
                   value={tagSearch}
                   onChange={(e) => setTagSearch(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                 />
               </div>
             </div>
@@ -294,7 +294,7 @@ export const TagsManagerView: React.FC = () => {
               {filteredTags.map((t) => (
                 <div
                   key={t.id}
-                  className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl flex items-center justify-between hover:border-slate-700 transition-all"
+                  className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between hover:border-slate-300 hover:bg-white transition-all shadow-xs"
                 >
                   <div className="flex items-center gap-2.5">
                     <span
@@ -302,9 +302,9 @@ export const TagsManagerView: React.FC = () => {
                       style={{ backgroundColor: t.color || '#6366f1' }}
                     />
                     <div>
-                      <span className="font-bold text-xs text-slate-200">{t.name}</span>
+                      <span className="font-bold text-xs text-slate-900">{t.name}</span>
                       <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
-                        <Users className="w-3 h-3" />
+                        <Users className="w-3 h-3 text-slate-400" />
                         {t.usage_count ?? 0} contacts
                       </div>
                     </div>
@@ -312,7 +312,7 @@ export const TagsManagerView: React.FC = () => {
 
                   <button
                     onClick={() => handleDeleteTag(t.id, t.name)}
-                    className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+                    className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -320,7 +320,7 @@ export const TagsManagerView: React.FC = () => {
               ))}
 
               {filteredTags.length === 0 && (
-                <div className="col-span-2 py-8 text-center text-slate-500 text-xs">
+                <div className="col-span-2 py-8 text-center text-slate-400 text-xs">
                   {tagSearch ? 'No matching tags found.' : 'No tags created yet.'}
                 </div>
               )}
@@ -328,11 +328,11 @@ export const TagsManagerView: React.FC = () => {
           </div>
 
           {/* Auto-Tagging Rules Card */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-slate-100">Automated Tagging Rules</h3>
-                <p className="text-xs text-slate-400">Apply tags automatically when contact conditions are met.</p>
+                <h3 className="text-base font-bold text-slate-900">Automated Tagging Rules</h3>
+                <p className="text-xs text-slate-500">Apply tags automatically when contact conditions are met.</p>
               </div>
             </div>
 
@@ -340,17 +340,17 @@ export const TagsManagerView: React.FC = () => {
               {rules.map((rule) => (
                 <div
                   key={rule.id}
-                  className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between"
+                  className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between hover:bg-white transition"
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span className="font-bold text-xs text-slate-200">{rule.name}</span>
+                      <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="font-bold text-xs text-slate-900">{rule.name}</span>
                       <Badge variant="amber" size="xs">
                         {rule.trigger}
                       </Badge>
                     </div>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-slate-500">
                       When lead score exceeds threshold → Assign tag <strong>"{rule.tag_name}"</strong>
                     </p>
                   </div>
@@ -362,7 +362,7 @@ export const TagsManagerView: React.FC = () => {
               ))}
 
               {rules.length === 0 && (
-                <div className="py-6 text-center text-slate-500 text-xs">
+                <div className="py-6 text-center text-slate-400 text-xs">
                   No auto-tagging rules configured.
                 </div>
               )}
@@ -381,17 +381,17 @@ export const TagsManagerView: React.FC = () => {
         maxWidth="md"
       >
         <div className="space-y-4">
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-600">
             Combine <strong>Source Tag</strong> into <strong>Target Tag</strong>. All contacts with the source tag will automatically be reassigned, and the source tag will be deleted safely.
           </p>
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Source Tag (Will be merged and deleted)</label>
+              <label className="text-xs font-semibold text-slate-700">Source Tag (Will be merged and deleted)</label>
               <select
                 value={sourceTagId}
                 onChange={(e) => setSourceTagId(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               >
                 {tags.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -402,11 +402,11 @@ export const TagsManagerView: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Target Tag (Will absorb contacts and remain)</label>
+              <label className="text-xs font-semibold text-slate-700">Target Tag (Will absorb contacts and remain)</label>
               <select
                 value={targetTagId}
                 onChange={(e) => setTargetTagId(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               >
                 {tags
                   .filter((t) => t.id !== sourceTagId)
@@ -419,8 +419,8 @@ export const TagsManagerView: React.FC = () => {
             </div>
 
             {selectedSourceTag && (
-              <div className="p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl text-xs text-amber-300 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
                 <span>
                   <strong>{selectedSourceTag.usage_count ?? 0} contacts</strong> will be moved to the target tag.
                 </span>
@@ -428,7 +428,7 @@ export const TagsManagerView: React.FC = () => {
             )}
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
             <Button variant="ghost" size="sm" onClick={() => setIsMergeModalOpen(false)}>
               Cancel
             </Button>
@@ -463,11 +463,11 @@ export const TagsManagerView: React.FC = () => {
           />
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300">Trigger Event</label>
+            <label className="text-xs font-semibold text-slate-700">Trigger Event</label>
             <select
               value={ruleTrigger}
               onChange={(e) => setRuleTrigger(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
             >
               <option value="score_threshold">When Lead Score Exceeds Threshold</option>
               <option value="new_contact">On Every Newly Created Contact</option>
@@ -491,7 +491,7 @@ export const TagsManagerView: React.FC = () => {
             onChange={(e) => setTargetRuleTag(e.target.value)}
           />
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
             <Button variant="ghost" size="sm" onClick={() => setIsRuleModalOpen(false)}>
               Cancel
             </Button>

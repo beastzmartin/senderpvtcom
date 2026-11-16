@@ -72,7 +72,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Single Line Text',
     category: 'Text & Content',
     desc: 'Short string input (e.g. Job Title, Company Name)',
-    icon: <FileText className="w-4 h-4 text-blue-400" />,
+    icon: <FileText className="w-4 h-4 text-blue-500" />,
     samplePlaceholder: 'Senior Product Manager',
     defaultVal: 'Acme Corp'
   },
@@ -81,7 +81,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Long Text / Notes',
     category: 'Text & Content',
     desc: 'Multi-line paragraph text for notes, briefs, or logs',
-    icon: <FileText className="w-4 h-4 text-sky-400" />,
+    icon: <FileText className="w-4 h-4 text-sky-500" />,
     samplePlaceholder: 'Discussed Q4 expansion and security review requirements...',
     defaultVal: 'Discussed Q4 roadmap and pricing discounts.'
   },
@@ -90,7 +90,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Email Address',
     category: 'Text & Content',
     desc: 'RFC-validated email address with one-click compose',
-    icon: <Mail className="w-4 h-4 text-indigo-400" />,
+    icon: <Mail className="w-4 h-4 text-indigo-500" />,
     samplePlaceholder: 'contact@enterprise.com',
     defaultVal: 'alex.morgan@acme.io'
   },
@@ -99,7 +99,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Phone Number',
     category: 'Text & Content',
     desc: 'E.164 phone with international format and WhatsApp sync',
-    icon: <Phone className="w-4 h-4 text-emerald-400" />,
+    icon: <Phone className="w-4 h-4 text-emerald-500" />,
     samplePlaceholder: '+1 415 555 0199',
     defaultVal: '+1 (415) 555-0199'
   },
@@ -108,7 +108,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Web URL',
     category: 'Text & Content',
     desc: 'Clickable URL with protocol validation',
-    icon: <Link className="w-4 h-4 text-cyan-400" />,
+    icon: <Link className="w-4 h-4 text-cyan-500" />,
     samplePlaceholder: 'https://acme.org',
     defaultVal: 'https://linkedin.com/in/alexmorgan'
   },
@@ -128,7 +128,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Numeric Value',
     category: 'Numbers & Finance',
     desc: 'Integer or high-precision decimal quantity',
-    icon: <Hash className="w-4 h-4 text-amber-400" />,
+    icon: <Hash className="w-4 h-4 text-amber-500" />,
     samplePlaceholder: '42',
     defaultVal: 1500
   },
@@ -137,7 +137,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Currency ($ / ₹ / €)',
     category: 'Numbers & Finance',
     desc: 'Monetary figure stored with ISO currency specification',
-    icon: <DollarSign className="w-4 h-4 text-emerald-400" />,
+    icon: <DollarSign className="w-4 h-4 text-emerald-500" />,
     samplePlaceholder: '45,000.00',
     defaultVal: '$45,000.00'
   },
@@ -146,7 +146,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Percentage (%)',
     category: 'Numbers & Finance',
     desc: 'Ratio or discount percentage (0 to 100%)',
-    icon: <Percent className="w-4 h-4 text-purple-400" />,
+    icon: <Percent className="w-4 h-4 text-purple-500" />,
     samplePlaceholder: '18.5%',
     defaultVal: '20%'
   },
@@ -155,7 +155,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Rating (1-5 Stars)',
     category: 'Numbers & Finance',
     desc: 'Star rating for lead scoring, priority, or customer satisfaction',
-    icon: <Star className="w-4 h-4 text-amber-400" />,
+    icon: <Star className="w-4 h-4 text-amber-500" />,
     samplePlaceholder: '4/5',
     defaultVal: 4
   },
@@ -164,7 +164,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Auto-Number Sequence',
     category: 'Numbers & Finance',
     desc: 'Monotonically increasing sequence ID (e.g. DEAL-0042)',
-    icon: <Hash className="w-4 h-4 text-rose-400" />,
+    icon: <Hash className="w-4 h-4 text-rose-500" />,
     samplePlaceholder: 'DEAL-0042',
     defaultVal: 'DEAL-0042'
   },
@@ -175,7 +175,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Single-Select Dropdown',
     category: 'Choices & Lists',
     desc: 'Pick one option from a pre-configured list',
-    icon: <ListFilter className="w-4 h-4 text-violet-400" />,
+    icon: <ListFilter className="w-4 h-4 text-violet-500" />,
     samplePlaceholder: 'Select option...',
     defaultVal: 'Qualified Lead'
   },
@@ -184,7 +184,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Multi-Select Tags',
     category: 'Choices & Lists',
     desc: 'Pick multiple tags or attributes simultaneously',
-    icon: <Tag className="w-4 h-4 text-pink-400" />,
+    icon: <Tag className="w-4 h-4 text-pink-500" />,
     samplePlaceholder: 'Select tags...',
     defaultVal: ['SaaS', 'High-Touch', 'West Coast']
   },
@@ -193,7 +193,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Checkbox (Boolean)',
     category: 'Choices & Lists',
     desc: 'Binary true/false toggle for flags and opt-ins',
-    icon: <CheckSquare className="w-4 h-4 text-emerald-400" />,
+    icon: <CheckSquare className="w-4 h-4 text-emerald-500" />,
     samplePlaceholder: 'Checked / Unchecked',
     defaultVal: true
   },
@@ -202,7 +202,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Tag Badge',
     category: 'Choices & Lists',
     desc: 'Color-coded micro badge tied to workspace tag taxonomy',
-    icon: <Tag className="w-4 h-4 text-amber-400" />,
+    icon: <Tag className="w-4 h-4 text-amber-500" />,
     samplePlaceholder: 'VIP Customer',
     defaultVal: 'Enterprise Tier'
   },
@@ -213,7 +213,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Calendar Date',
     category: 'Dates & People',
     desc: 'ISO 8601 calendar date without time component',
-    icon: <Calendar className="w-4 h-4 text-blue-400" />,
+    icon: <Calendar className="w-4 h-4 text-blue-500" />,
     samplePlaceholder: '2026-12-31',
     defaultVal: '2026-11-20'
   },
@@ -222,7 +222,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Date & Time',
     category: 'Dates & People',
     desc: 'UTC timestamp with localized timezone display',
-    icon: <Clock className="w-4 h-4 text-indigo-400" />,
+    icon: <Clock className="w-4 h-4 text-indigo-500" />,
     samplePlaceholder: '2026-12-31 14:30',
     defaultVal: '2026-11-20 18:30'
   },
@@ -231,7 +231,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'User Assignee',
     category: 'Dates & People',
     desc: 'Team member assignee with avatar and permissions sync',
-    icon: <User className="w-4 h-4 text-cyan-400" />,
+    icon: <User className="w-4 h-4 text-cyan-500" />,
     samplePlaceholder: 'Assign team member...',
     defaultVal: 'Sarah Jenkins (Account Exec)'
   },
@@ -240,7 +240,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Board Stage Sync',
     category: 'Dates & People',
     desc: 'Bidirectionally synchronized with Kanban board column',
-    icon: <ArrowRightLeft className="w-4 h-4 text-orange-400" />,
+    icon: <ArrowRightLeft className="w-4 h-4 text-orange-500" />,
     samplePlaceholder: 'Negotiation',
     defaultVal: 'Proposal Sent'
   },
@@ -251,7 +251,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Calculated Formula',
     category: 'Calculations & Links',
     desc: 'Real-time computed expression using math, fields, & dynamic tax',
-    icon: <Calculator className="w-4 h-4 text-emerald-400" />,
+    icon: <Calculator className="w-4 h-4 text-emerald-500" />,
     samplePlaceholder: '{deal_value} * (1 + {tax_rate})',
     defaultVal: '$11,800.00'
   },
@@ -260,7 +260,7 @@ export const SUPER_FIELD_TYPES: FieldTypeMeta[] = [
     label: 'Relationship Lookup',
     category: 'Calculations & Links',
     desc: 'Pulls a field from an associated Company or Account',
-    icon: <ExternalLink className="w-4 h-4 text-indigo-400" />,
+    icon: <ExternalLink className="w-4 h-4 text-indigo-500" />,
     samplePlaceholder: 'Company.AnnualRevenue',
     defaultVal: '$2.4M ARR'
   }
@@ -528,15 +528,15 @@ export const SuperFieldsManagerView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Toast Notification */}
+      {/* Toast Notification — keep dark for visibility */}
       {toastMessage && (
         <div
           className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-xl border flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-bottom-2 ${
             toastMessage.variant === 'success'
-              ? 'bg-emerald-950/90 text-emerald-200 border-emerald-700/80 backdrop-blur-md'
+              ? 'bg-slate-900 text-emerald-300 border-slate-700'
               : toastMessage.variant === 'error'
-              ? 'bg-rose-950/90 text-rose-200 border-rose-700/80 backdrop-blur-md'
-              : 'bg-slate-900/90 text-slate-200 border-slate-700/80 backdrop-blur-md'
+              ? 'bg-slate-900 text-rose-300 border-slate-700'
+              : 'bg-slate-900 text-white border-slate-700'
           }`}
         >
           {toastMessage.variant === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
@@ -547,24 +547,24 @@ export const SuperFieldsManagerView: React.FC = () => {
       )}
 
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 rounded-3xl border border-indigo-900/40 shadow-xl flex flex-wrap items-center justify-between gap-4 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 p-6 rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-4 text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex items-center gap-4">
-          <div className="p-3.5 bg-indigo-600/30 border border-indigo-500/40 rounded-2xl text-indigo-300 shadow-inner">
+          <div className="p-3.5 bg-white/15 border border-white/20 rounded-2xl text-white shadow-inner">
             <Sliders className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
               <h2 className="text-xl font-black text-white tracking-tight">Super Fields Studio</h2>
-              <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white/15 text-white border border-white/20">
                 20 Enterprise Types
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-100 border border-emerald-400/30">
                 100M+ Ready
               </span>
             </div>
-            <p className="text-xs text-slate-300 mt-1 max-w-xl">
+            <p className="text-xs text-indigo-100 mt-1 max-w-xl">
               Model flexible business entities with calculated formulas, dynamic tax rates, zero-lock fast indexed columns, and strict regex validation.
             </p>
           </div>
@@ -576,7 +576,7 @@ export const SuperFieldsManagerView: React.FC = () => {
             size="md"
             icon={<Plus className="w-4 h-4" />}
             onClick={handleOpenCreate}
-            className="shadow-lg shadow-indigo-600/30"
+            className="bg-white text-indigo-700 hover:bg-indigo-50 shadow-lg"
           >
             Create Super Field
           </Button>
@@ -589,45 +589,45 @@ export const SuperFieldsManagerView: React.FC = () => {
           label="Total Super Fields"
           value={totalCount}
           subtitle="Configured custom entity fields"
-          icon={<Sliders className="w-5 h-5 text-indigo-400" />}
+          icon={<Sliders className="w-5 h-5 text-indigo-500" />}
         />
         <StatCard
           label="Promoted Columns"
           value={promotedCount}
           subtitle="Indexed for sub-second 100M+ filters"
-          icon={<Zap className="w-5 h-5 text-amber-400" />}
+          icon={<Zap className="w-5 h-5 text-amber-500" />}
           trend={{ value: `${totalCount ? Math.round((promotedCount / totalCount) * 100) : 0}% indexed`, positive: true }}
         />
         <StatCard
           label="Formula & Math Fields"
           value={formulaCount}
           subtitle="Dynamic calculations with live tax"
-          icon={<Calculator className="w-5 h-5 text-emerald-400" />}
+          icon={<Calculator className="w-5 h-5 text-emerald-500" />}
         />
         <StatCard
           label="Field Taxonomy Groups"
           value={uniqueGroupsCount}
           subtitle="Categorized sections in contact view"
-          icon={<Layers className="w-5 h-5 text-purple-400" />}
+          icon={<Layers className="w-5 h-5 text-purple-500" />}
         />
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
           <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by field name, slug, group, or type..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+              className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -643,8 +643,8 @@ export const SuperFieldsManagerView: React.FC = () => {
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-3 py-1.5 rounded-lg font-semibold transition shrink-0 ${
                   selectedCategory === cat
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
                 }`}
               >
                 {cat}
@@ -660,7 +660,7 @@ export const SuperFieldsManagerView: React.FC = () => {
             <select
               value={selectedGroup}
               onChange={(e) => setSelectedGroup(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+              className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
             >
               {availableGroups.map(g => (
                 <option key={g} value={g}>{g}</option>
@@ -671,11 +671,11 @@ export const SuperFieldsManagerView: React.FC = () => {
       </div>
 
       {/* Fields Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-950/70 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-800">
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
                 <th className="py-3.5 px-5">Field Name</th>
                 <th className="py-3.5 px-4">Type</th>
                 <th className="py-3.5 px-4">Database Key (Slug)</th>
@@ -685,17 +685,17 @@ export const SuperFieldsManagerView: React.FC = () => {
                 <th className="py-3.5 px-5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
+            <tbody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, idx) => (
-                  <tr key={idx} className="animate-pulse">
-                    <td className="py-4 px-5"><div className="h-4 w-32 bg-slate-800 rounded" /></td>
-                    <td className="py-4 px-4"><div className="h-4 w-20 bg-slate-800 rounded" /></td>
-                    <td className="py-4 px-4"><div className="h-4 w-28 bg-slate-800 rounded" /></td>
-                    <td className="py-4 px-4"><div className="h-4 w-16 bg-slate-800 rounded" /></td>
-                    <td className="py-4 px-4 text-center"><div className="h-5 w-20 bg-slate-800 rounded-full mx-auto" /></td>
-                    <td className="py-4 px-4 text-center"><div className="h-4 w-12 bg-slate-800 rounded mx-auto" /></td>
-                    <td className="py-4 px-5 text-right"><div className="h-6 w-14 bg-slate-800 rounded ml-auto" /></td>
+                  <tr key={idx} className="animate-pulse border-b border-slate-100">
+                    <td className="py-4 px-5"><div className="h-4 w-32 bg-slate-100 rounded" /></td>
+                    <td className="py-4 px-4"><div className="h-4 w-20 bg-slate-100 rounded" /></td>
+                    <td className="py-4 px-4"><div className="h-4 w-28 bg-slate-100 rounded" /></td>
+                    <td className="py-4 px-4"><div className="h-4 w-16 bg-slate-100 rounded" /></td>
+                    <td className="py-4 px-4 text-center"><div className="h-5 w-20 bg-slate-100 rounded-full mx-auto" /></td>
+                    <td className="py-4 px-4 text-center"><div className="h-4 w-12 bg-slate-100 rounded mx-auto" /></td>
+                    <td className="py-4 px-5 text-right"><div className="h-6 w-14 bg-slate-100 rounded ml-auto" /></td>
                   </tr>
                 ))
               ) : filteredFields.length === 0 ? (
@@ -726,16 +726,16 @@ export const SuperFieldsManagerView: React.FC = () => {
                 filteredFields.map((f) => {
                   const meta = SUPER_FIELD_TYPES.find(t => t.value === f.field_type) || SUPER_FIELD_TYPES[0];
                   return (
-                    <tr key={f.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-3.5 px-5 font-semibold text-slate-100 flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-slate-800 text-slate-300">
+                    <tr key={f.id} className="hover:bg-slate-50 transition border-b border-slate-100">
+                      <td className="py-3.5 px-5 font-semibold text-slate-900 flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-slate-100 text-slate-600">
                           {meta.icon}
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-slate-100">{f.name}</span>
+                            <span className="font-bold text-slate-900">{f.name}</span>
                             {f.validation_regex && (
-                              <span title={`Validated by regex: ${f.validation_regex}`} className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/60">
+                              <span title={`Validated by regex: ${f.validation_regex}`} className="text-[10px] font-mono text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200">
                                 regex
                               </span>
                             )}
@@ -750,9 +750,9 @@ export const SuperFieldsManagerView: React.FC = () => {
                           {f.field_type}
                         </Badge>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-400">{f.slug}</td>
+                      <td className="py-3.5 px-4 font-mono text-slate-500">{f.slug}</td>
                       <td className="py-3.5 px-4">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-medium">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
                           {f.group_name || 'General'}
                         </span>
                       </td>
@@ -761,13 +761,13 @@ export const SuperFieldsManagerView: React.FC = () => {
                           type="button"
                           onClick={() => handleTogglePromote(f)}
                           title={f.is_promoted ? 'Click to demote to JSONB' : 'Click to promote to fast indexed B-Tree column'}
-                          className={`px-3 py-1 rounded-full text-[10px] font-black transition inline-flex items-center gap-1.5 cursor-pointer ${
+                          className={`px-3 py-1 rounded-full text-[10px] font-black transition inline-flex items-center gap-1.5 cursor-pointer border ${
                             f.is_promoted
-                              ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/80 hover:bg-emerald-900/60'
-                              : 'bg-slate-800/80 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-slate-200'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                              : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200 hover:text-slate-700'
                           }`}
                         >
-                          <Zap className={`w-3 h-3 ${f.is_promoted ? 'text-emerald-400' : 'text-slate-500'}`} />
+                          <Zap className={`w-3 h-3 ${f.is_promoted ? 'text-emerald-500' : 'text-slate-400'}`} />
                           {f.is_promoted ? 'Indexed Column' : 'JSONB Attribute'}
                         </button>
                       </td>
@@ -775,7 +775,7 @@ export const SuperFieldsManagerView: React.FC = () => {
                         {f.is_required ? (
                           <Badge variant="rose" size="xs">Required</Badge>
                         ) : (
-                          <span className="text-slate-500 text-[11px]">Optional</span>
+                          <span className="text-slate-400 text-[11px]">Optional</span>
                         )}
                       </td>
                       <td className="py-3.5 px-5 text-right">
@@ -783,7 +783,7 @@ export const SuperFieldsManagerView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(f)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-300 rounded-lg hover:bg-slate-800 transition"
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition"
                             title="Edit Field"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -791,7 +791,7 @@ export const SuperFieldsManagerView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleDelete(f)}
-                            className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition"
+                            className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition"
                             title="Delete Field"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -822,7 +822,7 @@ export const SuperFieldsManagerView: React.FC = () => {
             <div className="lg:col-span-7 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                     Field Name <span className="text-rose-500">*</span>
                   </label>
                   <input
@@ -835,12 +835,12 @@ export const SuperFieldsManagerView: React.FC = () => {
                       }
                     }}
                     placeholder="e.g. Budget Amount"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-medium"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 font-medium"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                     Database Key (Slug)
                   </label>
                   <input
@@ -848,14 +848,14 @@ export const SuperFieldsManagerView: React.FC = () => {
                     value={slug}
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g. budget_amount"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-indigo-300 font-mono focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-indigo-700 font-mono focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>
               </div>
 
               {/* Description */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                   Field Description / Helper Text
                 </label>
                 <input
@@ -863,16 +863,16 @@ export const SuperFieldsManagerView: React.FC = () => {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Optional explanatory note displayed below the input"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
 
               {/* 20 Field Types Selector with Visual Category Groups */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                   Field Type (20 Supported)
                 </label>
-                <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1 border border-slate-800 rounded-xl bg-slate-950">
+                <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1 border border-slate-200 rounded-xl bg-slate-50">
                   {SUPER_FIELD_TYPES.map((t) => {
                     const isSelected = fieldType === t.value;
                     return (
@@ -885,14 +885,14 @@ export const SuperFieldsManagerView: React.FC = () => {
                         }}
                         className={`text-left p-2 rounded-lg border transition flex items-start gap-2 ${
                           isSelected
-                            ? 'bg-indigo-950/80 border-indigo-500 text-indigo-200 shadow-sm'
-                            : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                            ? 'bg-indigo-50 border-indigo-400 text-indigo-800 shadow-sm'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-800 hover:border-slate-300'
                         }`}
                       >
                         <div className="mt-0.5 shrink-0">{t.icon}</div>
                         <div className="min-w-0">
                           <div className="font-bold text-xs truncate">{t.label}</div>
-                          <div className="text-[10px] text-slate-500 truncate">{t.category}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{t.category}</div>
                         </div>
                       </button>
                     );
@@ -902,8 +902,8 @@ export const SuperFieldsManagerView: React.FC = () => {
 
               {/* Dropdown / Multi-Select Options */}
               {(fieldType === 'dropdown' || fieldType === 'multi_select') && (
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     Options (Comma-separated)
                   </label>
                   <input
@@ -911,9 +911,9 @@ export const SuperFieldsManagerView: React.FC = () => {
                     value={optionsStr}
                     onChange={(e) => setOptionsStr(e.target.value)}
                     placeholder="e.g. Lead, In Review, Negotiation, Closed Won, Lost"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                   />
-                  <p className="text-[10px] text-slate-500">
+                  <p className="text-[10px] text-slate-400">
                     Separate each selectable choice with a comma. They will appear in the dropdown menu.
                   </p>
                 </div>
@@ -921,10 +921,10 @@ export const SuperFieldsManagerView: React.FC = () => {
 
               {/* Formula Editor with Token Inserters & Dynamic Tax */}
               {fieldType === 'formula' && (
-                <div className="p-4 bg-indigo-950/40 border border-indigo-800/80 rounded-2xl space-y-3">
+                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
-                      <Calculator className="w-4 h-4 text-emerald-400" />
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700">
+                      <Calculator className="w-4 h-4 text-emerald-500" />
                       <span>Formula Expression (Dynamic Math)</span>
                     </div>
                     <Badge variant="emerald" size="xs">Dynamic Tax Supported</Badge>
@@ -935,12 +935,12 @@ export const SuperFieldsManagerView: React.FC = () => {
                     value={formulaExpr}
                     onChange={(e) => setFormulaExpr(e.target.value)}
                     placeholder="e.g. {deal_value} * (1 + {tax_rate})"
-                    className="w-full bg-slate-950 border border-indigo-700/60 rounded-xl px-3 py-2.5 font-mono text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 shadow-inner"
+                    className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2.5 font-mono text-xs text-indigo-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
                   />
 
                   {/* Token Pills for 1-Click Insertion */}
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
                       Click Token to Insert:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
@@ -950,7 +950,7 @@ export const SuperFieldsManagerView: React.FC = () => {
                           type="button"
                           onClick={() => handleInsertToken(token)}
                           title={desc}
-                          className="px-2 py-1 rounded bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/50 font-mono text-[10px] transition"
+                          className="px-2 py-1 rounded bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-mono text-[10px] transition"
                         >
                           + {token}
                         </button>
@@ -959,14 +959,14 @@ export const SuperFieldsManagerView: React.FC = () => {
                   </div>
 
                   {/* Sandbox Tester */}
-                  <div className="pt-2 border-t border-indigo-900/50 space-y-2">
+                  <div className="pt-2 border-t border-indigo-200 space-y-2">
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-slate-300">Sandbox Context (JSON)</span>
+                      <span className="font-bold text-slate-700">Sandbox Context (JSON)</span>
                       <Button
                         variant="secondary"
                         size="xs"
                         loading={testingFormula}
-                        icon={<Play className="w-3 h-3 text-emerald-400" />}
+                        icon={<Play className="w-3 h-3 text-emerald-500" />}
                         onClick={handleTestFormula}
                       >
                         Run Test
@@ -976,17 +976,17 @@ export const SuperFieldsManagerView: React.FC = () => {
                       rows={3}
                       value={testContext}
                       onChange={(e) => setTestContext(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 font-mono text-[11px] text-slate-300 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-[11px] text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                     />
 
                     {testResult !== null && (
-                      <div className="p-2.5 bg-emerald-950/70 border border-emerald-800 rounded-lg text-xs font-mono text-emerald-200 flex items-center justify-between">
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-mono text-emerald-700 flex items-center justify-between">
                         <span>Calculated Result:</span>
-                        <strong className="text-emerald-400 font-bold">{String(testResult)}</strong>
+                        <strong className="text-emerald-700 font-bold">{String(testResult)}</strong>
                       </div>
                     )}
                     {testError && (
-                      <div className="p-2.5 bg-rose-950/70 border border-rose-800 rounded-lg text-xs font-mono text-rose-300">
+                      <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs font-mono text-rose-600">
                         {testError}
                       </div>
                     )}
@@ -997,7 +997,7 @@ export const SuperFieldsManagerView: React.FC = () => {
               {/* Group & Regex Validation */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                     Group / Section
                   </label>
                   <input
@@ -1005,12 +1005,12 @@ export const SuperFieldsManagerView: React.FC = () => {
                     value={groupName}
                     onChange={(e) => setGroupName(e.target.value)}
                     placeholder="General, Financials, Outreach"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                     Regex Pattern Validation
                   </label>
                   <input
@@ -1018,14 +1018,14 @@ export const SuperFieldsManagerView: React.FC = () => {
                     value={regex}
                     onChange={(e) => setRegex(e.target.value)}
                     placeholder="e.g. ^\+[0-9]{10,14}$"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-cyan-700 font-mono focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>
               </div>
 
               {/* Quick Regex Presets */}
               <div className="space-y-1">
-                <span className="text-[10px] text-slate-500 font-medium">Quick Regex Presets:</span>
+                <span className="text-[10px] text-slate-400 font-medium">Quick Regex Presets:</span>
                 <div className="flex flex-wrap gap-1.5">
                   {REGEX_PRESETS.map((p) => (
                     <button
@@ -1033,7 +1033,7 @@ export const SuperFieldsManagerView: React.FC = () => {
                       type="button"
                       onClick={() => setRegex(p.regex)}
                       title={p.tip}
-                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-medium border border-slate-700 transition"
+                      className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[10px] font-medium border border-slate-300 transition"
                     >
                       {p.label}
                     </button>
@@ -1042,7 +1042,7 @@ export const SuperFieldsManagerView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setRegex('')}
-                      className="px-2 py-0.5 bg-rose-950/60 hover:bg-rose-900 text-rose-300 rounded text-[10px] font-medium border border-rose-800 transition"
+                      className="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded text-[10px] font-medium border border-rose-200 transition"
                     >
                       Clear
                     </button>
@@ -1051,37 +1051,37 @@ export const SuperFieldsManagerView: React.FC = () => {
               </div>
 
               {/* Checkboxes: Required & Promoted Index */}
-              <div className="pt-3 border-t border-slate-800 space-y-3">
-                <label className="flex items-start gap-3 p-3 bg-slate-950/60 border border-slate-800 rounded-xl cursor-pointer hover:bg-slate-900 transition">
+              <div className="pt-3 border-t border-slate-200 space-y-3">
+                <label className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100 transition">
                   <input
                     type="checkbox"
                     checked={isRequired}
                     onChange={(e) => setIsRequired(e.target.checked)}
-                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700 w-4 h-4"
+                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 bg-white border-slate-300 w-4 h-4"
                   />
                   <div>
-                    <span className="text-xs font-bold text-slate-200 block">Required Field</span>
+                    <span className="text-xs font-bold text-slate-800 block">Required Field</span>
                     <span className="text-[11px] text-slate-500">
                       Contacts cannot be created or updated without a valid value for this field.
                     </span>
                   </div>
                 </label>
 
-                <label className="flex items-start gap-3 p-3 bg-emerald-950/20 border border-emerald-800/40 rounded-xl cursor-pointer hover:bg-emerald-950/40 transition">
+                <label className="flex items-start gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100 transition">
                   <input
                     type="checkbox"
                     checked={isPromoted}
                     onChange={(e) => setIsPromoted(e.target.checked)}
-                    className="mt-0.5 rounded text-emerald-500 focus:ring-emerald-500 bg-slate-900 border-emerald-700 w-4 h-4"
+                    className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 bg-white border-emerald-300 w-4 h-4"
                   />
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="text-xs font-bold text-emerald-200">
+                      <Zap className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-xs font-bold text-emerald-700">
                         Fast Promoted Column Index (100M+ Performance)
                       </span>
                     </div>
-                    <span className="text-[11px] text-emerald-400/80">
+                    <span className="text-[11px] text-emerald-600">
                       Promotes this attribute from raw JSONB to a dedicated B-Tree indexed database column for instant sorting, filtering, and segmenting across millions of rows with zero downtime.
                     </span>
                   </div>
@@ -1091,11 +1091,11 @@ export const SuperFieldsManagerView: React.FC = () => {
 
             {/* Right Column: Live Interactive Field Preview Card (5 cols) */}
             <div className="lg:col-span-5 space-y-4">
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 sticky top-4 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 sticky top-4 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
-                    <Eye className="w-4 h-4 text-indigo-400" />
-                    <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                    <Eye className="w-4 h-4 text-indigo-500" />
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                       Live Field Preview
                     </span>
                   </div>
@@ -1106,16 +1106,16 @@ export const SuperFieldsManagerView: React.FC = () => {
 
                 {/* Form Input Appearance Preview */}
                 <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Contact Detail View Preview
                   </span>
-                  <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-2 shadow-inner">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-200 flex items-center gap-1">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
                         {name || 'Field Label'}
                         {isRequired && <span className="text-rose-500 font-bold">*</span>}
                       </label>
-                      <span className="text-[10px] font-mono text-slate-500">{slug || 'field_slug'}</span>
+                      <span className="text-[10px] font-mono text-slate-400">{slug || 'field_slug'}</span>
                     </div>
 
                     {/* Preview based on type */}
@@ -1128,13 +1128,13 @@ export const SuperFieldsManagerView: React.FC = () => {
                           setPreviewTouched(true);
                         }}
                         placeholder={currentTypeMeta.samplePlaceholder}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                       />
                     ) : fieldType === 'dropdown' ? (
                       <select
                         value={previewValue}
                         onChange={(e) => setPreviewValue(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
                       >
                         <option value="">{currentTypeMeta.samplePlaceholder}</option>
                         {(optionsStr ? optionsStr.split(',') : ['Option A', 'Option B', 'Option C']).map((opt, i) => (
@@ -1147,9 +1147,9 @@ export const SuperFieldsManagerView: React.FC = () => {
                           type="checkbox"
                           checked={Boolean(previewValue)}
                           onChange={(e) => setPreviewValue(e.target.checked)}
-                          className="rounded text-indigo-600 focus:ring-indigo-500 bg-slate-950 border-slate-700 w-4 h-4"
+                          className="rounded text-indigo-600 focus:ring-indigo-500 bg-white border-slate-300 w-4 h-4"
                         />
-                        <span className="text-xs text-slate-300">Enable / True</span>
+                        <span className="text-xs text-slate-700">Enable / True</span>
                       </label>
                     ) : fieldType === 'rating' ? (
                       <div className="flex items-center gap-1 py-1">
@@ -1159,7 +1159,7 @@ export const SuperFieldsManagerView: React.FC = () => {
                             className={`w-5 h-5 cursor-pointer transition ${
                               star <= (Number(previewValue) || 4)
                                 ? 'text-amber-400 fill-amber-400'
-                                : 'text-slate-700'
+                                : 'text-slate-300'
                             }`}
                             onClick={() => setPreviewValue(star)}
                           />
@@ -1175,7 +1175,7 @@ export const SuperFieldsManagerView: React.FC = () => {
                             setPreviewTouched(true);
                           }}
                           placeholder={currentTypeMeta.samplePlaceholder}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                         />
                         {currentTypeMeta.icon && (
                           <div className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-70">
@@ -1186,12 +1186,12 @@ export const SuperFieldsManagerView: React.FC = () => {
                     )}
 
                     {description && (
-                      <p className="text-[11px] text-slate-500">{description}</p>
+                      <p className="text-[11px] text-slate-400">{description}</p>
                     )}
 
                     {/* Regex error feedback preview */}
                     {regex && previewTouched && !isPreviewValid && (
-                      <p className="text-[11px] text-rose-400 flex items-center gap-1 pt-1">
+                      <p className="text-[11px] text-rose-500 flex items-center gap-1 pt-1">
                         <AlertCircle className="w-3.5 h-3.5" /> Does not match validation pattern: {regex}
                       </p>
                     )}
@@ -1200,12 +1200,12 @@ export const SuperFieldsManagerView: React.FC = () => {
 
                 {/* Table Cell Appearance Preview */}
                 <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Contacts Table Column Preview
                   </span>
-                  <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-                    <span className="text-slate-400 font-semibold">{name || 'Field'}</span>
-                    <span className="font-mono text-slate-200 font-medium">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                    <span className="text-slate-500 font-semibold">{name || 'Field'}</span>
+                    <span className="font-mono text-slate-800 font-medium">
                       {String(previewValue || currentTypeMeta.defaultVal || '—')}
                     </span>
                   </div>
@@ -1213,16 +1213,16 @@ export const SuperFieldsManagerView: React.FC = () => {
 
                 {/* Kanban Card Appearance Preview */}
                 <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Kanban Card Pill Preview
                   </span>
-                  <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
-                    <div className="text-xs font-bold text-slate-200">Alex Morgan — VP Marketing</div>
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <div className="text-xs font-bold text-slate-800">Alex Morgan — VP Marketing</div>
                     <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-indigo-950/80 text-indigo-300 border border-indigo-800/80 font-mono text-[10px] font-bold flex items-center gap-1">
+                      <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[10px] font-bold flex items-center gap-1">
                         {currentTypeMeta.icon}
                         <span>{name || 'Custom Field'}:</span>
-                        <strong className="text-white">{String(previewValue || currentTypeMeta.defaultVal)}</strong>
+                        <strong className="text-indigo-900">{String(previewValue || currentTypeMeta.defaultVal)}</strong>
                       </span>
                     </div>
                   </div>
@@ -1232,7 +1232,7 @@ export const SuperFieldsManagerView: React.FC = () => {
           </div>
 
           {/* Drawer Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <Button
               variant="outline"
               size="md"

@@ -75,7 +75,7 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
 
   // Load available extraction jobs
   useEffect(() => {
-    api.extractionJobs.list(50).then((jList) => setJobs(jList || [])).catch(() => {});
+    api.extractionJobs.list(50).then((jList) => setJobs(jList || [])).catch(() => { });
   }, []);
 
   const fetchLeads = useCallback(async (page: number = currentPage, silent: boolean = false) => {
@@ -364,20 +364,18 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
           <button
             key={tab.id}
             onClick={() => setSelectedStatus(tab.id)}
-            className={`px-3 py-2 text-xs font-bold rounded-t-xl transition whitespace-nowrap flex items-center gap-1.5 border-b-2 ${
-              selectedStatus === tab.id
+            className={`px-3 py-2 text-xs font-bold rounded-t-xl transition whitespace-nowrap flex items-center gap-1.5 border-b-2 ${selectedStatus === tab.id
                 ? 'border-emerald-600 text-emerald-700 bg-white shadow-sm'
                 : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-            }`}
+              }`}
           >
             {tab.label}
             {tab.count !== undefined && (
               <span
-                className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                  selectedStatus === tab.id
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${selectedStatus === tab.id
                     ? 'bg-emerald-100 text-emerald-800'
                     : 'bg-slate-100 text-slate-600'
-                }`}
+                  }`}
               >
                 {tab.count}
               </span>
@@ -433,11 +431,10 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
             {/* Live Stream Monitor */}
             <button
               onClick={() => setLiveMonitor(!liveMonitor)}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border ${
-                liveMonitor
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border ${liveMonitor
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
                   : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
-              }`}
+                }`}
               title={liveMonitor ? 'Live Stream Active (Auto-updating leads)' : 'Live Stream Paused'}
             >
               <span className={`w-2 h-2 rounded-full ${liveMonitor ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
@@ -447,11 +444,10 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
             {user?.role === 'admin' && (
               <button
                 onClick={() => setShowAllUsers(!showAllUsers)}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1 border ${
-                  showAllUsers
+                className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1 border ${showAllUsers
                     ? 'bg-amber-50 text-amber-800 border-amber-300 font-bold'
                     : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                }`}
+                  }`}
                 title="Admin View: Show leads across all users"
               >
                 <Users className="w-3.5 h-3.5" /> All Users
@@ -460,22 +456,20 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
 
             <button
               onClick={() => setFilterHasPhone(!filterHasPhone)}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1 border ${
-                filterHasPhone
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1 border ${filterHasPhone
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
                   : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
+                }`}
             >
               <Phone className="w-3.5 h-3.5" /> Has Phone
             </button>
 
             <button
               onClick={() => setFilterHasEmail(!filterHasEmail)}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1 border ${
-                filterHasEmail
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1 border ${filterHasEmail
                   ? 'bg-blue-50 text-blue-700 border-blue-300'
                   : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
+                }`}
             >
               <Mail className="w-3.5 h-3.5" /> Has Email
             </button>
@@ -613,9 +607,8 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
                   return (
                     <tr
                       key={lead.id}
-                      className={`hover:bg-slate-50/80 transition cursor-pointer ${
-                        isChecked ? 'bg-emerald-50/30' : ''
-                      }`}
+                      className={`hover:bg-slate-50/80 transition cursor-pointer ${isChecked ? 'bg-emerald-50/30' : ''
+                        }`}
                       onClick={() => handleOpenLeadDetails(lead.id)}
                     >
                       {/* Checkbox */}
@@ -724,19 +717,18 @@ export const LeadsDashboardView: React.FC<LeadsDashboardViewProps> = ({
                       {/* Status */}
                       <td className="py-3.5 px-4">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                            lead.status === 'new'
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${lead.status === 'new'
                               ? 'bg-blue-50 text-blue-700 border border-blue-200'
                               : lead.status === 'contacted'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : lead.status === 'qualified'
-                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                              : lead.status === 'interested'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : lead.status === 'converted'
-                              ? 'bg-teal-50 text-teal-800 border border-teal-200'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : lead.status === 'qualified'
+                                  ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                  : lead.status === 'interested'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : lead.status === 'converted'
+                                      ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                                      : 'bg-slate-100 text-slate-600'
+                            }`}
                         >
                           {lead.status}
                         </span>

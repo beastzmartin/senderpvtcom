@@ -106,22 +106,22 @@ export const CardLayoutDesignerModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+        <div className="p-6 bg-white border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-600 rounded-2xl">
-              <Layout className="w-5 h-5 text-white" />
+            <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-2xl">
+              <Layout className="w-5 h-5 text-indigo-600" />
             </div>
             <div>
-              <h2 className="text-lg font-black tracking-tight">Card Layout Designer</h2>
-              <p className="text-xs text-slate-400">Configure visual appearance for cards on "{boardName}"</p>
+              <h2 className="text-lg font-black text-slate-900 tracking-tight">Card Layout Designer</h2>
+              <p className="text-xs text-slate-500">Configure visual appearance for cards on "{boardName}"</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+            className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition"
           >
             <X className="w-5 h-5" />
           </button>

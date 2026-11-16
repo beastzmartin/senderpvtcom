@@ -98,7 +98,11 @@ export const AdminBillingCenter: React.FC = () => {
         setGraceDays(String(s.grace_period_days ?? 3));
         setMinReserve(String(s.minimum_wallet_reserve_usd ?? 0.0));
         setAutoPause(s.auto_pause_on_expiry !== false);
-        setRetrySchedule(Array.isArray(s.retry_schedule_days) ? s.retry_schedule_days.join(', ') : '1, 3, 5');
+        setRetrySchedule(
+          Array.isArray(s.renewal_retry_schedule_days)
+            ? s.renewal_retry_schedule_days.join(', ')
+            : '1, 3, 5'
+        );
         setOverflowPolicy(s.quota_overflow_policy || 'partial_accept');
       }
     } catch (err) {
@@ -108,48 +112,18 @@ export const AdminBillingCenter: React.FC = () => {
     }
   };
 
-  const handleSaveSettings = async () => {
-    setIsSavingSettings(true);
-    try {
-      const retryDaysArray = retrySchedule
-        .split(',')
-        .map((s) => parseInt(s.trim(), 10))
-        .filter((n) => !isNaN(n));
-
-      const res = await crmApi.updateBillingSettings({
-        gst_vat_rate_percent: parseFloat(taxPercent) || 18.0,
-        company_gstin: companyGstin,
-        company_legal_name: companyName,
-        invoice_footer: invoiceFooter,
-        grace_period_days: parseInt(graceDays, 10) || 3,
-        minimum_wallet_reserve_usd: parseFloat(minReserve) || 0.0,
-        auto_pause_on_expiry: autoPause,
-        retry_schedule_days: retryDaysArray,
-        quota_overflow_policy: overflowPolicy
-      });
-      if (res && res.success) {
-        alert('Billing configuration saved successfully!');
-        loadAdminData();
-      }
-    } catch (err: any) {
-      alert(`Error saving settings: ${err.message}`);
-    } finally {
-      setIsSavingSettings(false);
-    }
-  };
-
-  const handleOpenPlanModal = (p?: any) => {
-    if (p) {
-      setEditingPlan(p);
-      setPlanName(p.name);
-      setPlanSlug(p.slug);
-      setPlanDescription(p.description || '');
-      setPlanPrice(String(p.price_usd));
-      setPlanContacts(String(p.quota_contacts));
-      setPlanBoards(String(p.quota_boards));
-      setPlanSuperFields(String(p.quota_super_fields));
-      setPlanTags(String(p.quota_tags));
-      setPlanDuration(String(p.duration_days || 30));
+  const handleOpenPlanModal = (plan?: any) => {
+    if (plan) {
+      setEditingPlan(plan);
+      setPlanName(plan.name);
+      setPlanSlug(plan.slug);
+      setPlanDescription(plan.description || '');
+      setPlanPrice(String(plan.price_usd));
+      setPlanContacts(String(plan.quota_contacts));
+      setPlanBoards(String(plan.quota_boards));
+      setPlanSuperFields(String(plan.quota_super_fields));
+      setPlanTags(String(plan.quota_tags));
+      setPlanDuration(String(plan.duration_days));
     } else {
       setEditingPlan(null);
       setPlanName('');
@@ -157,7 +131,7 @@ export const AdminBillingCenter: React.FC = () => {
       setPlanDescription('');
       setPlanPrice('49.0');
       setPlanContacts('25000');
-      setPlanBoards('25');
+      setPlanBoards('20');
       setPlanSuperFields('100');
       setPlanTags('200');
       setPlanDuration('30');
@@ -166,35 +140,60 @@ export const AdminBillingCenter: React.FC = () => {
   };
 
   const handleSavePlan = async () => {
-    if (!planName.trim() || !planSlug.trim()) {
-      alert('Plan Name and Slug are required.');
-      return;
-    }
-
+    if (!planName.trim()) return;
     setIsSavingPlan(true);
     try {
-      const res = await crmApi.saveBillingPlan({
-        id: editingPlan?.id,
+      const payload = {
         name: planName.trim(),
-        slug: planSlug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
+        slug: planSlug.trim() || planName.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
         description: planDescription.trim(),
         price_usd: parseFloat(planPrice) || 0,
+        quota_contacts: parseInt(planContacts, 10) || 1000,
+        quota_boards: parseInt(planBoards, 10) || 1,
+        quota_super_fields: parseInt(planSuperFields, 10) || 10,
+        quota_tags: parseInt(planTags, 10) || 20,
         duration_days: parseInt(planDuration, 10) || 30,
-        quota_contacts: parseInt(planContacts, 10),
-        quota_boards: parseInt(planBoards, 10),
-        quota_super_fields: parseInt(planSuperFields, 10),
-        quota_tags: parseInt(planTags, 10),
         is_active: true
-      });
+      };
 
-      if (res && res.success) {
-        setIsPlanModalOpen(false);
-        loadAdminData();
-      }
+      await crmApi.saveBillingPlan({
+        ...(editingPlan ? { id: editingPlan.id } : {}),
+        ...payload
+      });
+      setIsPlanModalOpen(false);
+      loadAdminData();
     } catch (err: any) {
       alert(`Error saving plan: ${err.message}`);
     } finally {
       setIsSavingPlan(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setIsSavingSettings(true);
+    try {
+      const scheduleArray = retrySchedule
+        .split(',')
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !isNaN(n));
+
+      await crmApi.updateBillingSettings({
+        gst_vat_rate_percent: parseFloat(taxPercent) || 18.0,
+        company_gstin: companyGstin.trim(),
+        company_legal_name: companyName.trim(),
+        invoice_footer: invoiceFooter.trim(),
+        grace_period_days: parseInt(graceDays, 10) || 3,
+        minimum_wallet_reserve_usd: parseFloat(minReserve) || 0.0,
+        auto_pause_on_expiry: autoPause,
+        renewal_retry_schedule_days: scheduleArray,
+        quota_overflow_policy: overflowPolicy
+      });
+      alert('Billing & Tax Settings saved successfully.');
+      loadAdminData();
+    } catch (err: any) {
+      alert(`Error saving settings: ${err.message}`);
+    } finally {
+      setIsSavingSettings(false);
     }
   };
 
@@ -203,7 +202,6 @@ export const AdminBillingCenter: React.FC = () => {
       alert('Workspace ID, Target Plan, and Mandatory Audit Reason are required.');
       return;
     }
-
     setIsGranting(true);
     try {
       const res = await crmApi.grantComplimentaryPlan({
@@ -212,22 +210,22 @@ export const AdminBillingCenter: React.FC = () => {
         duration_days: parseInt(grantDuration, 10) || 30,
         reason: grantReason.trim()
       });
-
-      if (res && res.success) {
-        alert(`Complimentary grant applied successfully!\n$0 Invoice: ${res.invoice?.invoice_number}`);
-        setIsGrantModalOpen(false);
-        setGrantReason('');
-        loadAdminData();
-      }
+      alert(`Complimentary Plan granted! $0 Audited Invoice #${res.invoice?.invoice_number || 'Generated'} created.`);
+      setIsGrantModalOpen(false);
+      setGrantWorkspaceId('');
+      setGrantReason('');
+      loadAdminData();
     } catch (err: any) {
-      alert(`Grant failed: ${err.message}`);
+      alert(`Failed to grant complimentary plan: ${err.message}`);
     } finally {
       setIsGranting(false);
     }
   };
 
-  // Quick stats
-  const totalRevenueUsd = invoices.reduce((sum, i) => sum + (i.amount_usd || 0), 0);
+  // KPI Calculations
+  const totalRevenueUsd = invoices
+    .filter((inv) => inv.status === 'paid')
+    .reduce((acc, curr) => acc + (curr.total_paid_usd || 0), 0);
 
   if (loading) {
     return (
@@ -246,15 +244,15 @@ export const AdminBillingCenter: React.FC = () => {
   return (
     <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto animate-in fade-in duration-200">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-black text-slate-100 tracking-tight">Admin Billing Management</h1>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Admin Billing Management</h1>
             <Badge variant="rose" size="sm" dot>
               Admin Authorized
             </Badge>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Configure subscription tiers, wallet minimum reserves, tax rates, and issue complimentary grants.
           </p>
         </div>
@@ -263,7 +261,7 @@ export const AdminBillingCenter: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            icon={<Gift className="w-3.5 h-3.5 text-indigo-400" />}
+            icon={<Gift className="w-3.5 h-3.5 text-indigo-600" />}
             onClick={() => {
               if (plans.length > 0) setGrantPlanId(plans[0].id);
               setIsGrantModalOpen(true);
@@ -288,35 +286,35 @@ export const AdminBillingCenter: React.FC = () => {
           label="Total Revenue"
           value={`$${totalRevenueUsd.toFixed(2)}`}
           subtitle="All-time settled wallet charges"
-          icon={<DollarSign className="w-4 h-4 text-emerald-400" />}
+          icon={<DollarSign className="w-4 h-4 text-emerald-600" />}
           trend={{ value: 'Wallet Settled', positive: true }}
         />
         <StatCard
           label="Active Invoices"
           value={invoices.length}
           subtitle="Tax invoices issued"
-          icon={<Receipt className="w-4 h-4 text-indigo-400" />}
+          icon={<Receipt className="w-4 h-4 text-indigo-600" />}
         />
         <StatCard
           label="Catalog Tiers"
           value={plans.length}
           subtitle="Configured subscription plans"
-          icon={<Layers className="w-4 h-4 text-cyan-400" />}
+          icon={<Layers className="w-4 h-4 text-cyan-600" />}
         />
         <StatCard
           label="GST/VAT Rate"
           value={`${settings?.gst_vat_rate_percent || 18}%`}
           subtitle={`GSTIN: ${settings?.company_gstin || 'Configured'}`}
-          icon={<Percent className="w-4 h-4 text-purple-400" />}
+          icon={<Percent className="w-4 h-4 text-purple-600" />}
         />
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-800 gap-6 text-sm">
+      <div className="flex border-b border-slate-200 gap-6 text-sm">
         <button
           onClick={() => setActiveTab('plans')}
           className={`pb-3 font-semibold transition-all relative ${
-            activeTab === 'plans' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'
+            activeTab === 'plans' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Subscription Catalog ({plans.length})
@@ -324,7 +322,7 @@ export const AdminBillingCenter: React.FC = () => {
         <button
           onClick={() => setActiveTab('settings')}
           className={`pb-3 font-semibold transition-all relative ${
-            activeTab === 'settings' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'
+            activeTab === 'settings' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Billing & Tax Policies
@@ -338,47 +336,47 @@ export const AdminBillingCenter: React.FC = () => {
             {plans.map((p) => (
               <div
                 key={p.id}
-                className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between hover:border-slate-700 transition-all shadow-sm"
+                className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between hover:border-slate-300 hover:shadow-md transition-all shadow-xs"
               >
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-100 text-lg">{p.name}</span>
+                    <span className="font-bold text-slate-900 text-lg">{p.name}</span>
                     <Badge variant={p.is_active ? 'emerald' : 'slate'} size="xs">
                       {p.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </div>
-                  <p className="text-xs text-slate-400">{p.description || 'No description provided'}</p>
+                  <p className="text-xs text-slate-500">{p.description || 'No description provided'}</p>
 
                   <div className="pt-2">
-                    <div className="text-2xl font-black text-slate-100 font-mono">
+                    <div className="text-2xl font-black text-slate-900 font-mono">
                       ${p.price_usd.toFixed(2)} USD
                     </div>
                     <div className="text-[11px] text-slate-500">Duration: {p.duration_days} days · Slug: {p.slug}</div>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-800/80 space-y-1.5 text-xs text-slate-300">
+                  <div className="pt-3 border-t border-slate-100 space-y-1.5 text-xs text-slate-700">
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Contacts Quota:</span>
-                      <strong className="font-mono text-slate-200">
+                      <span className="text-slate-500">Contacts Quota:</span>
+                      <strong className="font-mono text-slate-900">
                         {p.quota_contacts === -1 ? 'Unlimited' : p.quota_contacts.toLocaleString()}
                       </strong>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Boards Quota:</span>
-                      <strong className="font-mono text-slate-200">{p.quota_boards}</strong>
+                      <span className="text-slate-500">Boards Quota:</span>
+                      <strong className="font-mono text-slate-900">{p.quota_boards}</strong>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Super Fields:</span>
-                      <strong className="font-mono text-slate-200">{p.quota_super_fields}</strong>
+                      <span className="text-slate-500">Super Fields:</span>
+                      <strong className="font-mono text-slate-900">{p.quota_super_fields}</strong>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Tags & Rules:</span>
-                      <strong className="font-mono text-slate-200">{p.quota_tags}</strong>
+                      <span className="text-slate-500">Tags & Rules:</span>
+                      <strong className="font-mono text-slate-900">{p.quota_tags}</strong>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-800 flex gap-2">
+                <div className="mt-6 pt-4 border-t border-slate-100 flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -397,10 +395,10 @@ export const AdminBillingCenter: React.FC = () => {
 
       {/* TAB 2: Billing & Tax Policies */}
       {activeTab === 'settings' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-3xl space-y-6">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-3xl space-y-6 shadow-xs">
           <div>
-            <h3 className="text-base font-bold text-slate-100">Tax & Invoicing Settings</h3>
-            <p className="text-xs text-slate-400 mt-0.5">These parameters are used to calculate invoices and receipts server-side.</p>
+            <h3 className="text-base font-bold text-slate-900">Tax & Invoicing Settings</h3>
+            <p className="text-xs text-slate-500 mt-0.5">These parameters are used to calculate invoices and receipts server-side.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -446,66 +444,82 @@ export const AdminBillingCenter: React.FC = () => {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300">Invoice Footer Note</label>
+            <label className="text-xs font-semibold text-slate-700">Invoice Footer Note</label>
             <textarea
               rows={2}
               value={invoiceFooter}
               onChange={(e) => setInvoiceFooter(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-white border border-slate-300 rounded-lg p-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
             />
           </div>
 
-          <div className="flex items-center justify-between p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+          <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
             <div>
-              <div className="text-xs font-bold text-slate-200">Auto-Pause Features on Expiry</div>
-              <div className="text-[11px] text-slate-400">Put workspace in read-only mode if renewal fails instead of deleting data.</div>
+              <div className="text-xs font-bold text-slate-900">Auto-Pause Features on Expiry</div>
+              <div className="text-[11px] text-slate-500">Put workspace in read-only mode if renewal fails instead of deleting data.</div>
             </div>
             <input
               type="checkbox"
               checked={autoPause}
               onChange={(e) => setAutoPause(e.target.checked)}
-              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700"
+              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
             />
           </div>
 
-          <div className="flex justify-end pt-4 border-t border-slate-800">
+          <div className="flex justify-end pt-4 border-t border-slate-200">
             <Button
               variant="primary"
               size="md"
               loading={isSavingSettings}
+              icon={<Check className="w-4 h-4" />}
               onClick={handleSaveSettings}
             >
-              Save Configuration
+              Save Policy Changes
             </Button>
           </div>
         </div>
       )}
 
-      {/* MODAL: Plan Editor with Live Customer Preview */}
+      {/* ========================================================================= */}
+      {/* MODAL: Create / Edit Plan Tier */}
+      {/* ========================================================================= */}
       <Modal
         isOpen={isPlanModalOpen}
         onClose={() => setIsPlanModalOpen(false)}
-        title={editingPlan ? `Edit Tier: ${editingPlan.name}` : 'Create Subscription Tier'}
-        maxWidth="2xl"
+        title={editingPlan ? `Edit Tier: ${editingPlan.name}` : 'Create New Subscription Plan'}
+        maxWidth="lg"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Form Fields */}
           <div className="space-y-4">
             <Input
               label="Plan Display Name"
-              placeholder="e.g. Enterprise Automation"
+              placeholder="e.g. Enterprise 100M"
               value={planName}
-              onChange={(e) => setPlanName(e.target.value)}
+              onChange={(e) => {
+                setPlanName(e.target.value);
+                if (!editingPlan) {
+                  setPlanSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+                }
+              }}
             />
+
             <Input
-              label="Unique Slug"
-              placeholder="e.g. enterprise-automation"
+              label="Database Slug"
+              placeholder="e.g. enterprise_100m"
               value={planSlug}
               onChange={(e) => setPlanSlug(e.target.value)}
             />
+
+            <Input
+              label="Description"
+              placeholder="e.g. For large outbound marketing teams"
+              value={planDescription}
+              onChange={(e) => setPlanDescription(e.target.value)}
+            />
+
             <div className="grid grid-cols-2 gap-3">
               <Input
-                label="Price (USD)"
+                label="Price ($ USD)"
                 type="number"
                 step="0.01"
                 value={planPrice}
@@ -518,21 +532,22 @@ export const AdminBillingCenter: React.FC = () => {
                 onChange={(e) => setPlanDuration(e.target.value)}
               />
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <Input
-                label="Contacts Quota"
+                label="Contacts Quota (-1 for unlimited)"
                 type="number"
                 value={planContacts}
                 onChange={(e) => setPlanContacts(e.target.value)}
-                hint="-1 for unlimited"
               />
               <Input
-                label="Kanban Boards Quota"
+                label="Boards Quota"
                 type="number"
                 value={planBoards}
                 onChange={(e) => setPlanBoards(e.target.value)}
               />
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="Super Fields Quota"
@@ -551,24 +566,24 @@ export const AdminBillingCenter: React.FC = () => {
 
           {/* Live Customer Preview Card */}
           <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
-              <Eye className="w-3.5 h-3.5 text-indigo-400" /> Live Customer Preview
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <Eye className="w-3.5 h-3.5 text-indigo-600" /> Live Customer Preview
             </div>
-            <div className="bg-slate-950 border border-indigo-600/50 rounded-2xl p-5 shadow-lg relative">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-xs relative">
               <div className="space-y-3">
-                <span className="text-base font-bold text-slate-100">{planName || 'Plan Name'}</span>
-                <div className="text-2xl font-black text-slate-100 font-mono">
-                  ${parseFloat(planPrice || '0').toFixed(2)} <span className="text-xs text-slate-400 font-normal">/ mo</span>
+                <span className="text-base font-bold text-slate-900">{planName || 'Plan Name'}</span>
+                <div className="text-2xl font-black text-slate-900 font-mono">
+                  ${parseFloat(planPrice || '0').toFixed(2)} <span className="text-xs text-slate-500 font-normal">/ mo</span>
                 </div>
-                <div className="pt-3 border-t border-slate-800 space-y-1.5 text-xs text-slate-300">
+                <div className="pt-3 border-t border-slate-200 space-y-1.5 text-xs text-slate-700">
                   <div>✓ <strong>{planContacts === '-1' ? 'Unlimited' : parseInt(planContacts || '0', 10).toLocaleString()}</strong> Contacts</div>
                   <div>✓ <strong>{planBoards}</strong> Kanban Boards</div>
                   <div>✓ <strong>{planSuperFields}</strong> Super Fields</div>
                   <div>✓ <strong>{planTags}</strong> Workspace Tags</div>
                 </div>
               </div>
-              <div className="mt-6 pt-3 border-t border-slate-800">
-                <div className="w-full py-2 text-center rounded-lg bg-indigo-600 text-white font-bold text-xs">
+              <div className="mt-6 pt-3 border-t border-slate-200">
+                <div className="w-full py-2 text-center rounded-lg bg-indigo-600 text-white font-bold text-xs shadow-xs">
                   Upgrade Now
                 </div>
               </div>
@@ -576,7 +591,7 @@ export const AdminBillingCenter: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-6 mt-6 border-t border-slate-800">
+        <div className="flex justify-end gap-2 pt-6 mt-6 border-t border-slate-200">
           <Button variant="ghost" size="sm" onClick={() => setIsPlanModalOpen(false)}>
             Cancel
           </Button>
@@ -594,7 +609,7 @@ export const AdminBillingCenter: React.FC = () => {
         maxWidth="md"
       >
         <div className="space-y-4">
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-600">
             Complimentary grants bypass payment gates legally by generating an official <strong>$0 audited tax invoice</strong> logged with your Admin ID and mandatory business reason.
           </p>
 
@@ -606,11 +621,11 @@ export const AdminBillingCenter: React.FC = () => {
           />
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300">Target Plan Tier</label>
+            <label className="text-xs font-semibold text-slate-700">Target Plan Tier</label>
             <select
               value={grantPlanId}
               onChange={(e) => setGrantPlanId(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
             >
               {plans.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -628,17 +643,17 @@ export const AdminBillingCenter: React.FC = () => {
           />
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300">Mandatory Audit Reason</label>
+            <label className="text-xs font-semibold text-slate-700">Mandatory Audit Reason</label>
             <textarea
               rows={3}
               placeholder="e.g. Strategic investor partnership agreement approved by executive team"
               value={grantReason}
               onChange={(e) => setGrantReason(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
             <Button variant="ghost" size="sm" onClick={() => setIsGrantModalOpen(false)}>
               Cancel
             </Button>

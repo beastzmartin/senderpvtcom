@@ -33,7 +33,7 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseClasses =
-    'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-[0.98]';
+    'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-[0.98]';
 
   const sizeClasses = {
     xs: 'px-2 py-1 text-xs gap-1',
@@ -44,17 +44,17 @@ export const Button: React.FC<ButtonProps> = ({
 
   const variantClasses = {
     primary:
-      'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/30 focus:ring-indigo-500 border border-transparent',
+      'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-600/20 focus:ring-indigo-500 border border-transparent',
     secondary:
-      'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 focus:ring-slate-500',
+      'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 focus:ring-slate-400',
     outline:
-      'bg-transparent hover:bg-slate-800 text-slate-300 border border-slate-700 hover:border-slate-600 focus:ring-slate-500',
+      'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 focus:ring-slate-400',
     ghost:
-      'bg-transparent hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 focus:ring-slate-500 border border-transparent',
+      'bg-transparent hover:bg-slate-100 text-slate-600 focus:ring-slate-400 border border-transparent',
     danger:
-      'bg-rose-600 hover:bg-rose-500 text-white shadow-sm shadow-rose-600/30 focus:ring-rose-500 border border-transparent',
+      'bg-rose-600 hover:bg-rose-700 text-white shadow-sm shadow-rose-600/20 focus:ring-rose-500 border border-transparent',
     success:
-      'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/30 focus:ring-emerald-500 border border-transparent'
+      'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/20 focus:ring-emerald-500 border border-transparent'
   }[variant];
 
   return (
@@ -99,23 +99,23 @@ export const Badge: React.FC<BadgeProps> = ({
   }[size];
 
   const variantClasses = {
-    slate: 'bg-slate-800/80 text-slate-300 border-slate-700/60',
-    indigo: 'bg-indigo-950/60 text-indigo-300 border-indigo-800/50',
-    emerald: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50',
-    amber: 'bg-amber-950/60 text-amber-300 border-amber-800/50',
-    rose: 'bg-rose-950/60 text-rose-300 border-rose-800/50',
-    purple: 'bg-purple-950/60 text-purple-300 border-purple-800/50',
-    cyan: 'bg-cyan-950/60 text-cyan-300 border-cyan-800/50'
+    slate: 'bg-slate-100 text-slate-600 border-slate-200',
+    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    amber: 'bg-amber-50 text-amber-700 border-amber-200',
+    rose: 'bg-rose-50 text-rose-700 border-rose-200',
+    purple: 'bg-purple-50 text-purple-700 border-purple-200',
+    cyan: 'bg-cyan-50 text-cyan-700 border-cyan-200'
   }[variant];
 
   const dotColors = {
     slate: 'bg-slate-400',
-    indigo: 'bg-indigo-400',
-    emerald: 'bg-emerald-400',
-    amber: 'bg-amber-400',
-    rose: 'bg-rose-400',
-    purple: 'bg-purple-400',
-    cyan: 'bg-cyan-400'
+    indigo: 'bg-indigo-500',
+    emerald: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    rose: 'bg-rose-500',
+    purple: 'bg-purple-500',
+    cyan: 'bg-cyan-500'
   }[variant];
 
   return (
@@ -156,7 +156,7 @@ export const Input: React.FC<InputProps> = ({
   return (
     <div className="w-full space-y-1">
       {label && (
-        <label htmlFor={generatedId} className="block text-xs font-semibold text-slate-300">
+        <label htmlFor={generatedId} className="block text-xs font-semibold text-slate-700">
           {label}
         </label>
       )}
@@ -173,9 +173,9 @@ export const Input: React.FC<InputProps> = ({
         )}
         <input
           id={generatedId}
-          className={`w-full bg-slate-900/80 border ${
-            error ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-700/80 focus:border-indigo-500 focus:ring-indigo-500'
-          } rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 transition-all ${
+          className={`w-full bg-white border ${
+            error ? 'border-rose-500 focus:ring-rose-500 focus:border-rose-500' : 'border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/20'
+          } rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 transition-all ${
             icon ? 'pl-9' : prefixText ? 'pl-8' : ''
           } ${suffixText ? 'pr-12' : ''} ${className}`}
           {...props}
@@ -186,8 +186,8 @@ export const Input: React.FC<InputProps> = ({
           </span>
         )}
       </div>
-      {error && <p className="text-xs text-rose-400 font-medium">{error}</p>}
-      {!error && hint && <p className="text-[11px] text-slate-500">{hint}</p>}
+      {error && <p className="text-xs text-rose-500 font-medium">{error}</p>}
+      {!error && hint && <p className="text-[11px] text-slate-400">{hint}</p>}
     </div>
   );
 };
@@ -219,14 +219,14 @@ export const StatCard: React.FC<StatCardProps> = ({
 }) => {
   return (
     <div
-      className={`bg-slate-900/90 border border-slate-800/80 rounded-xl p-4 shadow-sm relative overflow-hidden transition-all hover:border-slate-700 ${className}`}
+      className={`bg-white border border-slate-200 shadow-sm rounded-xl p-5 relative overflow-hidden transition-all hover:border-slate-300 ${className}`}
     >
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</span>
-        {icon && <div className="text-slate-400 bg-slate-800/60 p-2 rounded-lg">{icon}</div>}
+        {icon && <div className="text-slate-500 bg-slate-100 p-2 rounded-lg">{icon}</div>}
       </div>
       <div className="mt-2 flex items-baseline gap-2">
-        <span className="text-2xl font-bold text-slate-100 tracking-tight font-mono tabular-nums">
+        <span className="text-2xl font-bold text-slate-900 tracking-tight font-mono tabular-nums">
           {value}
         </span>
         {trend && (
@@ -235,15 +235,15 @@ export const StatCard: React.FC<StatCardProps> = ({
               trend.neutral
                 ? 'text-slate-400'
                 : trend.positive
-                ? 'text-emerald-400'
-                : 'text-rose-400'
+                ? 'text-emerald-600'
+                : 'text-rose-500'
             }`}
           >
             {trend.value}
           </span>
         )}
       </div>
-      {subtitle && <p className="mt-1 text-xs text-slate-500 truncate">{subtitle}</p>}
+      {subtitle && <p className="mt-1 text-xs text-slate-400 truncate">{subtitle}</p>}
     </div>
   );
 };
@@ -288,7 +288,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
   }
 
   return (
-    <div className={`flex items-center gap-3 bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 ${className}`}>
+    <div className={`flex items-center gap-3 bg-white border border-slate-200 shadow-sm rounded-xl p-3 ${className}`}>
       <div className="relative shrink-0 flex items-center justify-center" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="transform -rotate-90">
           <circle
@@ -297,7 +297,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
             r={radius}
             stroke="currentColor"
             strokeWidth={strokeWidth}
-            className="text-slate-800"
+            className="text-slate-200"
             fill="transparent"
           />
           {!isUnlimited && (
@@ -316,14 +316,14 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
           )}
         </svg>
         <div className="absolute text-center">
-          <span className="text-xs font-bold text-slate-200 font-mono">
+          <span className="text-xs font-bold text-slate-700 font-mono">
             {isUnlimited ? '∞' : `${percentage}%`}
           </span>
         </div>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-1">
-          <span className="text-xs font-semibold text-slate-300 truncate">{label}</span>
+          <span className="text-xs font-semibold text-slate-700 truncate">{label}</span>
           {!isUnlimited && (
             <Badge variant={badgeVariant} size="xs">
               {percentage >= 100 ? 'Limit Reached' : percentage >= 80 ? 'Near Limit' : 'Healthy'}
@@ -331,7 +331,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
           )}
         </div>
         <div className="mt-1 text-xs text-slate-400 font-mono tabular-nums">
-          <strong className="text-slate-200 font-semibold">{used.toLocaleString()}</strong>
+          <strong className="text-slate-700 font-semibold">{used.toLocaleString()}</strong>
           {' / '}
           {isUnlimited ? 'Unlimited' : limit.toLocaleString()}
         </div>
@@ -374,20 +374,20 @@ export const Modal: React.FC<ModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
       <div
-        className={`relative w-full ${widthClass} bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200`}
+        className={`relative w-full ${widthClass} bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200`}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
-            <h3 className="text-base font-bold text-slate-100">{title}</h3>
-            {description && <p className="text-xs text-slate-400 mt-0.5">{description}</p>}
+            <h3 className="text-base font-bold text-slate-900">{title}</h3>
+            {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+            className="text-slate-500 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -427,20 +427,20 @@ export const Drawer: React.FC<DrawerProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
-        className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
       <div
-        className={`relative w-full ${widthClass} bg-slate-900 border-l border-slate-800 shadow-2xl h-full flex flex-col z-10 animate-in slide-in-from-right duration-250`}
+        className={`relative w-full ${widthClass} bg-white border-l border-slate-200 shadow-2xl h-full flex flex-col z-10 animate-in slide-in-from-right duration-250`}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
           <div>
-            <h3 className="text-base font-bold text-slate-100">{title}</h3>
-            {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+            <h3 className="text-base font-bold text-slate-900">{title}</h3>
+            {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+            className="text-slate-500 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -475,11 +475,11 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 }) => {
   return (
     <div
-      className={`flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 ${className}`}
+      className={`flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 ${className}`}
     >
-      {icon && <div className="text-indigo-400 bg-indigo-950/40 p-3.5 rounded-2xl mb-4 border border-indigo-800/30">{icon}</div>}
-      <h4 className="text-base font-bold text-slate-200">{title}</h4>
-      <p className="text-xs text-slate-400 max-w-sm mt-1 mb-5">{description}</p>
+      {icon && <div className="text-indigo-600 bg-indigo-50 p-3.5 rounded-2xl mb-4 border border-indigo-100">{icon}</div>}
+      <h4 className="text-base font-bold text-slate-900">{title}</h4>
+      <p className="text-xs text-slate-500 max-w-sm mt-1 mb-5">{description}</p>
       {action ? (
         action
       ) : actionText && onAction ? (
@@ -503,10 +503,10 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   onRetry
 }) => {
   return (
-    <div className="p-6 rounded-xl border border-rose-900/50 bg-rose-950/20 text-center flex flex-col items-center">
-      <AlertTriangle className="w-8 h-8 text-rose-400 mb-2" />
-      <h4 className="text-sm font-bold text-rose-300">{title}</h4>
-      <p className="text-xs text-rose-400/80 mt-1 mb-4 max-w-md">{message}</p>
+    <div className="p-6 rounded-xl border border-rose-200 bg-rose-50 text-center flex flex-col items-center">
+      <AlertTriangle className="w-8 h-8 text-rose-500 mb-2" />
+      <h4 className="text-sm font-bold text-rose-700">{title}</h4>
+      <p className="text-xs text-rose-600 mt-1 mb-4 max-w-md">{message}</p>
       {onRetry && (
         <Button variant="danger" size="sm" icon={<RotateCcw className="w-3.5 h-3.5" />} onClick={onRetry}>
           Try Again
@@ -520,5 +520,5 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
 // SKELETON LOADER
 // ============================================================================
 export const Skeleton: React.FC<{ className?: string }> = ({ className = 'h-4 w-full' }) => {
-  return <div className={`animate-pulse bg-slate-800/70 rounded-md ${className}`} />;
+  return <div className={`animate-pulse bg-slate-100 rounded-md ${className}`} />;
 };

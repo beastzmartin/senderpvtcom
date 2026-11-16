@@ -392,7 +392,7 @@ export const ContactsTableView: React.FC<ContactsTableViewProps> = ({
                 }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
                   isSelected
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-indigo-600 text-white shadow-sm'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
                 }`}
               >
@@ -405,12 +405,12 @@ export const ContactsTableView: React.FC<ContactsTableViewProps> = ({
 
       {/* Bulk Actions Floating Toolbar */}
       {selectedIds.length > 0 && (
-        <div className="bg-slate-900 text-white p-3.5 rounded-2xl shadow-2xl flex flex-wrap items-center justify-between gap-3 text-xs animate-in slide-in-from-top-2 duration-200">
+        <div className="bg-white border border-slate-200 text-slate-900 p-3.5 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3 text-xs animate-in slide-in-from-top-2 duration-200">
           <div className="flex items-center gap-3">
-            <span className="font-bold bg-indigo-600 px-3 py-1 rounded-xl">
+            <span className="font-bold bg-indigo-600 text-white px-3 py-1 rounded-xl shadow-xs">
               {selectedIds.length} Selected
             </span>
-            <span className="text-slate-400">
+            <span className="text-slate-500">
               {isAllMatchingSelected ? 'All matching contacts selected' : 'Selected on current page'}
             </span>
           </div>
@@ -420,22 +420,22 @@ export const ContactsTableView: React.FC<ContactsTableViewProps> = ({
               type="button"
               onClick={handleBulkAddToList}
               disabled={isBulkActing}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-semibold transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl font-semibold transition"
             >
-              <FolderPlus className="w-3.5 h-3.5" /> Add to List
+              <FolderPlus className="w-3.5 h-3.5 text-indigo-600" /> Add to List
             </button>
             <button
               type="button"
               onClick={handleBulkDelete}
               disabled={isBulkActing}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-semibold transition"
             >
-              <Trash2 className="w-3.5 h-3.5" /> Bulk Delete
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" /> Bulk Delete
             </button>
             <button
               type="button"
               onClick={() => setSelectedIds([])}
-              className="px-2.5 py-1.5 text-slate-400 hover:text-white font-semibold transition"
+              className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 font-semibold transition"
             >
               Deselect
             </button>
