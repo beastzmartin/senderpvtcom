@@ -288,16 +288,24 @@ export class WalletService {
 
     const db = getDatabase();
     const current = this.getOrCreateWallet(userId);
+
+    // If reservation currency differs from user wallet currency, convert to wallet currency
+    let amountToReserve = amount;
+    if (meta?.currency && meta.currency.toUpperCase() !== current.currency.toUpperCase()) {
+      amountToReserve = this.convertAmount(amount, meta.currency, current.currency);
+    }
+
     const available = Number((current.balance - current.reserved_balance).toFixed(2));
 
-    if (available < amount) {
+    if (available < amountToReserve) {
+      const sym = current.currency === 'INR' ? '₹' : current.currency === 'USD' ? '$' : current.currency;
       throw new Error(
-        `Insufficient available wallet balance. Required: ₹${amount.toFixed(2)}, Available: ₹${available.toFixed(2)}. Please top up your wallet to continue.`
+        `Insufficient available wallet balance. Required: ${sym}${amountToReserve.toFixed(2)}, Available: ${sym}${available.toFixed(2)}. Please top up your wallet to continue.`
       );
     }
 
     const reservationId = crypto.randomUUID();
-    const newReserved = Number((current.reserved_balance + amount).toFixed(2));
+    const newReserved = Number((current.reserved_balance + amountToReserve).toFixed(2));
 
     const reserveTx = db.transaction(() => {
       db.prepare(`
@@ -311,13 +319,14 @@ export class WalletService {
           id, user_id, transaction_type, amount, currency,
           previous_balance, new_balance, reference_id, description, metadata, status
         ) VALUES (
-          ?, ?, 'usage_reservation', ?, 'INR',
+          ?, ?, 'usage_reservation', ?, ?,
           ?, ?, ?, ?, ?, 'pending'
         )
       `).run(
         reservationId,
         userId,
-        amount,
+        amountToReserve,
+        current.currency,
         current.balance,
         current.balance,
         referenceId || null,
@@ -332,7 +341,7 @@ export class WalletService {
       getSocketIO()?.to(`user:${userId}`).emit('wallet:updated', {
         balance: current.balance,
         reservedBalance: newReserved,
-        availableBalance: available - amount,
+        availableBalance: available - amountToReserve,
         currency: current.currency,
         type: 'usage_reservation',
         txId: reservationId
@@ -342,7 +351,7 @@ export class WalletService {
     return {
       success: true,
       reservationId,
-      availableBalance: Number((available - amount).toFixed(2))
+      availableBalance: Number((available - amountToReserve).toFixed(2))
     };
   }
 

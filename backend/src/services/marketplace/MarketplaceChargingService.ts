@@ -27,7 +27,8 @@ export class MarketplaceChargingService {
     userId: string,
     product: ProductDefinition,
     requestedItems: number,
-    jobId: string
+    jobId: string,
+    targetCurrency?: string
   ): {
     reservationId: string;
     reservedAmount: number;
@@ -35,8 +36,12 @@ export class MarketplaceChargingService {
     providerCostConverted: number;
     currency: string;
   } {
-    const estimate = this.pricingService.calculateEstimatedPrice(product, requestedItems);
-    const description = `Data Extraction Reserve: ${product.display_name} (${requestedItems} items)`;
+    const wallet = this.walletService.getOrCreateWallet(userId);
+    const currency = (targetCurrency || wallet.currency || 'INR').toUpperCase();
+    const estimate = this.pricingService.calculateEstimatedPrice(product, requestedItems, currency);
+    const currRecord = this.pricingService.getCurrencyRecord(currency);
+    const sym = currRecord?.symbol || (currency === 'INR' ? '₹' : currency === 'USD' ? '$' : currency);
+    const description = `Data Extraction Reserve: ${product.display_name} (${requestedItems} items - ${sym}${estimate.sellPrice.toFixed(2)} ${currency})`;
 
     // Atomic hold via existing WalletService
     const reserveRes = this.walletService.reserveFunds(
@@ -47,7 +52,8 @@ export class MarketplaceChargingService {
       {
         jobId,
         productSlug: product.slug,
-        requestedItems
+        requestedItems,
+        currency
       }
     );
 

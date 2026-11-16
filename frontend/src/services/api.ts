@@ -2092,10 +2092,10 @@ export const api = {
     getProduct: (slug: string) =>
       request<{ success: boolean; product: any }>(`/marketplace/products/${slug}`),
 
-    estimatePrice: (slug: string, items: number) =>
+    estimatePrice: (slug: string, items: number, currency?: string) =>
       request<{ success: boolean; sellPrice: number; currency: string; minChargeApplied: boolean; requestedItems: number }>('/marketplace/estimate', {
         method: 'POST',
-        body: JSON.stringify({ slug, items })
+        body: JSON.stringify({ slug, items, currency })
       }),
 
     createQuote: (slug: string, requestedItems: number, currency?: string) =>
@@ -2118,10 +2118,10 @@ export const api = {
         method: 'DELETE'
       }),
 
-    createJob: (productSlug: string, inputValues: Record<string, any>, requestedItems: number) =>
+    createJob: (productSlug: string, inputValues: Record<string, any>, requestedItems: number, currency?: string) =>
       request<{ success: boolean; job: any }>('/marketplace/jobs', {
         method: 'POST',
-        body: JSON.stringify({ productSlug, inputValues, requestedItems })
+        body: JSON.stringify({ productSlug, inputValues, requestedItems, currency })
       }),
 
     listUserJobs: (params?: { status?: string; limit?: number; offset?: number }) => {

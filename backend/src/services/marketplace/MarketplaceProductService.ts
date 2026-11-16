@@ -51,7 +51,7 @@ export class MarketplaceProductService {
     return rows.map((r) => {
       const def: ProductDefinition = JSON.parse(r.definition_json);
       if (r.profile_json && !def.profile) {
-        try { def.profile = JSON.parse(r.profile_json); } catch {}
+        try { def.profile = JSON.parse(r.profile_json); } catch { }
       }
       if (r.pinned_build && !def.pinned_build) {
         def.pinned_build = r.pinned_build;
@@ -89,7 +89,7 @@ export class MarketplaceProductService {
 
     const def: ProductDefinition = JSON.parse(row.definition_json);
     if (row.profile_json && !def.profile) {
-      try { def.profile = JSON.parse(row.profile_json); } catch {}
+      try { def.profile = JSON.parse(row.profile_json); } catch { }
     }
     if (row.pinned_build && !def.pinned_build) {
       def.pinned_build = row.pinned_build;
@@ -153,7 +153,7 @@ export class MarketplaceProductService {
       try {
         const def = JSON.parse(ep.definition_json);
         if (def.provider?.actor_id) existingActorIds.add(def.provider.actor_id.toLowerCase());
-      } catch {}
+      } catch { }
     }
 
     const adapter = ProviderRegistry.getInstance().getAdapter(providerType || 'apify');
@@ -401,40 +401,40 @@ export class MarketplaceProductService {
    * Admin: Duplicate product
    */
   public duplicateProduct(sourceSlug: string): MarketplaceProductRecord {
-    const source = this.getProductBySlug(sourceSlug, true);
-    if (!source) {
-      throw new Error(`Product not found: ${sourceSlug}`);
-    }
-
-    const newSlug = `${source.slug}-copy-${Date.now().toString().slice(-4)}`;
-    const newDef: ProductDefinition = {
-      ...source.definition,
-      slug: newSlug,
-      display_name: `${source.display_name} (Copy)`,
-      status: 'draft'
-    };
-
-    return this.saveProduct(newDef);
+  const source = this.getProductBySlug(sourceSlug, true);
+  if (!source) {
+    throw new Error(`Product not found: ${sourceSlug}`);
   }
+
+  const newSlug = `${source.slug}-copy-${Date.now().toString().slice(-4)}`;
+  const newDef: ProductDefinition = {
+    ...source.definition,
+    slug: newSlug,
+    display_name: `${source.display_name} (Copy)`,
+    status: 'draft'
+  };
+
+  return this.saveProduct(newDef);
+}
 
   /**
    * Admin: Toggle product status
    */
   public setProductStatus(slug: string, status: ProductStatus): void {
-    const db = getDatabase();
-    db.prepare(`
+  const db = getDatabase();
+  db.prepare(`
       UPDATE extraction_marketplace_products
       SET status = ?, updated_at = datetime('now')
       WHERE slug = ?
     `).run(status, slug);
-  }
+}
 
   /**
    * Admin: Delete product
    */
   public deleteProduct(slug: string): void {
-    const db = getDatabase();
-    db.prepare('DELETE FROM extraction_marketplace_products WHERE slug = ?').run(slug);
-  }
+  const db = getDatabase();
+  db.prepare('DELETE FROM extraction_marketplace_products WHERE slug = ?').run(slug);
+}
 }
 

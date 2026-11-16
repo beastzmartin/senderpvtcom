@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useCurrency } from '../../context/CurrencyContext';
+import { WalletTopUpModal } from './WalletTopUpModal';
+import { UserWallet } from '../../types';
 import { AdvancedExtractionStudio } from './AdvancedExtractionStudio';
 import {
   Search,
@@ -25,7 +28,8 @@ import {
   Wallet,
   Eye,
   Sliders,
-  X
+  X,
+  Plus
 } from 'lucide-react';
 
 interface ProductItem {
@@ -65,12 +69,29 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
   onNavigateToWallet
 }) => {
   const { user } = useAuth();
+  const { currencyCode, currencySymbol, currencies, currentCurrency } = useCurrency();
   const [activeTab, setActiveTab] = useState<'catalog' | 'jobs'>('catalog');
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+
+  // Live Wallet & Currency State
+  const [wallet, setWallet] = useState<UserWallet | null>(null);
+  const [walletLoading, setWalletLoading] = useState<boolean>(false);
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+
+  // Currency conversion helpers from base catalog INR prices to user's display currency
+  const inrCurrency = useMemo(() => currencies.find((c) => c.code === 'INR'), [currencies]);
+  const inrRate = inrCurrency?.rate_from_5sim_base || 1.05;
+  const activeRate = currentCurrency?.rate_from_5sim_base || 1.05;
+
+  const convertInrToCurrent = (inrAmount: number): number => {
+    if (!inrAmount) return 0;
+    if (currencyCode === 'INR') return inrAmount;
+    return (inrAmount * activeRate) / inrRate;
+  };
 
   // Modal states
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
@@ -90,6 +111,33 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
 
   // Available categories
   const categories = ['all', 'B2B & Sales', 'E-Commerce', 'Social Media', 'Real Estate', 'Directories'];
+
+  const fetchWallet = async () => {
+    try {
+      setWalletLoading(true);
+      const w = await api.wallet.get();
+      setWallet(w);
+    } catch (err) {
+      console.warn('Failed to load wallet balance:', err);
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWallet();
+  }, [currencyCode]);
+
+  useEffect(() => {
+    const handleCurrencySwitched = () => fetchWallet();
+    const handleWalletUpdated = () => fetchWallet();
+    window.addEventListener('currency:switched', handleCurrencySwitched);
+    window.addEventListener('wallet:updated' as any, handleWalletUpdated);
+    return () => {
+      window.removeEventListener('currency:switched', handleCurrencySwitched);
+      window.removeEventListener('wallet:updated' as any, handleWalletUpdated);
+    };
+  }, []);
 
   useEffect(() => {
     loadProducts();
@@ -136,13 +184,13 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
       initialInput[f.key] = f.default !== undefined ? f.default : '';
     });
     setConfiguredInput(initialInput);
-    triggerPriceEstimate(prod.slug, defaultItems);
+    triggerPriceEstimate(prod.slug, defaultItems, currencyCode);
   };
 
-  const triggerPriceEstimate = async (slug: string, items: number) => {
+  const triggerPriceEstimate = async (slug: string, items: number, curr?: string) => {
     setEstimating(true);
     try {
-      const res = await api.dataMarketplace.estimatePrice(slug, items);
+      const res = await api.dataMarketplace.estimatePrice(slug, items, curr || currencyCode);
       if (res.success) {
         setPriceEstimate(res.sellPrice);
       }
@@ -162,13 +210,15 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
       const res = await api.dataMarketplace.createJob(
         selectedProduct.slug,
         configuredInput,
-        requestedCount
+        requestedCount,
+        currencyCode
       );
 
       if (res.success) {
         setSelectedProduct(null);
         setActiveTab('jobs');
         loadJobs();
+        fetchWallet();
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to start extraction job.');
@@ -198,6 +248,7 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
     try {
       await api.dataMarketplace.abortJob(jobId);
       loadJobs();
+      fetchWallet();
     } catch (err: any) {
       alert(err.message || 'Failed to abort job');
     }
@@ -215,11 +266,15 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
       <div className="p-6 max-w-7xl mx-auto">
         <AdvancedExtractionStudio
           product={studioProduct as any}
-          onBack={() => setStudioProduct(null)}
+          onBack={() => {
+            setStudioProduct(null);
+            fetchWallet();
+          }}
           onJobStarted={() => {
             setStudioProduct(null);
             setActiveTab('jobs');
             loadJobs();
+            fetchWallet();
           }}
         />
       </div>
@@ -244,52 +299,77 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
             Pay only for successfully extracted items with automatic reserve & settlement.
           </p>
 
-          {/* Navigation Pill Tabs */}
-          <div className="flex items-center gap-3 pt-3">
-            <button
-              onClick={() => setActiveTab('catalog')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                activeTab === 'catalog'
-                  ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
-                  : 'bg-white/10 text-white hover:bg-white/15'
-              }`}
-            >
-              <Database className="w-4 h-4" />
-              <span>Catalog Marketplace</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('jobs')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                activeTab === 'jobs'
-                  ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
-                  : 'bg-white/10 text-white hover:bg-white/15'
-              }`}
-            >
-              <Clock className="w-4 h-4" />
-              <span>My Extraction Jobs</span>
-            </button>
-
-            {onNavigateToExtensions && (
+          {/* Navigation & Wallet Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <button
-                onClick={onNavigateToExtensions}
-                className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-white/10 text-white hover:bg-white/15"
-                title="View extensions and modules store"
+                onClick={() => setActiveTab('catalog')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  activeTab === 'catalog'
+                    ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                    : 'bg-white/10 text-white hover:bg-white/15'
+                }`}
               >
-                <Layers className="w-4 h-4" />
-                <span>Extensions & Modules</span>
+                <Database className="w-4 h-4" />
+                <span>Catalog Marketplace</span>
               </button>
-            )}
-
-            {onNavigateToWallet && (
               <button
-                onClick={onNavigateToWallet}
-                className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-white/10 text-white hover:bg-white/15"
-                title="View platform wallet and balance"
+                onClick={() => setActiveTab('jobs')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  activeTab === 'jobs'
+                    ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                    : 'bg-white/10 text-white hover:bg-white/15'
+                }`}
               >
-                <Wallet className="w-4 h-4" />
-                <span>Platform Wallet</span>
+                <Clock className="w-4 h-4" />
+                <span>My Extraction Jobs</span>
               </button>
-            )}
+
+              {onNavigateToExtensions && (
+                <button
+                  onClick={onNavigateToExtensions}
+                  className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-white/10 text-white hover:bg-white/15"
+                  title="View extensions and modules store"
+                >
+                  <Layers className="w-4 h-4" />
+                  <span>Extensions & Modules</span>
+                </button>
+              )}
+
+              {onNavigateToWallet && (
+                <button
+                  onClick={onNavigateToWallet}
+                  className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-white/10 text-white hover:bg-white/15"
+                  title="View platform wallet and balance"
+                >
+                  <Wallet className="w-4 h-4" />
+                  <span>Platform Wallet</span>
+                </button>
+              )}
+            </div>
+
+            {/* Live Wallet Pill & Instant Top-Up */}
+            <div className="flex items-center gap-2.5 bg-black/40 border border-emerald-500/30 rounded-xl px-3.5 py-1.5 shadow-lg backdrop-blur-md">
+              <Wallet className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-400 font-medium leading-none">Wallet Balance</span>
+                <span className="text-xs font-extrabold text-emerald-300 mt-0.5">
+                  {walletLoading ? (
+                    <RefreshCw className="w-3 h-3 animate-spin inline text-emerald-400" />
+                  ) : (
+                    `${currencySymbol}${Number(wallet?.balance || 0).toFixed(2)} ${wallet?.currency || currencyCode}`
+                  )}
+                </span>
+              </div>
+              <button
+                onClick={() => setIsTopUpOpen(true)}
+                className="ml-1 px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-lg shadow-sm transition flex items-center gap-1"
+                title="Instant Wallet Top Up"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Top Up</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -344,8 +424,9 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProducts.map((prod) => {
                 const pricing = prod.definition?.pricing;
-                const per1000 = pricing?.sell?.per_1000_items || 0;
-                const flatRun = pricing?.sell?.per_run_flat || 0;
+                const per1000 = convertInrToCurrent(pricing?.sell?.per_1000_items || 0);
+                const flatRun = convertInrToCurrent(pricing?.sell?.per_run_flat || 0);
+                const minCharge = convertInrToCurrent(pricing?.min_charge || 5);
                 const requiresSub = prod.definition?.access?.requires_subscription;
 
                 return (
@@ -382,12 +463,12 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
                         <div>
                           <span className="text-xs text-slate-400">Pricing:</span>
                           <span className="text-sm font-bold text-slate-900 ml-1.5">
-                            {pricing?.mode === 'per_item' && `₹${per1000} / 1k results`}
-                            {pricing?.mode === 'per_run' && `₹${flatRun} / run`}
-                            {pricing?.mode === 'per_item_plus_run' && `₹${flatRun} + ₹${per1000}/1k`}
+                            {pricing?.mode === 'per_item' && `${currencySymbol}${per1000.toFixed(2)} / 1k results`}
+                            {pricing?.mode === 'per_run' && `${currencySymbol}${flatRun.toFixed(2)} / run`}
+                            {pricing?.mode === 'per_item_plus_run' && `${currencySymbol}${flatRun.toFixed(2)} + ${currencySymbol}${per1000.toFixed(2)}/1k`}
                           </span>
                         </div>
-                        <span className="text-[11px] text-emerald-600 font-semibold">Min: ₹{pricing?.min_charge || 5}</span>
+                        <span className="text-[11px] text-emerald-600 font-semibold">Min: {currencySymbol}{minCharge.toFixed(2)}</span>
                       </div>
                     </div>
 
@@ -486,10 +567,18 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
                         </td>
                         <td className="py-3 px-4">
                           <div className="font-bold text-slate-900">
-                            ₹{job.charged_amount ? Number(job.charged_amount).toFixed(2) : '0.00'}
+                            {(() => {
+                              const jobCur = currencies.find((c) => c.code === job.currency);
+                              const sym = jobCur?.symbol || (job.currency === 'USD' ? '$' : job.currency === 'EUR' ? '€' : '₹');
+                              return `${sym}${job.charged_amount ? Number(job.charged_amount).toFixed(2) : '0.00'}`;
+                            })()}
                           </div>
                           <div className="text-[10px] text-slate-400">
-                            Res: ₹{Number(job.reserved_amount || 0).toFixed(2)}
+                            {(() => {
+                              const jobCur = currencies.find((c) => c.code === job.currency);
+                              const sym = jobCur?.symbol || (job.currency === 'USD' ? '$' : job.currency === 'EUR' ? '€' : '₹');
+                              return `Res: ${sym}${Number(job.reserved_amount || 0).toFixed(2)} ${job.currency || ''}`;
+                            })()}
                           </div>
                         </td>
                         <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
@@ -648,26 +737,49 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
                   onChange={(e) => {
                     const count = parseInt(e.target.value, 10);
                     setRequestedCount(count);
-                    triggerPriceEstimate(selectedProduct.slug, count);
+                    triggerPriceEstimate(selectedProduct.slug, count, currencyCode);
                   }}
                   className="w-full accent-emerald-600"
                 />
 
                 {/* Estimate & Wallet Balance Box */}
-                <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] text-slate-500">Estimated Max Charge (Reserve):</span>
-                    <div className="text-base font-black text-emerald-800">
-                      {estimating ? (
-                        <RefreshCw className="w-4 h-4 animate-spin text-emerald-600 inline" />
-                      ) : (
-                        `₹${priceEstimate ? priceEstimate.toFixed(2) : '0.00'}`
-                      )}
+                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] text-slate-500 font-medium">Estimated Max Charge (Reserve):</span>
+                      <div className="text-base font-black text-emerald-800">
+                        {estimating ? (
+                          <RefreshCw className="w-4 h-4 animate-spin text-emerald-600 inline" />
+                        ) : (
+                          `${currencySymbol}${priceEstimate !== null ? priceEstimate.toFixed(2) : '0.00'} ${currencyCode}`
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-500 font-medium">Available Balance:</span>
+                      <div className="text-xs font-bold text-slate-800">
+                        {currencySymbol}{Number(wallet?.balance || 0).toFixed(2)} {wallet?.currency || currencyCode}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-500">Safe Settlement Rule:</span>
-                    <p className="text-[10px] font-semibold text-emerald-700">Charged only for delivered results</p>
+
+                  {wallet && priceEstimate !== null && wallet.balance < priceEstimate && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between gap-2">
+                      <div className="text-[11px] text-amber-800 font-medium">
+                        Insufficient funds for reserve ({currencySymbol}{(priceEstimate - wallet.balance).toFixed(2)} short)
+                      </div>
+                      <button
+                        onClick={() => setIsTopUpOpen(true)}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded shadow-sm shrink-0 transition"
+                      >
+                        + Top Up
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-emerald-200/60 text-[10px] text-emerald-800 font-medium">
+                    <span>Safe Settlement: Only pay for delivered records</span>
+                    <span>Unused funds refunded</span>
                   </div>
                 </div>
               </div>
@@ -776,6 +888,18 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
           </div>
         </div>
       )}
+      {/* Wallet Top Up Modal */}
+      <WalletTopUpModal
+        isOpen={isTopUpOpen}
+        onClose={() => setIsTopUpOpen(false)}
+        currentBalance={wallet?.balance || 0}
+        onSuccess={(newBal) => {
+          fetchWallet();
+          if (selectedProduct) {
+            triggerPriceEstimate(selectedProduct.slug, requestedCount, currencyCode);
+          }
+        }}
+      />
     </div>
   );
 };

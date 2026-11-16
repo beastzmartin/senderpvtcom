@@ -208,14 +208,18 @@ export class MarketplaceController {
    */
   public estimatePrice = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { slug, items } = req.body;
+      const { slug, items, currency } = req.body;
       const product = this.productService.getProductBySlug(slug, true);
       if (!product) {
         res.status(404).json({ error: 'Product not found.' });
         return;
       }
 
-      const estimate = this.pricingService.calculateEstimatedPrice(product.definition, Number(items) || 100);
+      const estimate = this.pricingService.calculateEstimatedPrice(
+        product.definition,
+        Number(items) || 100,
+        currency
+      );
       res.json({
         success: true,
         sellPrice: estimate.sellPrice,
@@ -317,13 +321,22 @@ export class MarketplaceController {
       const input = req.body.input || req.body.inputValues;
       const requestedItems = req.body.requestedItems;
       const isTestRun = Boolean(req.body.isTestRun);
+      const currency = req.body.currency || (req.query.currency as string);
 
       if (!slug) {
         res.status(400).json({ error: 'Product slug is required.' });
         return;
       }
 
-      const job = await this.jobService.createJob(userId, slug, input || {}, requestedItems, isTestRun, isAdmin);
+      const job = await this.jobService.createJob(
+        userId,
+        slug,
+        input || {},
+        requestedItems,
+        isTestRun,
+        isAdmin,
+        currency
+      );
       res.status(201).json({ success: true, job });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to create extraction job.' });

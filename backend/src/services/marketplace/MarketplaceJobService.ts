@@ -127,7 +127,8 @@ export class MarketplaceJobService {
     rawInput: Record<string, any>,
     requestedItems?: number,
     isTestRun: boolean = false,
-    isAdminParam?: boolean
+    isAdminParam?: boolean,
+    targetCurrency?: string
   ): Promise<MarketplaceJobRecord> {
     const db = getDatabase();
 
@@ -204,7 +205,7 @@ export class MarketplaceJobService {
 
     if (isTestRun) {
       try {
-        reservation = this.chargingService.reserveForJob(userId, product, items, jobId);
+        reservation = this.chargingService.reserveForJob(userId, product, items, jobId, targetCurrency);
       } catch {
         // Zero-charge fallback for admin test runs
         reservation = {
@@ -212,11 +213,11 @@ export class MarketplaceJobService {
           reservedAmount: 0.0,
           providerCostUsd: 0.0,
           providerCostConverted: 0.0,
-          currency: 'INR'
+          currency: (targetCurrency || 'INR').toUpperCase()
         };
       }
     } else {
-      reservation = this.chargingService.reserveForJob(userId, product, items, jobId);
+      reservation = this.chargingService.reserveForJob(userId, product, items, jobId, targetCurrency);
     }
 
     // 7. Persist initial queued job

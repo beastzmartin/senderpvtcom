@@ -51,8 +51,16 @@ export class MarketplacePricingService {
    * Convert USD provider cost to the current platform currency (e.g. INR)
    */
   public convertUsdToPlatform(amountUsd: number, targetCurrency?: string): number {
-    const currency = targetCurrency || this.currencyService.getDefaultCurrency().code || 'INR';
+    const currency = (targetCurrency || this.currencyService.getDefaultCurrency().code || 'INR').toUpperCase();
     return this.currencyService.convertBetween(amountUsd, 'USD', currency);
+  }
+
+  /**
+   * Helper to retrieve currency record
+   */
+  public getCurrencyRecord(code?: string) {
+    const target = (code || 'INR').toUpperCase();
+    return this.currencyService.getCurrency(target) || this.currencyService.getDefaultCurrency();
   }
 
   /**
@@ -63,24 +71,32 @@ export class MarketplacePricingService {
     requestedItems: number,
     targetCurrency?: string
   ): PriceEstimateResult {
-    const currency = targetCurrency || 'INR';
+    const currency = (targetCurrency || 'INR').toUpperCase();
     const pricing = product.pricing;
     const items = Math.max(1, requestedItems);
 
-    // 1. Calculate base sell price in platform currency
-    let rawSellPrice = 0;
+    // 1. Calculate base sell price in platform base currency (INR)
+    let rawSellPriceBase = 0;
     if (pricing.mode === 'per_item') {
-      rawSellPrice = (items / 1000) * (pricing.sell.per_1000_items || 0);
+      rawSellPriceBase = (items / 1000) * (pricing.sell.per_1000_items || 0);
     } else if (pricing.mode === 'per_run') {
-      rawSellPrice = pricing.sell.per_run_flat || 0;
+      rawSellPriceBase = pricing.sell.per_run_flat || 0;
     } else if (pricing.mode === 'per_item_plus_run') {
-      rawSellPrice = ((items / 1000) * (pricing.sell.per_1000_items || 0)) + (pricing.sell.per_run_flat || 0);
+      rawSellPriceBase = ((items / 1000) * (pricing.sell.per_1000_items || 0)) + (pricing.sell.per_run_flat || 0);
     }
 
-    // Apply minimum charge threshold
-    const minCharge = pricing.min_charge || 0;
-    const minChargeApplied = rawSellPrice < minCharge;
-    const finalSellPrice = Number(Math.max(rawSellPrice, minCharge).toFixed(2));
+    // Apply minimum charge threshold in base currency
+    const minChargeBase = pricing.min_charge || 0;
+    const minChargeApplied = rawSellPriceBase < minChargeBase;
+    const finalSellPriceBase = Math.max(rawSellPriceBase, minChargeBase);
+
+    // Convert sell price from base (INR) to requested target currency
+    const finalSellPrice = Number(
+      (currency === 'INR'
+        ? finalSellPriceBase
+        : this.currencyService.convertBetween(finalSellPriceBase, 'INR', currency)
+      ).toFixed(2)
+    );
 
     // 2. Calculate estimated provider cost in USD
     const ref = pricing.provider_cost_reference;
@@ -145,7 +161,7 @@ export class MarketplacePricingService {
     actualProviderCostUsd: number,
     targetCurrency?: string
   ): PriceSettlementResult {
-    const currency = targetCurrency || 'INR';
+    const currency = (targetCurrency || 'INR').toUpperCase();
     const pricing = product.pricing;
 
     // Check zero-results policy from settings
@@ -156,25 +172,33 @@ export class MarketplacePricingService {
       chargeOnZero = setting?.value === '1';
     } catch {}
 
-    let finalCharge = 0;
+    let finalChargeBase = 0;
     if (itemsDelivered === 0 && !chargeOnZero) {
-      finalCharge = 0;
+      finalChargeBase = 0;
     } else {
       if (pricing.mode === 'per_item') {
-        finalCharge = (itemsDelivered / 1000) * (pricing.sell.per_1000_items || 0);
+        finalChargeBase = (itemsDelivered / 1000) * (pricing.sell.per_1000_items || 0);
       } else if (pricing.mode === 'per_run') {
-        finalCharge = pricing.sell.per_run_flat || 0;
+        finalChargeBase = pricing.sell.per_run_flat || 0;
       } else if (pricing.mode === 'per_item_plus_run') {
-        finalCharge = ((itemsDelivered / 1000) * (pricing.sell.per_1000_items || 0)) + (pricing.sell.per_run_flat || 0);
+        finalChargeBase = ((itemsDelivered / 1000) * (pricing.sell.per_1000_items || 0)) + (pricing.sell.per_run_flat || 0);
       }
 
-      if (itemsDelivered > 0 && finalCharge < (pricing.min_charge || 0)) {
-        finalCharge = pricing.min_charge || 0;
+      if (itemsDelivered > 0 && finalChargeBase < (pricing.min_charge || 0)) {
+        finalChargeBase = pricing.min_charge || 0;
       }
     }
 
+    // Convert charge from base (INR) to user target currency
+    const finalChargeConverted = Number(
+      (currency === 'INR'
+        ? finalChargeBase
+        : this.currencyService.convertBetween(finalChargeBase, 'INR', currency)
+      ).toFixed(2)
+    );
+
     // Never charge more than initial reservation
-    finalCharge = Number(Math.min(finalCharge, reservedAmount).toFixed(2));
+    const finalCharge = Number(Math.min(finalChargeConverted, reservedAmount).toFixed(2));
     const refundDue = Number(Math.max(0, reservedAmount - finalCharge).toFixed(2));
 
     const providerCostConverted = this.convertUsdToPlatform(actualProviderCostUsd, currency);
