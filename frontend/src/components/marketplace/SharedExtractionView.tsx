@@ -416,3 +416,4 @@ export const SharedExtractionView: React.FC<{ token: string }> = ({ token }) => 
     </div>
   );
 };
+

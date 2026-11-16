@@ -434,7 +434,7 @@ export class MarketplaceJobWorker {
         jobId,
         productId: job.product_id,
         productSlug: job.product_slug,
-        productName: product.display_name || job.product_slug,
+        productName: (product as any).display_name || (product as any).title || job.product_slug,
         status: finalStatus.toLowerCase() as any,
         input: JSON.parse(job.input_json || '{}'),
         rowCount: deliveredCount,

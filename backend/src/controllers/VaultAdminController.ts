@@ -90,11 +90,11 @@ export class VaultAdminController {
    */
   public getRecordDetail = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { reason } = req.query;
       const admin = this.getAdminContext(req);
 
-      const record = this.vaultService.getVaultRecord(String(id), admin, reason ? String(reason) : undefined);
+      const record = this.vaultService.getVaultRecord(id, admin, reason ? String(reason) : undefined);
       if (!record) {
         res.status(404).json({ error: 'Vault record not found' });
         return;
@@ -117,7 +117,7 @@ export class VaultAdminController {
    */
   public revealSecret = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { fieldKey, reason } = req.body;
       const admin = this.getAdminContext(req);
 
@@ -126,7 +126,7 @@ export class VaultAdminController {
         return;
       }
 
-      const result = this.vaultService.revealSecret(String(id), fieldKey, admin, reason);
+      const result = this.vaultService.revealSecret(id, fieldKey, admin, reason);
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to reveal credential' });
@@ -138,11 +138,11 @@ export class VaultAdminController {
    */
   public updateMetadata = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { notes, tags } = req.body;
       const admin = this.getAdminContext(req);
 
-      const updated = this.vaultService.updateMetadata(String(id), admin, { notes, tags });
+      const updated = this.vaultService.updateMetadata(id, admin, { notes, tags });
       res.json({ success: true, record: updated });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to update metadata' });
@@ -154,7 +154,7 @@ export class VaultAdminController {
    */
   public toggleLegalHold = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { legalHold, reason } = req.body;
       const admin = this.getAdminContext(req);
 
@@ -163,7 +163,7 @@ export class VaultAdminController {
         return;
       }
 
-      const updated = this.vaultService.toggleLegalHold(String(id), legalHold, reason, admin);
+      const updated = this.vaultService.toggleLegalHold(id, legalHold, reason, admin);
       res.json({ success: true, record: updated });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to toggle Legal Hold' });
@@ -269,8 +269,8 @@ export class VaultAdminController {
 
   public deleteRetentionPolicy = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-      const { id } = req.params;
-      const deleted = this.vaultService.deleteRetentionPolicy(String(id));
+      const id = String(req.params.id);
+      const deleted = this.vaultService.deleteRetentionPolicy(id);
       res.json({ success: deleted });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to delete retention policy' });
@@ -358,8 +358,8 @@ export class VaultAdminController {
    */
   public downloadExport = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { token } = req.params;
-      const exportFile = this.vaultService.getExportByToken(String(token));
+      const token = String(req.params.token);
+      const exportFile = this.vaultService.getExportByToken(token);
       if (!exportFile) {
         res.status(404).send('Export not found or download link expired.');
         return;
@@ -434,3 +434,4 @@ export class VaultAdminController {
     }
   };
 }
+

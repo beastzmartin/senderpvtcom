@@ -435,9 +435,8 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                 key={col.id}
                 onDragOver={handleDragOver}
                 onDrop={() => handleDropOnColumn(col.id)}
-                className={`w-72 sm:w-80 shrink-0 bg-slate-900/70 border rounded-2xl flex flex-col max-h-[80vh] transition-all ${
-                  isWipExceeded ? 'border-rose-800/80 shadow-rose-950/20 shadow-md' : 'border-slate-800'
-                }`}
+                className={`w-72 sm:w-80 shrink-0 bg-slate-900/70 border rounded-2xl flex flex-col max-h-[80vh] transition-all ${isWipExceeded ? 'border-rose-800/80 shadow-rose-950/20 shadow-md' : 'border-slate-800'
+                  }`}
               >
                 {/* Column Header */}
                 <div className="p-3.5 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-900/90 rounded-t-2xl">
@@ -454,9 +453,8 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
 
                   {col.wip_limit && (
                     <span
-                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                        isWipExceeded ? 'bg-rose-950 text-rose-400 border border-rose-800' : 'text-slate-500'
-                      }`}
+                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${isWipExceeded ? 'bg-rose-950 text-rose-400 border border-rose-800' : 'text-slate-500'
+                        }`}
                     >
                       WIP: {rawCards.length}/{col.wip_limit}
                     </span>
@@ -476,9 +474,8 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                         draggable
                         onDragStart={(e) => handleDragStart(e, card)}
                         onClick={() => setSelectedCardForDrawer(card)}
-                        className={`bg-slate-950/90 border border-slate-800 hover:border-indigo-500/70 rounded-xl p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all group ${
-                          density === 'compact' ? 'py-2' : 'py-3'
-                        }`}
+                        className={`bg-slate-950/90 border border-slate-800 hover:border-indigo-500/70 rounded-xl p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all group ${density === 'compact' ? 'py-2' : 'py-3'
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
@@ -497,9 +494,8 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
 
                           {d.lead_score !== undefined && d.lead_score > 0 && (
                             <span
-                              className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 ${
-                                d.lead_score >= 80 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50' : 'bg-slate-800 text-slate-300'
-                              }`}
+                              className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 ${d.lead_score >= 80 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50' : 'bg-slate-800 text-slate-300'
+                                }`}
                             >
                               {d.lead_score}
                             </span>
@@ -673,11 +669,10 @@ export const CrmBoardKanbanView: React.FC<Props> = ({
                 <button
                   key={t.id}
                   onClick={() => setSelectedTemplate(t.id)}
-                  className={`p-3 text-left rounded-xl border transition-all ${
-                    selectedTemplate === t.id
+                  className={`p-3 text-left rounded-xl border transition-all ${selectedTemplate === t.id
                       ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300'
                       : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
+                    }`}
                 >
                   <div className="font-bold text-xs text-slate-200">{t.name}</div>
                   <div className="text-[10px] text-slate-500">{t.cols}</div>
