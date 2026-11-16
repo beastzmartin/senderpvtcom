@@ -7,7 +7,7 @@ export interface SqlFragment {
 
 export class CrmFilterBuilder {
   /**
-   * Build parameterized SQL WHERE fragment from FilterGroup
+   * Build parameterized SQL WHERE fragment from nested FilterGroup
    */
   public static buildFilterClause(
     filter: FilterGroup,
@@ -23,10 +23,11 @@ export class CrmFilterBuilder {
       }
 
       const clauses: string[] = [];
+      const isNot = group.combinator === 'NOT' || Boolean(group.not);
       const combinator = group.combinator === 'OR' ? ' OR ' : ' AND ';
 
       for (const item of group.conditions) {
-        if ('combinator' in item) {
+        if ('conditions' in item || 'combinator' in item) {
           // Nested group
           const nested = buildGroup(item as FilterGroup);
           if (nested && nested !== '1=1') {
@@ -44,7 +45,9 @@ export class CrmFilterBuilder {
         }
       }
 
-      return clauses.length > 0 ? clauses.join(combinator) : '1=1';
+      if (clauses.length === 0) return '1=1';
+      const inner = clauses.join(combinator);
+      return isNot ? `NOT (${inner})` : inner;
     };
 
     const sql = buildGroup(filter);
@@ -58,7 +61,53 @@ export class CrmFilterBuilder {
   ): SqlFragment {
     if (!cond.field) return { sql: '', params: [] };
 
-    // Standard columns vs custom fields
+    const placeholder = (idx: number) => (isPostgres ? `$${idx}` : '?');
+    const ilikeOp = isPostgres ? 'ILIKE' : 'LIKE';
+
+    // 1. Tag Filter
+    if (cond.field === 'tag' || cond.field === 'tag_id' || cond.field === 'tag_name') {
+      const isNot = cond.operator === 'not_equals' || cond.operator === 'not_contains';
+      const subquery = `SELECT 1 FROM crm_contact_tags ct JOIN crm_tags t ON t.id = ct.tag_id WHERE ct.contact_id = c.id AND (t.name ${ilikeOp} ${placeholder(offset)} OR t.id = ${placeholder(offset)})`;
+      return {
+        sql: isNot ? `NOT EXISTS (${subquery})` : `EXISTS (${subquery})`,
+        params: [cond.value]
+      };
+    }
+
+    // 2. Activity Filter (e.g. "opened email in last 7 days")
+    if (cond.field === 'activity' || cond.field === 'activity_type' || cond.field === 'has_activity') {
+      let actType = 'email_opened';
+      let days = 30;
+      if (typeof cond.value === 'object' && cond.value !== null) {
+        actType = cond.value.type || cond.value.activity_type || 'email_opened';
+        days = parseInt(cond.value.days || cond.value.within_days || '30', 10);
+      } else if (typeof cond.value === 'string') {
+        actType = cond.value;
+      }
+
+      const timeClause = isPostgres
+        ? `a.created_at >= NOW() - INTERVAL '${days} days'`
+        : `a.created_at >= datetime('now', '-${days} days')`;
+
+      const subquery = `SELECT 1 FROM crm_activities a WHERE a.contact_id = c.id AND a.type = ${placeholder(offset)} AND ${timeClause}`;
+      const isNot = cond.operator === 'not_equals';
+      return {
+        sql: isNot ? `NOT EXISTS (${subquery})` : `EXISTS (${subquery})`,
+        params: [actType]
+      };
+    }
+
+    // 3. Custom Object Association Filter
+    if (cond.field === 'associated_object' || cond.field === 'has_associated_record') {
+      const objSlug = typeof cond.value === 'object' && cond.value !== null ? cond.value.slug : String(cond.value);
+      const subquery = `SELECT 1 FROM crm_object_associations oa WHERE (oa.source_entity_id = c.id OR oa.target_entity_id = c.id) AND (oa.source_entity_type = ${placeholder(offset)} OR oa.target_entity_type = ${placeholder(offset)})`;
+      return {
+        sql: `EXISTS (${subquery})`,
+        params: [objSlug]
+      };
+    }
+
+    // 4. Company columns vs Core contact columns vs Custom Fields
     const standardFields = new Set([
       'first_name',
       'last_name',
@@ -73,23 +122,27 @@ export class CrmFilterBuilder {
       'lead_score',
       'status',
       'email_status',
+      'is_archived',
       'created_at',
       'updated_at'
     ]);
 
     let columnRef: string;
-    if (standardFields.has(cond.field)) {
-      columnRef = cond.field;
+    if (cond.field === 'company_name') {
+      columnRef = 'comp.name';
+    } else if (cond.field === 'company_domain') {
+      columnRef = 'comp.domain';
+    } else if (standardFields.has(cond.field)) {
+      columnRef = `c.${cond.field}`;
     } else {
-      // Custom field
+      // Dynamic Custom Field JSON lookup
+      const safeKey = cond.field.replace(/'/g, "''");
       if (isPostgres) {
-        columnRef = `(custom_fields->>'${cond.field.replace(/'/g, "''")}')`;
+        columnRef = `(c.custom_fields->>'${safeKey}')`;
       } else {
-        columnRef = `json_extract(custom_fields, '$.${cond.field.replace(/'/g, "''")}')`;
+        columnRef = `json_extract(c.custom_fields, '$.${safeKey}')`;
       }
     }
-
-    const placeholder = (idx: number) => (isPostgres ? `$${idx}` : '?');
 
     switch (cond.operator) {
       case 'equals':
@@ -106,25 +159,25 @@ export class CrmFilterBuilder {
 
       case 'contains':
         return {
-          sql: `${columnRef} LIKE ${placeholder(offset)}`,
+          sql: `${columnRef} ${ilikeOp} ${placeholder(offset)}`,
           params: [`%${cond.value}%`]
         };
 
       case 'not_contains':
         return {
-          sql: `(${columnRef} IS NULL OR ${columnRef} NOT LIKE ${placeholder(offset)})`,
+          sql: `(${columnRef} IS NULL OR ${columnRef} NOT ${ilikeOp} ${placeholder(offset)})`,
           params: [`%${cond.value}%`]
         };
 
       case 'starts_with':
         return {
-          sql: `${columnRef} LIKE ${placeholder(offset)}`,
+          sql: `${columnRef} ${ilikeOp} ${placeholder(offset)}`,
           params: [`${cond.value}%`]
         };
 
       case 'ends_with':
         return {
-          sql: `${columnRef} LIKE ${placeholder(offset)}`,
+          sql: `${columnRef} ${ilikeOp} ${placeholder(offset)}`,
           params: [`%${cond.value}`]
         };
 
@@ -189,4 +242,3 @@ export class CrmFilterBuilder {
     }
   }
 }
-

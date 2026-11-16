@@ -19,7 +19,40 @@ import {
   FilterGroup,
   KeysetPaginationParams,
   PaginatedResult,
-  ImportDedupeRule
+  ImportDedupeRule,
+  CustomObjectDefinition,
+  CustomObjectFieldDefinition,
+  CustomObjectRecord,
+  ObjectRelationshipDefinition,
+  ObjectAssociation,
+  FieldChangeHistory,
+  CrmOutboxEvent,
+  ContactMergeRecord,
+  DuplicateCandidate,
+  FieldVerificationResult,
+  EnrichmentProviderConfig,
+  DataHealthMetrics,
+  CrmSavedView,
+  CrmBulkJob,
+  CrmAiUsageLog,
+  CrmScoringRule,
+  CrmWorkflow,
+  CrmWorkflowRun,
+  CrmWorkflowStepLog,
+  CrmCompliancePolicy,
+  CrmPipeline,
+  CrmPipelineStage,
+  CrmDeal,
+  CrmTask,
+  CrmPresenceSession,
+  CrmRolePermission,
+  CrmSensitiveField,
+  CrmErasureCertificate,
+  FunnelMetrics,
+  AttributionSummary,
+  CohortRow,
+  CustomReportSpec,
+  CustomReportResult
 } from '../models/types.js';
 
 export interface ContactListParams {
@@ -57,6 +90,8 @@ export interface CrmStorageAdapter {
   updateContact(workspaceId: string, contactId: string, data: Partial<Contact>): Promise<Contact>;
   deleteContact(workspaceId: string, contactId: string, soft?: boolean): Promise<boolean>;
   restoreContact(workspaceId: string, contactId: string): Promise<boolean>;
+  archiveContact(workspaceId: string, contactId: string): Promise<boolean>;
+  unarchiveContact(workspaceId: string, contactId: string): Promise<boolean>;
   findDuplicates(workspaceId: string, limit?: number): Promise<Array<{ field: string; value: string; contact_ids: string[]; contacts: Contact[] }>>;
   mergeContacts(
     workspaceId: string,
@@ -140,5 +175,169 @@ export interface CrmStorageAdapter {
   // Audit Log
   logAudit(entry: Partial<AuditLogEntry>): Promise<void>;
   listAuditLogs(workspaceId: string, limit?: number): Promise<AuditLogEntry[]>;
+
+  // =========================================================================
+  // CRM V2 PHASE 1: CUSTOM OBJECTS & RECORDS
+  // =========================================================================
+  listCustomObjects(workspaceId: string): Promise<CustomObjectDefinition[]>;
+  getCustomObject(workspaceId: string, idOrSlug: string): Promise<CustomObjectDefinition | null>;
+  createCustomObject(workspaceId: string, data: Partial<CustomObjectDefinition>): Promise<CustomObjectDefinition>;
+  deleteCustomObject(workspaceId: string, id: string): Promise<boolean>;
+
+  listCustomObjectFields(workspaceId: string, objectId: string): Promise<CustomObjectFieldDefinition[]>;
+  createCustomObjectField(workspaceId: string, data: Partial<CustomObjectFieldDefinition>): Promise<CustomObjectFieldDefinition>;
+  deleteCustomObjectField(workspaceId: string, fieldId: string): Promise<boolean>;
+
+  listCustomObjectRecords(workspaceId: string, objectId: string, params?: { limit?: number; cursor?: string }): Promise<PaginatedResult<CustomObjectRecord>>;
+  getCustomObjectRecord(workspaceId: string, recordId: string): Promise<CustomObjectRecord | null>;
+  createCustomObjectRecord(workspaceId: string, objectId: string, properties: Record<string, any>): Promise<CustomObjectRecord>;
+  updateCustomObjectRecord(workspaceId: string, recordId: string, properties: Record<string, any>): Promise<CustomObjectRecord>;
+  deleteCustomObjectRecord(workspaceId: string, recordId: string): Promise<boolean>;
+
+  // =========================================================================
+  // OBJECT RELATIONSHIPS & ASSOCIATIONS
+  // =========================================================================
+  createObjectRelationship(workspaceId: string, data: Partial<ObjectRelationshipDefinition>): Promise<ObjectRelationshipDefinition>;
+  listObjectRelationships(workspaceId: string): Promise<ObjectRelationshipDefinition[]>;
+  associateObjects(workspaceId: string, relationshipId: string, sourceEntityType: string, sourceEntityId: string, targetEntityType: string, targetEntityId: string, metadata?: Record<string, any>): Promise<ObjectAssociation>;
+  listAssociatedObjects(workspaceId: string, entityType: string, entityId: string): Promise<ObjectAssociation[]>;
+  removeAssociation(workspaceId: string, associationId: string): Promise<boolean>;
+
+  // =========================================================================
+  // FIELD-LEVEL DELTA HISTORY & RESTORE
+  // =========================================================================
+  logFieldChange(workspaceId: string, change: Partial<FieldChangeHistory>): Promise<FieldChangeHistory>;
+  getFieldHistory(workspaceId: string, entityType: string, entityId: string): Promise<FieldChangeHistory[]>;
+  restoreFieldHistory(workspaceId: string, historyId: string): Promise<boolean>;
+
+  // =========================================================================
+  // TRANSACTIONAL EVENT OUTBOX
+  // =========================================================================
+  emitOutboxEvent(workspaceId: string, eventType: string, aggregateType: string, aggregateId: string, payload: Record<string, any>): Promise<CrmOutboxEvent>;
+  fetchPendingOutboxEvents(limit?: number): Promise<CrmOutboxEvent[]>;
+  markOutboxEventPublished(eventId: string): Promise<boolean>;
+  markOutboxEventFailed(eventId: string, errorMessage: string): Promise<boolean>;
+
+  // =========================================================================
+  // CRM V2 PHASE 2: IDENTITY RESOLUTION, GOLDEN RECORD & UNMERGE
+  // =========================================================================
+  saveDuplicateCandidate(workspaceId: string, candidate: Partial<DuplicateCandidate>): Promise<DuplicateCandidate>;
+  listDuplicateCandidates(workspaceId: string, status?: string, limit?: number): Promise<DuplicateCandidate[]>;
+  updateDuplicateCandidateStatus(workspaceId: string, id: string, status: string, reviewedBy?: string): Promise<boolean>;
+  recordMerge(workspaceId: string, primaryId: string, duplicateId: string, snapshot: any, rules: any): Promise<ContactMergeRecord>;
+  unmergeContacts(workspaceId: string, mergeId: string): Promise<boolean>;
+  listMerges(workspaceId: string, limit?: number): Promise<ContactMergeRecord[]>;
+
+  // =========================================================================
+  // CRM V2 PHASE 2: VERIFICATION & LOGS
+  // =========================================================================
+  logVerification(workspaceId: string, result: Partial<FieldVerificationResult>): Promise<FieldVerificationResult>;
+  listVerifications(workspaceId: string, contactId: string): Promise<FieldVerificationResult[]>;
+
+  // =========================================================================
+  // CRM V2 PHASE 2: ENRICHMENT WATERFALL & CACHING
+  // =========================================================================
+  listEnrichmentProviders(workspaceId: string): Promise<EnrichmentProviderConfig[]>;
+  saveEnrichmentProvider(workspaceId: string, config: Partial<EnrichmentProviderConfig>): Promise<EnrichmentProviderConfig>;
+  getEnrichmentCache(lookupKey: string): Promise<any | null>;
+  setEnrichmentCache(lookupKey: string, providerName: string, data: any, ttlSeconds?: number): Promise<void>;
+
+  // =========================================================================
+  // CRM V2 PHASE 2: DATA HEALTH METRICS
+  // =========================================================================
+  getDataHealthMetrics(workspaceId: string): Promise<DataHealthMetrics>;
+
+  // =========================================================================
+  // CRM V2 PHASE 3: SAVED VIEWS & DYNAMIC SEGMENTS
+  // =========================================================================
+  listSavedViews(workspaceId: string): Promise<CrmSavedView[]>;
+  getSavedView(workspaceId: string, id: string): Promise<CrmSavedView | null>;
+  createSavedView(workspaceId: string, view: Partial<CrmSavedView>): Promise<CrmSavedView>;
+  updateSavedView(workspaceId: string, id: string, updates: Partial<CrmSavedView>): Promise<CrmSavedView>;
+  deleteSavedView(workspaceId: string, id: string): Promise<boolean>;
+
+  // =========================================================================
+  // CRM V2 PHASE 3: BULK ACTIONS ENGINE
+  // =========================================================================
+  createBulkJob(workspaceId: string, job: Partial<CrmBulkJob>): Promise<CrmBulkJob>;
+  getBulkJob(workspaceId: string, jobId: string): Promise<CrmBulkJob | null>;
+  updateBulkJobProgress(jobId: string, progress: Partial<CrmBulkJob>): Promise<void>;
+  listBulkJobs(workspaceId: string, limit?: number): Promise<CrmBulkJob[]>;
+
+  // =========================================================================
+  // CRM V2 PHASE 4: AI LAYER & SMART ENGINES
+  // =========================================================================
+  logAiUsage(workspaceId: string, log: Partial<CrmAiUsageLog>): Promise<CrmAiUsageLog>;
+  getAiUsageSummary(workspaceId: string, days?: number): Promise<{ totalCredits: number; totalTokens: number; countByAction: Record<string, number> }>;
+  listScoringRules(workspaceId: string): Promise<CrmScoringRule[]>;
+  saveScoringRule(workspaceId: string, rule: Partial<CrmScoringRule>): Promise<CrmScoringRule>;
+  deleteScoringRule(workspaceId: string, id: string): Promise<boolean>;
+
+  // =========================================================================
+  // CRM V2 PHASE 5: WORKFLOW AUTOMATIONS & RUNS
+  // =========================================================================
+  listWorkflows(workspaceId: string): Promise<CrmWorkflow[]>;
+  getWorkflow(workspaceId: string, id: string): Promise<CrmWorkflow | null>;
+  createWorkflow(workspaceId: string, data: Partial<CrmWorkflow>): Promise<CrmWorkflow>;
+  updateWorkflow(workspaceId: string, id: string, updates: Partial<CrmWorkflow>): Promise<CrmWorkflow>;
+  deleteWorkflow(workspaceId: string, id: string): Promise<boolean>;
+
+  createWorkflowRun(workspaceId: string, data: Partial<CrmWorkflowRun>): Promise<CrmWorkflowRun>;
+  getWorkflowRun(workspaceId: string, runId: string): Promise<CrmWorkflowRun | null>;
+  updateWorkflowRun(runId: string, updates: Partial<CrmWorkflowRun>): Promise<void>;
+  listPendingWorkflowRuns(limit?: number): Promise<CrmWorkflowRun[]>;
+  listWorkflowRuns(workspaceId: string, workflowId?: string, limit?: number): Promise<CrmWorkflowRun[]>;
+
+  logWorkflowStepExecution(log: Partial<CrmWorkflowStepLog>): Promise<CrmWorkflowStepLog>;
+  listWorkflowStepLogs(runId: string): Promise<CrmWorkflowStepLog[]>;
+
+  getCompliancePolicy(workspaceId: string): Promise<CrmCompliancePolicy>;
+  saveCompliancePolicy(workspaceId: string, policy: Partial<CrmCompliancePolicy>): Promise<CrmCompliancePolicy>;
+
+  // =========================================================================
+  // CRM V2 PHASE 6: SALES PIPELINES, DEALS, TASKS & PRESENCE
+  // =========================================================================
+  listPipelines(workspaceId: string): Promise<CrmPipeline[]>;
+  getPipeline(workspaceId: string, id: string): Promise<CrmPipeline | null>;
+  createPipeline(workspaceId: string, name: string, isDefault?: boolean): Promise<CrmPipeline>;
+  listPipelineStages(workspaceId: string, pipelineId: string): Promise<CrmPipelineStage[]>;
+  createPipelineStage(workspaceId: string, stage: Partial<CrmPipelineStage>): Promise<CrmPipelineStage>;
+  updatePipelineStage(workspaceId: string, id: string, stage: Partial<CrmPipelineStage>): Promise<CrmPipelineStage>;
+
+  listDeals(workspaceId: string, filter?: { pipelineId?: string; stageId?: string; contactId?: string; status?: string }): Promise<CrmDeal[]>;
+  getDeal(workspaceId: string, id: string): Promise<CrmDeal | null>;
+  createDeal(workspaceId: string, deal: Partial<CrmDeal>): Promise<CrmDeal>;
+  updateDeal(workspaceId: string, id: string, updates: Partial<CrmDeal>): Promise<CrmDeal>;
+  deleteDeal(workspaceId: string, id: string): Promise<boolean>;
+
+  listTasks(workspaceId: string, filter?: { contactId?: string; dealId?: string; status?: string; assignedTo?: string }): Promise<CrmTask[]>;
+  createTask(workspaceId: string, task: Partial<CrmTask>): Promise<CrmTask>;
+  updateTask(workspaceId: string, id: string, updates: Partial<CrmTask>): Promise<CrmTask>;
+  deleteTask(workspaceId: string, id: string): Promise<boolean>;
+
+  upsertPresence(session: Partial<CrmPresenceSession>): Promise<void>;
+  getPresentUsers(workspaceId: string, entityType: 'contact' | 'deal', entityId: string): Promise<CrmPresenceSession[]>;
+  clearPresence(workspaceId: string, entityType: string, entityId: string, userId: string): Promise<void>;
+
+  // =========================================================================
+  // CRM V2 PHASE 7: RBAC, PRIVACY & GDPR ERASURE
+  // =========================================================================
+  listRolePermissions(workspaceId: string): Promise<CrmRolePermission[]>;
+  getRolePermission(workspaceId: string, role: string): Promise<CrmRolePermission | null>;
+  saveRolePermission(workspaceId: string, perm: Partial<CrmRolePermission>): Promise<CrmRolePermission>;
+  listSensitiveFields(workspaceId: string): Promise<CrmSensitiveField[]>;
+  addSensitiveField(workspaceId: string, field: Partial<CrmSensitiveField>): Promise<CrmSensitiveField>;
+  removeSensitiveField(workspaceId: string, id: string): Promise<boolean>;
+  saveErasureCertificate(cert: Partial<CrmErasureCertificate>): Promise<CrmErasureCertificate>;
+  getErasureCertificate(id: string): Promise<CrmErasureCertificate | null>;
+  hardDeleteContact(workspaceId: string, contactId: string): Promise<number>;
+
+  // =========================================================================
+  // CRM V2 PHASE 9: ANALYTICS, FUNNELS, ATTRIBUTION & COHORTS
+  // =========================================================================
+  getFunnelMetrics(workspaceId: string, pipelineId?: string): Promise<FunnelMetrics>;
+  getAttributionMetrics(workspaceId: string): Promise<AttributionSummary>;
+  getCohortRetention(workspaceId: string, months?: number): Promise<CohortRow[]>;
+  runCustomReport(workspaceId: string, spec: CustomReportSpec): Promise<CustomReportResult>;
 }
 

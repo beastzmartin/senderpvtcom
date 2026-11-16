@@ -13,7 +13,10 @@ import {
   TrendingUp,
   Server,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  Kanban,
+  BarChart3,
+  Command
 } from 'lucide-react';
 import { crmApi, CrmList, CrmTag, CrmCustomFieldDefinition } from './crmApi';
 import { ContactsTableView } from './ContactsTableView';
@@ -22,6 +25,10 @@ import { DedupeMergeView } from './DedupeMergeView';
 import { CustomFieldsView } from './CustomFieldsView';
 import { SuppressionListView } from './SuppressionListView';
 import { DeveloperPortalView } from './DeveloperPortalView';
+import { PipelineKanbanView } from './PipelineKanbanView';
+import { AnalyticsDashboardView } from './AnalyticsDashboardView';
+import { DataHealthDashboardView } from './DataHealthDashboardView';
+import { CrmCommandPalette } from './CrmCommandPalette';
 import { FilterBuilderModal } from './FilterBuilderModal';
 import { ContactDetailModal } from './ContactDetailModal';
 import { ImportWizardModal } from './ImportWizardModal';
@@ -37,7 +44,7 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
   onStartWhatsAppChat,
   onLaunchBulkWhatsApp
 }) => {
-  const [activeTab, setActiveTab] = useState<'contacts' | 'lists' | 'dedupe' | 'fields' | 'suppression' | 'developer'>('contacts');
+  const [activeTab, setActiveTab] = useState<'contacts' | 'pipeline' | 'analytics' | 'health' | 'lists' | 'dedupe' | 'fields' | 'suppression' | 'developer'>('contacts');
 
   // Global CRM state
   const [lists, setLists] = useState<CrmList[]>([]);
@@ -54,10 +61,20 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
 
   useEffect(() => {
     loadMetadata();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const loadMetadata = async () => {
@@ -129,6 +146,15 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
 
             {/* Quick Actions */}
             <div className="relative z-10 flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsCommandPaletteOpen(true)}
+                className="flex items-center gap-2 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl text-xs font-bold backdrop-blur-sm transition"
+                title="Command Palette (Cmd+K)"
+              >
+                <Command className="w-3.5 h-3.5 text-indigo-300" />
+                <span>Cmd+K</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setIsImportModalOpen(true)}
@@ -225,6 +251,45 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
 
           <button
             type="button"
+            onClick={() => setActiveTab('pipeline')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeTab === 'pipeline'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Kanban className="w-4 h-4" />
+            Deals Pipeline (Kanban)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('analytics')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeTab === 'analytics'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            Funnels & Analytics
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('health')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeTab === 'health'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Data Health & Score
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('lists')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'lists'
@@ -305,6 +370,17 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
             />
           )}
 
+          {activeTab === 'pipeline' && (
+            <PipelineKanbanView
+              onSelectContact={(id) => setSelectedContactId(id)}
+              onLaunchWhatsApp={handleLaunchWhatsApp}
+            />
+          )}
+
+          {activeTab === 'analytics' && <AnalyticsDashboardView />}
+
+          {activeTab === 'health' && <DataHealthDashboardView />}
+
           {activeTab === 'lists' && (
             <ListsSegmentsView
               lists={lists}
@@ -357,6 +433,15 @@ export const CrmDashboardView: React.FC<CrmDashboardViewProps> = ({
           isOpen={isExportModalOpen}
           onClose={() => setIsExportModalOpen(false)}
           activeFilter={activeFilter}
+        />
+
+        <CrmCommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          onNavigateTab={(tab) => setActiveTab(tab as any)}
+          onSelectContact={(id) => setSelectedContactId(id)}
+          onOpenImport={() => setIsImportModalOpen(true)}
+          onOpenExport={() => setIsExportModalOpen(true)}
         />
       </div>
     </CrmErrorBoundary>

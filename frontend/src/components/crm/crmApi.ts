@@ -493,6 +493,102 @@ export const crmApi = {
     }>('/crm/usage'),
 
   getOpenApiSpec: () =>
-    crmRequest<any>('/crm/openapi.json')
+    crmRequest<any>('/crm/openapi.json'),
+
+  // =========================================================================
+  // CRM V2 PHASE 2: DATA HEALTH & VERIFICATION
+  // =========================================================================
+  getDataHealth: () =>
+    crmRequest<{ success: boolean; metrics: any }>('/crm/health'),
+
+  runHealthClean: () =>
+    crmRequest<{ success: boolean; result: { examined: number; fixed: number } }>('/crm/health/clean', {
+      method: 'POST'
+    }),
+
+  // =========================================================================
+  // CRM V2 PHASE 4: AI LAYER & SMART ENGINES
+  // =========================================================================
+  generateContactBrief: (contactId: string) =>
+    crmRequest<{ success: boolean; brief: { summary: string; highlights: string[]; sentiment: string; next_best_action: string } }>('/crm/ai/contact-brief', {
+      method: 'POST',
+      body: JSON.stringify({ contact_id: contactId })
+    }),
+
+  smartCompose: (contactId: string, channel: 'whatsapp' | 'email', tone?: string, language?: string) =>
+    crmRequest<{ success: boolean; composition: { channel: string; subject?: string; message: string; estimated_tokens: number } }>('/crm/ai/smart-compose', {
+      method: 'POST',
+      body: JSON.stringify({ contact_id: contactId, channel, tone, language })
+    }),
+
+  // =========================================================================
+  // CRM V2 PHASE 6: SALES PIPELINE & KANBAN
+  // =========================================================================
+  getKanbanBoard: (pipelineId?: string) =>
+    crmRequest<{
+      success: boolean;
+      kanban: {
+        pipeline_id: string;
+        pipeline_name: string;
+        total_deals: number;
+        total_value_usd: number;
+        stages: Array<{
+          id: string;
+          name: string;
+          win_probability: number;
+          deals_count: number;
+          stage_value_usd: number;
+          deals: any[];
+        }>;
+      };
+    }>(`/crm/kanban${pipelineId ? `?pipeline_id=${pipelineId}` : ''}`),
+
+  createDeal: (data: any) =>
+    crmRequest<{ success: boolean; deal: any }>('/crm/deals', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  updateDeal: (id: string, updates: any) =>
+    crmRequest<{ success: boolean; deal: any }>(`/crm/deals/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    }),
+
+  // =========================================================================
+  // CRM V2 PHASE 6: PRESENCE COLLISION DETECTION
+  // =========================================================================
+  presenceHeartbeat: (entityType: 'contact' | 'deal', entityId: string) =>
+    crmRequest<{ success: boolean }>('/crm/presence/heartbeat', {
+      method: 'POST',
+      body: JSON.stringify({ entity_type: entityType, entity_id: entityId })
+    }),
+
+  getPresenceCollisions: (entityType: 'contact' | 'deal', entityId: string) =>
+    crmRequest<{ success: boolean; collisions: any[] }>(`/crm/presence/${entityType}/${entityId}`),
+
+  presenceLeave: (entityType: 'contact' | 'deal', entityId: string) =>
+    crmRequest<{ success: boolean }>('/crm/presence/leave', {
+      method: 'POST',
+      body: JSON.stringify({ entity_type: entityType, entity_id: entityId })
+    }),
+
+  // =========================================================================
+  // CRM V2 PHASE 9: ANALYTICS, FUNNELS & ATTRIBUTION
+  // =========================================================================
+  getFunnelMetrics: (pipelineId?: string) =>
+    crmRequest<{ success: boolean; funnel: any }>(`/crm/analytics/funnel${pipelineId ? `?pipeline_id=${pipelineId}` : ''}`),
+
+  getAttributionMetrics: () =>
+    crmRequest<{ success: boolean; attribution: any }>('/crm/analytics/attribution'),
+
+  getCohortRetention: (months?: number) =>
+    crmRequest<{ success: boolean; cohorts: any[] }>(`/crm/analytics/cohorts${months ? `?months=${months}` : ''}`),
+
+  runCustomReport: (spec: { dimension: string; metrics: string[]; chart_type?: string }) =>
+    crmRequest<{ success: boolean; report: any }>('/crm/analytics/report', {
+      method: 'POST',
+      body: JSON.stringify(spec)
+    })
 };
 

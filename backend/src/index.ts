@@ -33,13 +33,18 @@ import commissionRoutes from './routes/commissionRoutes.js';
 import crmInternalRoutes from './crm/routes/crmInternalRoutes.js';
 import crmExternalRoutes from './crm/routes/crmExternalRoutes.js';
 import { initCrmDatabase } from './crm/db/index.js';
+import { CrmOutboxService } from './crm/services/CrmOutboxService.js';
 import { BroadcastSchedulerService } from './services/broadcastSchedulerService.js';
 import { MessageController } from './controllers/messageController.js';
 import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
 
 // Initialize SQLite database
 initDatabase();
-initCrmDatabase().catch((err) => console.error('CRM DB initialization failed:', err));
+initCrmDatabase()
+  .then(() => {
+    CrmOutboxService.getInstance().start();
+  })
+  .catch((err) => console.error('CRM DB initialization failed:', err));
 
 const app = express();
 app.set('trust proxy', 1); // Crucial when running behind Cloudflare Tunnel / Nginx / Docker reverse proxies
@@ -142,6 +147,7 @@ httpServer.listen(config.port, () => {
 // Handle graceful shutdown
 const gracefulShutdown = () => {
   console.log('\n[Server] Shutting down gracefully...');
+  CrmOutboxService.getInstance().stop();
   httpServer.close(() => {
     console.log('[Server] HTTP and Socket server closed.');
     process.exit(0);

@@ -107,5 +107,69 @@ export class CrmWebhookService {
       }
     }
   }
+
+  /**
+   * Self-serve webhook tester: sends an instant test ping to endpoint and returns diagnostics
+   */
+  public async testWebhook(
+    workspaceId: string,
+    webhookId: string
+  ): Promise<{ success: boolean; statusCode: number; durationMs: number; signature: string; responseBody: string }> {
+    const db = getCrmDb();
+    const webhook = await db.getWebhook(workspaceId, webhookId);
+    if (!webhook) {
+      throw new Error(`Webhook ${webhookId} not found`);
+    }
+
+    const testPayload = {
+      ping_id: crypto.randomUUID(),
+      message: 'Self-serve webhook connectivity test ping from CRM V2',
+      sent_at: new Date().toISOString()
+    };
+
+    const bodyStr = JSON.stringify({
+      id: crypto.randomUUID(),
+      event: 'webhook.test_ping',
+      timestamp: new Date().toISOString(),
+      workspace_id: workspaceId,
+      data: testPayload
+    });
+
+    const signature = crypto.createHmac('sha256', webhook.secret).update(bodyStr).digest('hex');
+    const startTime = Date.now();
+
+    try {
+      const response = await fetch(webhook.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CRM-Signature': signature,
+          'X-CRM-Event': 'webhook.test_ping',
+          'User-Agent': 'CRM-Webhook-Tester/2.0'
+        },
+        body: bodyStr,
+        signal: AbortSignal.timeout(8000)
+      });
+
+      const durationMs = Date.now() - startTime;
+      const responseBody = await response.text().catch(() => '');
+
+      return {
+        success: response.ok,
+        statusCode: response.status,
+        durationMs,
+        signature,
+        responseBody: responseBody.slice(0, 1000)
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        statusCode: 0,
+        durationMs: Date.now() - startTime,
+        signature,
+        responseBody: err.message
+      };
+    }
+  }
 }
 

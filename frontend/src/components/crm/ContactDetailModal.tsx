@@ -17,7 +17,11 @@ import {
   HelpCircle,
   XCircle,
   Trash2,
-  FileText
+  FileText,
+  Sparkles,
+  Zap,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import { CrmContact, CrmActivity, CrmCustomFieldDefinition, crmApi } from './crmApi';
 
@@ -48,13 +52,45 @@ export const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
   const [noteType, setNoteType] = useState<'note' | 'call' | 'meeting' | 'whatsapp'>('note');
   const [isAddingNote, setIsAddingNote] = useState(false);
 
+  // CRM V2 Phase 4 & Phase 6 Additions
+  const [aiBrief, setAiBrief] = useState<any>(null);
+  const [isGeneratingBrief, setIsGeneratingBrief] = useState(false);
+  const [smartDraft, setSmartDraft] = useState<string | null>(null);
+  const [isComposing, setIsComposing] = useState(false);
+  const [collisions, setCollisions] = useState<any[]>([]);
+
   useEffect(() => {
     if (isOpen && contactId) {
       loadContactDetails(contactId);
+
+      // Presence collision heartbeat
+      crmApi.presenceHeartbeat('contact', contactId).catch(() => {});
+      crmApi.getPresenceCollisions('contact', contactId).then(res => {
+        if (res?.success && Array.isArray(res.collisions)) {
+          setCollisions(res.collisions.filter((c: any) => c.is_collision));
+        }
+      }).catch(() => {});
+
+      const interval = setInterval(() => {
+        crmApi.presenceHeartbeat('contact', contactId).catch(() => {});
+        crmApi.getPresenceCollisions('contact', contactId).then(res => {
+          if (res?.success && Array.isArray(res.collisions)) {
+            setCollisions(res.collisions.filter((c: any) => c.is_collision));
+          }
+        }).catch(() => {});
+      }, 15000);
+
+      return () => {
+        clearInterval(interval);
+        crmApi.presenceLeave('contact', contactId).catch(() => {});
+      };
     } else {
       setContact(null);
       setActivities([]);
       setIsEditing(false);
+      setAiBrief(null);
+      setSmartDraft(null);
+      setCollisions([]);
     }
   }, [isOpen, contactId]);
 
@@ -124,6 +160,36 @@ export const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
       alert(`Failed to add activity: ${err.message}`);
     } finally {
       setIsAddingNote(false);
+    }
+  };
+
+  const handleGenerateAiBrief = async () => {
+    if (!contact) return;
+    setIsGeneratingBrief(true);
+    try {
+      const res = await crmApi.generateContactBrief(contact.id);
+      if (res.success && res.brief) {
+        setAiBrief(res.brief);
+      }
+    } catch (err: any) {
+      alert(`AI Brief error: ${err.message}`);
+    } finally {
+      setIsGeneratingBrief(false);
+    }
+  };
+
+  const handleSmartCompose = async () => {
+    if (!contact) return;
+    setIsComposing(true);
+    try {
+      const res = await crmApi.smartCompose(contact.id, 'whatsapp', 'friendly');
+      if (res.success && res.composition) {
+        setSmartDraft(res.composition.message);
+      }
+    } catch (err: any) {
+      alert(`AI Compose error: ${err.message}`);
+    } finally {
+      setIsComposing(false);
     }
   };
 
@@ -238,6 +304,92 @@ export const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
                 <div className="ml-auto text-xs font-semibold text-slate-500">
                   Lead Score: <span className="text-indigo-600 font-bold">{contact.lead_score}</span> / 100
                 </div>
+              </div>
+
+              {/* Real-time Collision Presence Alert */}
+              {collisions.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    Active Collision Warning: {collisions.length} other team member(s) currently viewing or editing this record.
+                  </span>
+                </div>
+              )}
+
+              {/* AI Executive Brief & Next Best Action */}
+              <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white p-4 rounded-2xl border border-indigo-900/60 shadow-md space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-200">
+                      AI Executive Brief & NBA
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSmartCompose}
+                      disabled={isComposing}
+                      className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-indigo-200 border border-indigo-400/30 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                    >
+                      {isComposing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <MessageCircle className="w-3 h-3" />}
+                      Smart Compose
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleGenerateAiBrief}
+                      disabled={isGeneratingBrief}
+                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                    >
+                      {isGeneratingBrief ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                      {aiBrief ? 'Regenerate Brief' : 'Generate AI Brief'}
+                    </button>
+                  </div>
+                </div>
+
+                {aiBrief ? (
+                  <div className="space-y-2 text-xs">
+                    <p className="text-slate-200 leading-relaxed font-medium">{aiBrief.summary}</p>
+                    {aiBrief.highlights?.length > 0 && (
+                      <ul className="list-disc list-inside text-slate-300 space-y-0.5">
+                        {aiBrief.highlights.map((h: string, i: number) => (
+                          <li key={i}>{h}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-indigo-900/80">
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Sentiment: {aiBrief.sentiment}
+                      </span>
+                      <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1">
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        Next Best Action: {aiBrief.next_best_action}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-indigo-200/70">
+                    Click Generate AI Brief to synthesize contact activity history, deals, and engagement into an instant executive summary and Next Best Action.
+                  </p>
+                )}
+
+                {smartDraft && (
+                  <div className="mt-3 p-3 bg-white/5 border border-indigo-500/30 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-indigo-300 font-bold">
+                      <span>Tailored WhatsApp Draft:</span>
+                      {contact.phone && onLaunchWhatsApp && (
+                        <button
+                          type="button"
+                          onClick={() => onLaunchWhatsApp(contact.phone || '')}
+                          className="text-emerald-400 hover:underline flex items-center gap-1"
+                        >
+                          Send via WhatsApp <Zap className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-200 whitespace-pre-wrap">{smartDraft}</p>
+                  </div>
+                )}
               </div>
 
               {/* Contact Profile Grid */}

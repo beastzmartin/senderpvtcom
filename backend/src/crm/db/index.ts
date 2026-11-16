@@ -18,7 +18,7 @@ export async function initCrmDatabase(): Promise<CrmStorageAdapter> {
       await pgAdapter.initialize();
       adapterInstance = pgAdapter;
       console.log('✅ PostgreSQL CRM Connected with 64-way hash partitioning!');
-      return adapterInstance;
+      return pgAdapter;
     } catch (err) {
       console.warn('⚠️ PostgreSQL connection failed, falling back to SQLite CRM adapter:', err);
     }
