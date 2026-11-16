@@ -468,7 +468,7 @@ export const SuperFieldsManagerView: React.FC = () => {
       if (res && res.success !== false) {
         setTestResult(res.value);
       } else {
-        setTestError(res?.error || 'Formula calculation failed');
+        setTestError((res as any)?.error || 'Formula calculation failed');
       }
     } catch (e: any) {
       setTestError(e.message);
