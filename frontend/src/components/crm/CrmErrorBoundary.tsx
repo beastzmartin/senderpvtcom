@@ -67,3 +67,4 @@ export class CrmErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
+
