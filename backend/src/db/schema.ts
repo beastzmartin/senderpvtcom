@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_message_date TEXT,
   active_license_code TEXT,
   reseller_license_quota INTEGER DEFAULT 0,
+  allowed_pages TEXT,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))

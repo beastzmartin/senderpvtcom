@@ -122,136 +122,168 @@ const MainLayout: React.FC<{ activeTab: AppTab; setActiveTab: (tab: AppTab) => v
 
         {/* Main Content Area */}
         <main className="flex-1 min-w-0 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8">
-        {activeTab === 'dashboard' && (
-          <DashboardView onNavigateToConversation={handleNavigateToConversation} />
-        )}
+        {Boolean(
+          user?.role !== 'admin' &&
+          user?.allowed_pages &&
+          Array.isArray(user.allowed_pages) &&
+          activeTab !== 'subscription' &&
+          !user.allowed_pages.includes(activeTab)
+        ) ? (
+          <div className="bg-white border border-slate-200 rounded-3xl p-10 sm:p-14 text-center max-w-lg mx-auto my-12 shadow-sm space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto shadow-sm">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Page Access Restricted</h2>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                Your account does not have permission to view the <strong className="capitalize text-slate-800">{activeTab}</strong> page.
+                Please contact your platform administrator to update your page permissions.
+              </p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('dashboard')}
+                className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                Return to Dashboard
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+          {activeTab === 'dashboard' && (
+            <DashboardView onNavigateToConversation={handleNavigateToConversation} />
+          )}
 
-        {activeTab === 'sender' && (
-          <DedicatedSenderView onNavigateToConversation={handleNavigateToConversation} />
-        )}
+          {activeTab === 'sender' && (
+            <DedicatedSenderView onNavigateToConversation={handleNavigateToConversation} />
+          )}
 
-        {activeTab === 'bulk' && (
-          <BulkLidSenderView
-            initialLids={bulkLidsQueue}
-            initialTemplate={selectedTemplateText}
-            onNavigateToConversation={handleNavigateToConversation}
-            onScheduleAudience={handleScheduleFromBulk}
-            onNavigateToSubscription={() => setActiveTab('subscription')}
-          />
-        )}
+          {activeTab === 'bulk' && (
+            <BulkLidSenderView
+              initialLids={bulkLidsQueue}
+              initialTemplate={selectedTemplateText}
+              onNavigateToConversation={handleNavigateToConversation}
+              onScheduleAudience={handleScheduleFromBulk}
+              onNavigateToSubscription={() => setActiveTab('subscription')}
+            />
+          )}
 
-        {activeTab === 'lid-links' && (
-          <LidLinkGeneratorView
-            onNavigateToBulkLidSender={handleLaunchBulkFromLidLinks}
-            onNavigateToConversation={handleNavigateToConversation}
-          />
-        )}
+          {activeTab === 'lid-links' && (
+            <LidLinkGeneratorView
+              onNavigateToBulkLidSender={handleLaunchBulkFromLidLinks}
+              onNavigateToConversation={handleNavigateToConversation}
+            />
+          )}
 
-        {activeTab === 'scheduler' && (
-          <SchedulerView
-            initialAudience={schedulerAudience}
-            initialTemplateText={selectedTemplateText}
-            onNavigateToSender={() => setActiveTab('bulk')}
-          />
-        )}
+          {activeTab === 'scheduler' && (
+            <SchedulerView
+              initialAudience={schedulerAudience}
+              initialTemplateText={selectedTemplateText}
+              onNavigateToSender={() => setActiveTab('bulk')}
+            />
+          )}
 
-        {activeTab === 'templates' && (
-          <TemplatesView
-            onUseInBulkSender={handleUseTemplateInSender}
-            onUseInScheduler={handleUseTemplateInScheduler}
-          />
-        )}
+          {activeTab === 'templates' && (
+            <TemplatesView
+              onUseInBulkSender={handleUseTemplateInSender}
+              onUseInScheduler={handleUseTemplateInScheduler}
+            />
+          )}
 
-        {activeTab === 'leads' && (
-          <LeadsDashboardView
-            onStartWhatsAppChat={(phone) => {
-              setActiveTab('sender');
-            }}
-            onLaunchBulkWhatsApp={(phones) => {
-              setBulkLidsQueue(phones);
-              setActiveTab('bulk');
-            }}
-            onNavigateToHub={() => setActiveTab('extractors')}
-          />
-        )}
+          {activeTab === 'leads' && (
+            <LeadsDashboardView
+              onStartWhatsAppChat={(phone) => {
+                setActiveTab('sender');
+              }}
+              onLaunchBulkWhatsApp={(phones) => {
+                setBulkLidsQueue(phones);
+                setActiveTab('bulk');
+              }}
+              onNavigateToHub={() => setActiveTab('extractors')}
+            />
+          )}
 
-        {activeTab === 'crm' && (
-          <CrmDashboardView
-            onStartWhatsAppChat={(phone) => {
-              setActiveTab('sender');
-            }}
-            onLaunchBulkWhatsApp={(phones) => {
-              setBulkLidsQueue(phones);
-              setActiveTab('bulk');
-            }}
-          />
-        )}
+          {activeTab === 'crm' && (
+            <CrmDashboardView
+              onStartWhatsAppChat={(phone) => {
+                setActiveTab('sender');
+              }}
+              onLaunchBulkWhatsApp={(phones) => {
+                setBulkLidsQueue(phones);
+                setActiveTab('bulk');
+              }}
+            />
+          )}
 
-        {activeTab === 'extractors' && (
-          <ExtractionHubView
-            onNavigateToLeads={() => setActiveTab('leads')}
-          />
-        )}
+          {activeTab === 'extractors' && (
+            <ExtractionHubView
+              onNavigateToLeads={() => setActiveTab('leads')}
+            />
+          )}
 
-        {activeTab === 'marketplace' && (
-          <DataMarketplaceView
-            onNavigateToExtensions={() => setActiveTab('extensions')}
-            onNavigateToWallet={() => setActiveTab('wallet')}
-          />
-        )}
+          {activeTab === 'marketplace' && (
+            <DataMarketplaceView
+              onNavigateToExtensions={() => setActiveTab('extensions')}
+              onNavigateToWallet={() => setActiveTab('wallet')}
+            />
+          )}
 
-        {activeTab === 'extensions' && (
-          <MarketplaceView
-            onNavigateToMyExtensions={() => setActiveTab('my-extensions')}
-            onNavigateToWallet={() => setActiveTab('wallet')}
-            onNavigateToCRM={() => setActiveTab('leads')}
-          />
-        )}
+          {activeTab === 'extensions' && (
+            <MarketplaceView
+              onNavigateToMyExtensions={() => setActiveTab('my-extensions')}
+              onNavigateToWallet={() => setActiveTab('wallet')}
+              onNavigateToCRM={() => setActiveTab('leads')}
+            />
+          )}
 
-        {activeTab === 'my-extensions' && (
-          <MyExtensionsView
-            onNavigateToMarketplace={() => setActiveTab('marketplace')}
-            onNavigateToWallet={() => setActiveTab('wallet')}
-            onNavigateToCRM={() => setActiveTab('leads')}
-          />
-        )}
+          {activeTab === 'my-extensions' && (
+            <MyExtensionsView
+              onNavigateToMarketplace={() => setActiveTab('marketplace')}
+              onNavigateToWallet={() => setActiveTab('wallet')}
+              onNavigateToCRM={() => setActiveTab('leads')}
+            />
+          )}
 
-        {activeTab === 'wallet' && (
-          <WalletView
-            onNavigateToMarketplace={() => setActiveTab('marketplace')}
-            onNavigateToMyExtensions={() => setActiveTab('my-extensions')}
-          />
-        )}
+          {activeTab === 'wallet' && (
+            <WalletView
+              onNavigateToMarketplace={() => setActiveTab('marketplace')}
+              onNavigateToMyExtensions={() => setActiveTab('my-extensions')}
+            />
+          )}
 
-        {activeTab === 'virtual-numbers' && (
-          <VirtualNumbersView
-            onNavigateToWallet={() => setActiveTab('wallet')}
-          />
-        )}
+          {activeTab === 'virtual-numbers' && (
+            <VirtualNumbersView
+              onNavigateToWallet={() => setActiveTab('wallet')}
+            />
+          )}
 
-        {activeTab === 'extractor' && (
-          <GroupExtractorView
-            onLaunchBulkLid={handleLaunchBulkLid}
-            onNavigateToSubscription={() => setActiveTab('subscription')}
-          />
-        )}
+          {activeTab === 'extractor' && (
+            <GroupExtractorView
+              onLaunchBulkLid={handleLaunchBulkLid}
+              onNavigateToSubscription={() => setActiveTab('subscription')}
+            />
+          )}
 
-        {activeTab === 'joiner' && (
-          <GroupJoinerView
-            onNavigateToExtractor={() => setActiveTab('extractor')}
-          />
-        )}
+          {activeTab === 'joiner' && (
+            <GroupJoinerView
+              onNavigateToExtractor={() => setActiveTab('extractor')}
+            />
+          )}
 
-        {activeTab === 'contacts' && (
-          <ContactsView onStartChatWithContact={handleStartChatWithContact} />
-        )}
+          {activeTab === 'contacts' && (
+            <ContactsView onStartChatWithContact={handleStartChatWithContact} />
+          )}
 
-        {activeTab === 'subscription' && (
-          <SubscriptionView />
-        )}
+          {activeTab === 'subscription' && (
+            <SubscriptionView />
+          )}
 
         {activeTab === 'admin' && user?.role === 'admin' && (
           <AdminControlCenter onImpersonated={() => setActiveTab('dashboard')} />
+        )}
+          </>
         )}
       </main>
       </div>

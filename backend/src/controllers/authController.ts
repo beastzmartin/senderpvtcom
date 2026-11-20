@@ -61,6 +61,15 @@ export class AuthController {
     }
   };
 
+  public getRegistrationStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const enabled = this.authService.isRegistrationEnabled();
+      res.json({ success: true, registrationEnabled: enabled });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get registration status' });
+    }
+  };
+
   public listUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const users = this.authService.listUsers();

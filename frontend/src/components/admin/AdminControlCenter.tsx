@@ -51,13 +51,47 @@ import {
   Filter,
   CheckSquare,
   Square,
-  FolderDown
+  FolderDown,
+  LayoutDashboard,
+  ShoppingBag,
+  MapPin,
+  Building2,
+  Send,
+  Hash,
+  Link2,
+  Calendar,
+  Wallet,
+  UserPlus,
+  Boxes,
+  Check,
+  ShieldAlert
 } from 'lucide-react';
+import { AppTab } from '../common/Sidebar';
 import { AdminVirtualNumbersTab } from './AdminVirtualNumbersTab';
 import { CommissionSetterPanel } from './CommissionSetterPanel';
 import { AdminDataMarketplaceTab } from './AdminDataMarketplaceTab';
 import { MarginStudioTab } from './MarginStudioTab';
 import { DataVaultTab } from './DataVaultTab';
+
+export const ALL_SYSTEM_PAGES: Array<{ id: AppTab; label: string; category: string; icon: any }> = [
+  { id: 'dashboard', label: 'Dashboard', category: 'Overview', icon: LayoutDashboard },
+  { id: 'marketplace', label: 'Marketplace & Studio', category: 'Data Extraction', icon: ShoppingBag },
+  { id: 'extractors', label: 'Google Maps Extractor', category: 'Data Extraction', icon: MapPin },
+  { id: 'crm', label: 'Enterprise CRM (100M+)', category: 'Data Extraction', icon: Database },
+  { id: 'leads', label: 'Extracted Leads CRM', category: 'Data Extraction', icon: Building2 },
+  { id: 'sender', label: 'Direct Sender', category: 'Messaging', icon: Send },
+  { id: 'bulk', label: 'Bulk LID Sender', category: 'Messaging', icon: Hash },
+  { id: 'lid-links', label: 'LID Link Generator', category: 'Messaging', icon: Link2 },
+  { id: 'scheduler', label: 'Broadcast Scheduler', category: 'Messaging', icon: Calendar },
+  { id: 'templates', label: 'Template Library', category: 'Messaging', icon: FileText },
+  { id: 'virtual-numbers', label: 'Virtual Numbers', category: 'Numbers & Billing', icon: Phone },
+  { id: 'wallet', label: 'Platform Wallet', category: 'Numbers & Billing', icon: Wallet },
+  { id: 'extractor', label: 'Group Extractor', category: 'Audience & Community', icon: Layers },
+  { id: 'joiner', label: 'Group & Community Joiner', category: 'Audience & Community', icon: UserPlus },
+  { id: 'contacts', label: 'Contacts Directory', category: 'Audience & Community', icon: Users },
+  { id: 'extensions', label: 'Extensions Store', category: 'Addons', icon: Boxes },
+  { id: 'my-extensions', label: 'Installed Addons', category: 'Addons', icon: Check }
+];
 
 interface AdminControlCenterProps {
   onImpersonated?: () => void;
@@ -120,6 +154,11 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
   const [editMaxDevices, setEditMaxDevices] = useState('3');
   const [editDailyLimit, setEditDailyLimit] = useState('1000');
   const [editExtractionLimit, setEditExtractionLimit] = useState('5000');
+  const [editAllowedPages, setEditAllowedPages] = useState<string[]>([]);
+
+  // Registration System Setting
+  const [registrationEnabled, setRegistrationEnabled] = useState<boolean>(true);
+  const [togglingRegistration, setTogglingRegistration] = useState<boolean>(false);
 
   const [resetPwdCustomer, setResetPwdCustomer] = useState<any | null>(null);
   const [newPasswordInput, setNewPasswordInput] = useState('');
@@ -138,13 +177,14 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
     setLoading(true);
     setError(null);
     try {
-      const [ovRes, custRes, vaultRes, sessRes, storRes, liveRes] = await Promise.all([
+      const [ovRes, custRes, vaultRes, sessRes, storRes, liveRes, settingsRes] = await Promise.all([
         api.admin.getOverview(),
         api.subscriptions.adminListCustomers(),
         api.admin.listVault(vaultUserFilter || undefined),
         api.admin.listSessions(),
         api.admin.getStorageStats(),
-        api.admin.listLiveCampaigns()
+        api.admin.listLiveCampaigns(),
+        api.subscriptions.adminGetSettings()
       ]);
       setOverview(ovRes.stats);
       setCustomers(custRes.customers || []);
@@ -152,10 +192,29 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
       setSessions(sessRes.sessions || []);
       setStorageStats(storRes.storage);
       setLiveCampaigns(liveRes.campaigns || []);
+      if (settingsRes?.settings?.allow_registration !== undefined) {
+        setRegistrationEnabled(settingsRes.settings.allow_registration !== 'false');
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load admin control data.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleRegistration = async () => {
+    setTogglingRegistration(true);
+    try {
+      const nextState = !registrationEnabled;
+      await api.subscriptions.adminUpdateSettings({
+        allow_registration: nextState ? 'true' : 'false'
+      });
+      setRegistrationEnabled(nextState);
+      showToast(`Public registration is now ${nextState ? 'ENABLED (Open for Signups)' : 'DISABLED (Registration Closed)'}.`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to toggle registration status.');
+    } finally {
+      setTogglingRegistration(false);
     }
   };
 
@@ -177,7 +236,7 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
     }
   };
 
-  // Customer Plan Edit
+  // Customer Plan & Page Access Edit
   const handleOpenEditCustomer = (c: any) => {
     setEditingCustomer(c);
     setEditPlanTier(c.plan_tier || 'starter');
@@ -186,6 +245,11 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
     setEditMaxDevices(String(c.max_devices || 1));
     setEditDailyLimit(String(c.daily_message_limit || 100));
     setEditExtractionLimit(String(c.daily_extraction_limit || 500));
+    setEditAllowedPages(
+      c.allowed_pages && Array.isArray(c.allowed_pages)
+        ? [...c.allowed_pages]
+        : ALL_SYSTEM_PAGES.map((p) => p.id)
+    );
   };
 
   const handleSaveCustomerEdit = async (e: React.FormEvent) => {
@@ -199,13 +263,14 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
         durationDays: parseInt(editDurationDays, 10),
         maxDevices: parseInt(editMaxDevices, 10),
         dailyLimit: parseInt(editDailyLimit, 10),
-        extractionLimit: parseInt(editExtractionLimit, 10)
+        extractionLimit: parseInt(editExtractionLimit, 10),
+        allowedPages: editAllowedPages
       });
       setEditingCustomer(null);
-      showToast(`Updated plan & limits for @${editingCustomer.username}`);
+      showToast(`Updated access permissions & limits for @${editingCustomer.username}`);
       loadAllData();
     } catch (err: any) {
-      setError(err.message || 'Failed to update customer.');
+      setError(err.message || 'Failed to update customer access & limits.');
     }
   };
 
@@ -757,135 +822,196 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
 
       {/* TAB 1: USERS, IMPERSONATION & PARTICULAR USER DATA ERASER */}
       {subTab === 'users' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">All Users & Account Control</h2>
-              <p className="text-xs text-slate-500">
-                Impersonate accounts, wipe a particular user's message history, terminate their devices, or edit limits.
-              </p>
+        <div className="space-y-4">
+          {/* Master Registration ON/OFF Toggle Card */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className={`p-3 rounded-2xl border transition shadow-2xs ${
+                registrationEnabled
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                  : 'bg-red-50 border-red-200 text-red-600'
+              }`}>
+                <UserPlus className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-slate-900 text-sm">Public User Registration & Sign-Up</h3>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
+                    registrationEnabled
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-red-50 text-red-700 border-red-200'
+                  }`}>
+                    {registrationEnabled ? '● REGISTRATION OPEN (ON)' : '○ REGISTRATION CLOSED (OFF)'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {registrationEnabled
+                    ? 'Anyone can sign up and self-register a new account from the login screen.'
+                    : 'Self-registration is locked. Only administrators can create or assign accounts.'}
+                </p>
+              </div>
             </div>
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="Search username, email, name..."
-                className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleToggleRegistration}
+                disabled={togglingRegistration}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50 ${
+                  registrationEnabled
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+                title={registrationEnabled ? 'Turn OFF registration' : 'Turn ON registration'}
+              >
+                <Power className="w-4 h-4" />
+                {registrationEnabled ? 'Turn OFF Registration' : 'Turn ON Registration'}
+              </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider border-b border-slate-200">
-                  <th className="py-3 px-4 font-semibold">User</th>
-                  <th className="py-3 px-4 font-semibold">Plan & Limits</th>
-                  <th className="py-3 px-4 font-semibold">Activity Stats</th>
-                  <th className="py-3 px-4 font-semibold">Status</th>
-                  <th className="py-3 px-4 font-semibold text-right">Admin Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
-                {filteredCustomers.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50/70 transition">
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0">
-                          {(c.name || c.username || 'U')[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900 flex items-center gap-1.5">
-                            {c.name}
-                            {c.role === 'admin' && (
-                              <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px] font-bold">ADMIN</span>
-                            )}
-                            {c.role === 'reseller' && (
-                              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold">RESELLER</span>
-                            )}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">All Users & Access Management</h2>
+                <p className="text-xs text-slate-500">
+                  Manage individual page permissions, daily quotas, impersonate accounts, or wipe message history.
+                </p>
+              </div>
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  placeholder="Search username, email, name..."
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider border-b border-slate-200">
+                    <th className="py-3 px-4 font-semibold">User</th>
+                    <th className="py-3 px-4 font-semibold">Plan, Limits & Page Access</th>
+                    <th className="py-3 px-4 font-semibold">Activity Stats</th>
+                    <th className="py-3 px-4 font-semibold">Status</th>
+                    <th className="py-3 px-4 font-semibold text-right">Admin Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm">
+                  {filteredCustomers.map((c) => (
+                    <tr key={c.id} className="hover:bg-slate-50/70 transition">
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0">
+                            {(c.name || c.username || 'U')[0].toUpperCase()}
                           </div>
-                          <div className="text-xs text-slate-500">
-                            @{c.username} {c.email ? `• ${c.email}` : ''}
+                          <div>
+                            <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                              {c.name}
+                              {c.role === 'admin' && (
+                                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px] font-bold">ADMIN</span>
+                              )}
+                              {c.role === 'reseller' && (
+                                <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold">RESELLER</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              @{c.username} {c.email ? `• ${c.email}` : ''}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-xs font-bold uppercase">
-                          {c.plan_tier}
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          ({c.max_devices} dev / {c.daily_message_limit} msg)
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        Expires: {c.subscription_expires_at ? new Date(c.subscription_expires_at).toLocaleDateString() : 'Lifetime / Never'}
-                      </div>
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      <div className="text-xs text-slate-700 space-y-0.5">
-                        <div>Devices: <strong>{c.connected_devices || 0}</strong></div>
-                        <div>Messages: <strong>{c.total_messages_sent || 0}</strong></div>
-                        <div className="text-emerald-700 font-medium">
-                          Vault Leads: <strong>{c.total_extracted_contacts || 0}</strong>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-xs font-bold uppercase">
+                            {c.plan_tier}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            ({c.max_devices} dev &bull; {c.daily_message_limit} msg/day)
+                          </span>
                         </div>
-                      </div>
-                    </td>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Expires: {c.subscription_expires_at ? new Date(c.subscription_expires_at).toLocaleDateString() : 'Lifetime / Never'}
+                        </div>
+                        <div className="mt-1">
+                          {c.allowed_pages && Array.isArray(c.allowed_pages) ? (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                              {c.allowed_pages.length} Pages Permitted
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Full Page Access
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                    <td className="py-3.5 px-4">
-                      {c.is_active === 0 ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                          <XCircle className="w-3.5 h-3.5" /> Disabled
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Active
-                        </span>
-                      )}
-                    </td>
+                      <td className="py-3.5 px-4">
+                        <div className="text-xs text-slate-700 space-y-0.5">
+                          <div>Devices: <strong>{c.connected_devices || 0}</strong></div>
+                          <div>Messages: <strong>{c.total_messages_sent || 0}</strong></div>
+                          <div className="text-emerald-700 font-medium">
+                            Vault Leads: <strong>{c.total_extracted_contacts || 0}</strong>
+                          </div>
+                        </div>
+                      </td>
 
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                        {c.id !== currentUser?.id && (
-                          <button
-                            onClick={() => handleImpersonate(c)}
-                            title="Login directly into this user's account"
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition shadow-sm"
-                          >
-                            <LogIn className="w-3.5 h-3.5" />
-                            Login
-                          </button>
+                      <td className="py-3.5 px-4">
+                        {c.is_active === 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                            <XCircle className="w-3.5 h-3.5" /> Disabled
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Active
+                          </span>
                         )}
-                        <button
-                          onClick={() => handleOpenUserDataManager(c)}
-                          title="Delete User Message History, Wipe Data or Terminate Devices"
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition"
-                        >
-                          <Eraser className="w-3.5 h-3.5" />
-                          Data & History
-                        </button>
-                        <button
-                          onClick={() => handleOpenEditCustomer(c)}
-                          title="Edit Plan & Limits"
-                          className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setResetPwdCustomer(c);
-                            setNewPasswordInput('');
-                          }}
-                          title="Reset Password"
-                          className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
-                        >
-                          <Key className="w-4 h-4" />
-                        </button>
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditCustomer(c)}
+                            title="Manage Page Access Permissions & Quota Limits"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          >
+                            <Sliders className="w-3.5 h-3.5" />
+                            Access & Limits
+                          </button>
+                          {c.id !== currentUser?.id && (
+                            <button
+                              onClick={() => handleImpersonate(c)}
+                              title="Login directly into this user's account"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition shadow-sm"
+                            >
+                              <LogIn className="w-3.5 h-3.5" />
+                              Login
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleOpenUserDataManager(c)}
+                            title="Delete User Message History, Wipe Data or Terminate Devices"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition"
+                          >
+                            <Eraser className="w-3.5 h-3.5" />
+                            Data
+                          </button>
+                          <button
+                            onClick={() => {
+                              setResetPwdCustomer(c);
+                              setNewPasswordInput('');
+                            }}
+                            title="Reset Password"
+                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+                          >
+                            <Key className="w-4 h-4" />
+                          </button>
                         {c.id !== currentUser?.id && (
                           <>
                             <button
@@ -915,6 +1041,7 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
             </table>
           </div>
         </div>
+      </div>
       )}
 
       {/* TAB 2: SESSION CONTROLLER & DEVICE TERMINATOR */}
@@ -2036,54 +2163,242 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
         </div>
       )}
 
-      {/* MODAL: EDIT CUSTOMER PLAN & LIMITS */}
+      {/* MODAL: USER ACCESS & LIMITS MANAGER */}
       {editingCustomer && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={handleSaveCustomerEdit} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900">Edit User Plan: @{editingCustomer.username}</h3>
-              <button type="button" onClick={() => setEditingCustomer(null)}><X className="w-5 h-5 text-slate-400" /></button>
+          <form
+            onSubmit={handleSaveCustomerEdit}
+            className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+          >
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white font-bold flex items-center justify-center shadow-xs text-sm">
+                  {(editingCustomer.name || editingCustomer.username)[0].toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-purple-600" />
+                    User Access & Limits Manager: @{editingCustomer.username}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {editingCustomer.name} &bull; {editingCustomer.email || 'No email provided'} &bull; Role: <span className="uppercase font-semibold">{editingCustomer.role}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCustomer(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Plan Tier</label>
-                <select value={editPlanTier} onChange={(e) => setEditPlanTier(e.target.value)} className="w-full p-2 border border-slate-200 rounded-xl">
-                  <option value="trial">Trial</option>
-                  <option value="free">Free</option>
-                  <option value="starter">Starter</option>
-                  <option value="pro">Pro</option>
-                  <option value="enterprise">Enterprise</option>
-                </select>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-5 overflow-y-auto space-y-6 flex-1 text-xs">
+              {/* SECTION 1: LIMITS & PLAN */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5 uppercase tracking-wider text-slate-700">
+                    <Sliders className="w-3.5 h-3.5 text-purple-600" />
+                    1. Quotas & Subscription Limits
+                  </h4>
+                  <span className="text-[11px] text-slate-400">Controls resource usage and active devices</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Plan Tier</label>
+                    <select
+                      value={editPlanTier}
+                      onChange={(e) => setEditPlanTier(e.target.value)}
+                      className="w-full p-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="trial">Trial</option>
+                      <option value="free">Free</option>
+                      <option value="starter">Starter</option>
+                      <option value="pro">Pro</option>
+                      <option value="enterprise">Enterprise</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Status</label>
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value)}
+                      className="w-full p-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="active">Active</option>
+                      <option value="trialing">Trialing</option>
+                      <option value="expired">Expired</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Duration Days (0 or 9999=Lifetime)</label>
+                    <input
+                      type="number"
+                      value={editDurationDays}
+                      onChange={(e) => setEditDurationDays(e.target.value)}
+                      className="w-full p-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Max WhatsApp Devices</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={editMaxDevices}
+                      onChange={(e) => setEditMaxDevices(e.target.value)}
+                      className="w-full p-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Daily Messages Limit</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={editDailyLimit}
+                      onChange={(e) => setEditDailyLimit(e.target.value)}
+                      className="w-full p-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Daily Extractions Limit</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={editExtractionLimit}
+                      onChange={(e) => setEditExtractionLimit(e.target.value)}
+                      className="w-full p-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Status</label>
-                <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="w-full p-2 border border-slate-200 rounded-xl">
-                  <option value="active">Active</option>
-                  <option value="trialing">Trialing</option>
-                  <option value="expired">Expired</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Duration Days (0=Lifetime)</label>
-                <input type="number" value={editDurationDays} onChange={(e) => setEditDurationDays(e.target.value)} className="w-full p-2 border border-slate-200 rounded-xl" />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Max Devices</label>
-                <input type="number" value={editMaxDevices} onChange={(e) => setEditMaxDevices(e.target.value)} className="w-full p-2 border border-slate-200 rounded-xl" />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Daily Messages Limit</label>
-                <input type="number" value={editDailyLimit} onChange={(e) => setEditDailyLimit(e.target.value)} className="w-full p-2 border border-slate-200 rounded-xl" />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Daily Extractions Limit</label>
-                <input type="number" value={editExtractionLimit} onChange={(e) => setEditExtractionLimit(e.target.value)} className="w-full p-2 border border-slate-200 rounded-xl" />
+
+              {/* SECTION 2: PAGE ACCESS MANAGER */}
+              <div className="space-y-3 pt-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5 uppercase tracking-wider text-slate-700">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      2. Page Access Manager (All Pages Permission)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Toggle which pages are accessible for this user. Unchecked pages will be hidden from their sidebar and blocked.
+                    </p>
+                  </div>
+
+                  {/* Preset Buttons */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditAllowedPages(ALL_SYSTEM_PAGES.map((p) => p.id))}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] transition cursor-pointer"
+                    >
+                      Allow All ({ALL_SYSTEM_PAGES.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditAllowedPages(['dashboard', 'sender', 'bulk', 'lid-links', 'scheduler', 'templates'])}
+                      className="px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-[10px] transition cursor-pointer"
+                    >
+                      Messaging Only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditAllowedPages(['dashboard', 'extractor', 'leads', 'crm', 'extractors', 'contacts'])}
+                      className="px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[10px] transition cursor-pointer"
+                    >
+                      Extractor & CRM
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditAllowedPages(['dashboard'])}
+                      className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[10px] transition cursor-pointer"
+                    >
+                      Dashboard Only
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+                  {ALL_SYSTEM_PAGES.map((page) => {
+                    const isAllowed = editAllowedPages.includes(page.id);
+                    const PageIcon = page.icon;
+
+                    return (
+                      <div
+                        key={page.id}
+                        onClick={() => {
+                          setEditAllowedPages((prev) =>
+                            prev.includes(page.id)
+                              ? prev.filter((p) => p !== page.id)
+                              : [...prev, page.id]
+                          );
+                        }}
+                        className={`p-2.5 rounded-xl border flex items-center gap-2.5 cursor-pointer transition select-none ${
+                          isAllowed
+                            ? 'bg-emerald-50/70 border-emerald-300 text-slate-900 shadow-2xs'
+                            : 'bg-slate-50/70 border-slate-200 text-slate-400 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div
+                          className={`p-1.5 rounded-lg shrink-0 transition ${
+                            isAllowed ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-200 text-slate-400'
+                          }`}
+                        >
+                          <PageIcon className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className={`font-bold truncate text-[11px] ${isAllowed ? 'text-slate-900' : 'text-slate-500'}`}>
+                            {page.label}
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-medium">{page.category}</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isAllowed}
+                          onChange={() => {}} // handled by parent div onClick
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer pointer-events-none"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={() => setEditingCustomer(null)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Cancel</button>
-              <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold">Save Changes</button>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="text-xs text-slate-500">
+                <span className="font-bold text-slate-800">{editAllowedPages.length}</span> of {ALL_SYSTEM_PAGES.length} pages enabled
+                {editAllowedPages.length === ALL_SYSTEM_PAGES.length && (
+                  <span className="text-emerald-700 font-semibold ml-1.5">(Full Unrestricted Access)</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingCustomer(null)}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Save Access & Limits
+                </button>
+              </div>
             </div>
           </form>
         </div>

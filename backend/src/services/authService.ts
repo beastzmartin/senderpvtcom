@@ -20,6 +20,7 @@ export interface UserRecord {
   days_remaining?: number | null;
   preferred_currency?: string | null;
   is_active?: boolean;
+  allowed_pages?: string[] | null;
   created_at: string;
 }
 
@@ -53,6 +54,15 @@ export class AuthService {
       daysRemaining = 9999;
     }
 
+    let allowedPages: string[] | null = null;
+    if (row.allowed_pages) {
+      try {
+        allowedPages = typeof row.allowed_pages === 'string' ? JSON.parse(row.allowed_pages) : row.allowed_pages;
+      } catch {
+        allowedPages = null;
+      }
+    }
+
     return {
       id: row.id,
       username: row.username,
@@ -70,6 +80,7 @@ export class AuthService {
       days_remaining: daysRemaining,
       preferred_currency: row.preferred_currency || 'INR',
       is_active: row.is_active !== 0,
+      allowed_pages: allowedPages,
       created_at: row.created_at
     };
   }
@@ -113,8 +124,20 @@ export class AuthService {
     return { token, user };
   }
 
+  public isRegistrationEnabled(): boolean {
+    const db = getDatabase();
+    const regSetting = db.prepare("SELECT value FROM application_settings WHERE key = 'allow_registration'").get() as { value: string } | undefined;
+    return !regSetting || regSetting.value !== 'false';
+  }
+
   public register(dto: RegisterDTO): { token: string; user: UserRecord } {
     const db = getDatabase();
+
+    // Enforce Admin Registration ON/OFF Toggle
+    if (!this.isRegistrationEnabled()) {
+      throw new Error('Public registration is currently disabled by administrator. Please contact support or sign in with an existing account.');
+    }
+
     const cleanUsername = dto.username.trim().toLowerCase();
 
     if (!cleanUsername || cleanUsername.length < 3) {

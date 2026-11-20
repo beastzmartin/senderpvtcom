@@ -882,18 +882,33 @@ export class SubscriptionService {
       throw new Error('Permission denied. Admin access required.');
     }
 
-    return db.prepare(`
+    const rows = db.prepare(`
       SELECT 
         u.id, u.username, u.email, u.name, u.company_name, u.phone, u.role,
         u.plan_tier, u.subscription_status, u.subscription_expires_at,
         u.max_devices, u.daily_message_limit, u.daily_extraction_limit, u.reseller_license_quota,
-        u.active_license_code, COALESCE(u.is_active, 1) as is_active, u.created_at,
+        u.active_license_code, COALESCE(u.is_active, 1) as is_active, u.allowed_pages, u.created_at,
         (SELECT COUNT(*) FROM whatsapp_sessions WHERE user_id = u.id) as connected_devices,
         (SELECT COUNT(*) FROM messages WHERE user_id = u.id AND direction = 'outgoing') as total_messages_sent,
         (SELECT COALESCE(SUM(total_contacts), 0) FROM extracted_data_vault WHERE user_id = u.id) as total_extracted_contacts
       FROM users u
       ORDER BY u.created_at DESC
-    `).all();
+    `).all() as any[];
+
+    return rows.map((u) => {
+      let parsedPages = null;
+      if (u.allowed_pages) {
+        try {
+          parsedPages = typeof u.allowed_pages === 'string' ? JSON.parse(u.allowed_pages) : u.allowed_pages;
+        } catch {
+          parsedPages = null;
+        }
+      }
+      return {
+        ...u,
+        allowed_pages: parsedPages
+      };
+    });
   }
 
   /**
@@ -909,6 +924,7 @@ export class SubscriptionService {
       maxDevices?: number;
       dailyLimit?: number;
       extractionLimit?: number;
+      allowedPages?: string[] | null;
     }
   ): UserSubscriptionDetails {
     const db = getDatabase();
@@ -933,17 +949,33 @@ export class SubscriptionService {
       }
     }
 
-    db.prepare(`
-      UPDATE users
-      SET plan_tier = ?,
-          subscription_status = ?,
-          subscription_expires_at = ?,
-          max_devices = ?,
-          daily_message_limit = ?,
-          daily_extraction_limit = ?,
-          updated_at = datetime('now')
-      WHERE id = ?
-    `).run(data.planTier, status, newExpiry, maxDevices, dailyLimit, extractionLimit, targetUserId);
+    if (data.allowedPages !== undefined) {
+      const allowedPagesJson = (data.allowedPages && Array.isArray(data.allowedPages)) ? JSON.stringify(data.allowedPages) : null;
+      db.prepare(`
+        UPDATE users
+        SET plan_tier = ?,
+            subscription_status = ?,
+            subscription_expires_at = ?,
+            max_devices = ?,
+            daily_message_limit = ?,
+            daily_extraction_limit = ?,
+            allowed_pages = ?,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(data.planTier, status, newExpiry, maxDevices, dailyLimit, extractionLimit, allowedPagesJson, targetUserId);
+    } else {
+      db.prepare(`
+        UPDATE users
+        SET plan_tier = ?,
+            subscription_status = ?,
+            subscription_expires_at = ?,
+            max_devices = ?,
+            daily_message_limit = ?,
+            daily_extraction_limit = ?,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(data.planTier, status, newExpiry, maxDevices, dailyLimit, extractionLimit, targetUserId);
+    }
 
     return this.getUserSubscription(targetUserId);
   }

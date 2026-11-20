@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useContact } from '../../context/ContactContext';
+import { api } from '../../services/api';
 import {
   MessageSquare,
   Lock,
@@ -40,6 +41,21 @@ export const LoginView: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [registrationEnabled, setRegistrationEnabled] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.auth.getRegistrationStatus()
+      .then((res) => {
+        if (isMounted && res.success) {
+          setRegistrationEnabled(res.registrationEnabled);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +134,10 @@ export const LoginView: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                if (!registrationEnabled) {
+                  setError('Public registration is currently disabled by administrator. Please contact support or sign in with an existing account.');
+                  return;
+                }
                 setIsRegisterMode(true);
                 setError(null);
                 setUsername('');
@@ -127,13 +147,32 @@ export const LoginView: React.FC = () => {
               className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                 isRegisterMode
                   ? 'bg-white text-purple-700 shadow-xs'
+                  : !registrationEnabled
+                  ? 'text-slate-400 cursor-not-allowed opacity-75'
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <UserPlus className="w-3.5 h-3.5" />
-              Create Account (No OTP)
+              {registrationEnabled ? (
+                <>
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Create Account (No OTP)
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  Sign Up Closed
+                </>
+              )}
             </button>
           </div>
+
+          {/* Registration Disabled Notice */}
+          {!registrationEnabled && (
+            <div className="mb-4 px-3.5 py-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2 shadow-2xs">
+              <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Public registration is currently closed. Please sign in with your credentials.</span>
+            </div>
+          )}
 
           {/* Error Banner */}
           {error && (

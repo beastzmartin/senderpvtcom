@@ -112,6 +112,7 @@ export interface User {
   total_messages_sent?: number;
   total_extracted_contacts?: number;
   connected_devices?: number;
+  allowed_pages?: string[] | null;
 }
 
 export interface SubscriptionPlan {

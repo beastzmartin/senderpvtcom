@@ -72,6 +72,7 @@ export function initDatabase(): Database.Database {
     `ALTER TABLE users ADD COLUMN active_license_code TEXT;`,
     `ALTER TABLE users ADD COLUMN daily_extraction_limit INTEGER DEFAULT 500;`,
     `ALTER TABLE users ADD COLUMN reseller_license_quota INTEGER DEFAULT 0;`,
+    `ALTER TABLE users ADD COLUMN allowed_pages TEXT;`,
     `ALTER TABLE subscription_plans ADD COLUMN daily_extraction_limit INTEGER DEFAULT 500;`,
     `ALTER TABLE license_keys ADD COLUMN max_devices_override INTEGER;`,
     `ALTER TABLE license_keys ADD COLUMN daily_limit_override INTEGER;`,
@@ -263,7 +264,8 @@ export function initDatabase(): Database.Database {
       { key: 'trial_duration_days', value: '3' },
       { key: 'trial_daily_message_limit', value: '25' },
       { key: 'trial_daily_extraction_limit', value: '50' },
-      { key: 'trial_max_devices', value: '1' }
+      { key: 'trial_max_devices', value: '1' },
+      { key: 'allow_registration', value: 'true' }
     ];
     for (const s of trialSettings) {
       db.prepare("INSERT OR IGNORE INTO application_settings (key, value) VALUES (?, ?)").run(s.key, s.value);

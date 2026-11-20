@@ -225,7 +225,7 @@ export class SubscriptionController {
         return;
       }
 
-      const { targetUserId, planTier, subscriptionStatus, durationDays, maxDevices, dailyLimit, extractionLimit } = req.body;
+      const { targetUserId, planTier, subscriptionStatus, durationDays, maxDevices, dailyLimit, extractionLimit, allowedPages } = req.body;
       if (!targetUserId || !planTier) {
         res.status(400).json({ error: 'Fields "targetUserId" and "planTier" are required.' });
         return;
@@ -237,7 +237,8 @@ export class SubscriptionController {
         durationDays: durationDays !== undefined ? parseInt(durationDays, 10) : undefined,
         maxDevices: maxDevices !== undefined ? parseInt(maxDevices, 10) : undefined,
         dailyLimit: dailyLimit !== undefined ? parseInt(dailyLimit, 10) : undefined,
-        extractionLimit: extractionLimit !== undefined ? parseInt(extractionLimit, 10) : undefined
+        extractionLimit: extractionLimit !== undefined ? parseInt(extractionLimit, 10) : undefined,
+        allowedPages: allowedPages !== undefined ? allowedPages : undefined
       });
 
       res.json({

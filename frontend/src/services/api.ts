@@ -687,6 +687,9 @@ export const api = {
         body: JSON.stringify({ username: usernameOrEmail, password })
       }),
 
+    getRegistrationStatus: () =>
+      request<{ success: boolean; registrationEnabled: boolean }>('/auth/registration-status'),
+
     register: (data: {
       username: string;
       password: string;
@@ -794,6 +797,7 @@ export const api = {
       maxDevices?: number;
       dailyLimit?: number;
       extractionLimit?: number;
+      allowedPages?: string[] | null;
     }) =>
       request<{ success: boolean; message: string; subscription: UserSubscriptionDetails }>(
         '/subscriptions/admin/update-customer',
