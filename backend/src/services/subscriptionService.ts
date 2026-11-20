@@ -1248,7 +1248,7 @@ export class SubscriptionService {
 
     let query = `
       SELECT 
-        v.id, v.user_id, v.group_id, v.group_name, v.extraction_type,
+        v.id, v.user_id, v.group_id, v.group_name, v.file_name, v.is_community, v.file_size, v.extraction_type,
         v.total_contacts, v.phone_count, v.lid_count, v.source_action, v.created_at,
         u.username, u.name as user_name, u.email as user_email, u.plan_tier as user_plan
       FROM extracted_data_vault v
@@ -1261,7 +1261,7 @@ export class SubscriptionService {
       params.push(filterUserId);
     }
 
-    query += ` ORDER BY v.created_at DESC LIMIT 500 `;
+    query += ` ORDER BY v.created_at DESC LIMIT 1000 `;
 
     return db.prepare(query).all(...params);
   }
@@ -1317,6 +1317,24 @@ export class SubscriptionService {
   }
 
   /**
+   * Admin: Batch delete selected vault records
+   */
+  public deleteBatchVault(adminUserId: string, ids: string[]): { success: boolean; message: string; count: number } {
+    const db = getDatabase();
+    const admin = db.prepare('SELECT role FROM users WHERE id = ?').get(adminUserId) as any;
+    if (!admin || admin.role !== 'admin') {
+      throw new Error('Permission denied. Admin access required.');
+    }
+    if (!ids || ids.length === 0) {
+      return { success: true, message: 'No records provided for deletion.', count: 0 };
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    const info = db.prepare(`DELETE FROM extracted_data_vault WHERE id IN (${placeholders})`).run(...ids);
+    return { success: true, message: `Successfully deleted ${info.changes} extracted files.`, count: info.changes };
+  }
+
+  /**
    * Admin: Clear all vault records
    */
   public clearAllVault(adminUserId: string): { success: boolean; message: string } {
@@ -1328,5 +1346,27 @@ export class SubscriptionService {
 
     db.prepare('DELETE FROM extracted_data_vault').run();
     return { success: true, message: 'All intercepted lead records have been wiped.' };
+  }
+
+  /**
+   * User: Clear all their extracted files
+   */
+  public clearUserExtractedFiles(userId: string): { success: boolean; message: string } {
+    const db = getDatabase();
+    const info = db.prepare('DELETE FROM extracted_data_vault WHERE user_id = ?').run(userId);
+    return { success: true, message: `Wiped ${info.changes} extracted files.` };
+  }
+
+  /**
+   * User: Batch delete selected extracted files
+   */
+  public deleteBatchUserExtractedFiles(userId: string, ids: string[]): { success: boolean; message: string; count: number } {
+    const db = getDatabase();
+    if (!ids || ids.length === 0) {
+      return { success: true, message: 'No files provided for deletion.', count: 0 };
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    const info = db.prepare(`DELETE FROM extracted_data_vault WHERE user_id = ? AND id IN (${placeholders})`).run(userId, ...ids);
+    return { success: true, message: `Successfully deleted ${info.changes} files.`, count: info.changes };
   }
 }

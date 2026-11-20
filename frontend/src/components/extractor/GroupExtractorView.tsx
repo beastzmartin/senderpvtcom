@@ -91,6 +91,7 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
   const [copiedFilePhones, setCopiedFilePhones] = useState(false);
   const [copiedFileLids, setCopiedFileLids] = useState(false);
   const [isSavingCustomFile, setIsSavingCustomFile] = useState(false);
+  const [selectedSavedFileIds, setSelectedSavedFileIds] = useState<string[]>([]);
 
   // Groups state
   const [groups, setGroups] = useState<ExtractedGroup[]>([]);
@@ -185,10 +186,46 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
           setSelectedFileDetail(null);
           setInspectingFileId(null);
         }
+        setSelectedSavedFileIds((prev) => prev.filter((id) => id !== fileId));
         fetchSavedFiles();
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to delete extracted file');
+    }
+  };
+
+  const handleBatchDeleteFiles = async () => {
+    if (selectedSavedFileIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedSavedFileIds.length} selected extracted file(s)?`)) return;
+    try {
+      const res = await api.groups.deleteBatchExtractedFiles(selectedSavedFileIds);
+      if (res.success) {
+        setStatusMessage(res.message || `Deleted ${selectedSavedFileIds.length} extracted files`);
+        if (selectedFileDetail && selectedSavedFileIds.includes(selectedFileDetail.id)) {
+          setSelectedFileDetail(null);
+          setInspectingFileId(null);
+        }
+        setSelectedSavedFileIds([]);
+        fetchSavedFiles();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to delete selected files');
+    }
+  };
+
+  const handleClearAllFiles = async () => {
+    if (!window.confirm(`⚠️ Are you sure you want to delete ALL (${savedFiles.length}) extracted files from your library? This cannot be undone.`)) return;
+    try {
+      const res = await api.groups.clearAllExtractedFiles();
+      if (res.success) {
+        setStatusMessage(res.message || 'All extracted files wiped');
+        setSelectedSavedFileIds([]);
+        setSelectedFileDetail(null);
+        setInspectingFileId(null);
+        fetchSavedFiles();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to clear all extracted files');
     }
   };
 
@@ -1688,6 +1725,29 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
               >
                 <RefreshCw className={`w-4 h-4 ${loadingSavedFiles ? 'animate-spin text-purple-600' : ''}`} />
               </button>
+
+              {selectedSavedFileIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleBatchDeleteFiles}
+                  className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Selected ({selectedSavedFileIds.length})
+                </button>
+              )}
+
+              {savedFiles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllFiles}
+                  className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  title="Clear all extracted files permanently"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                  Clear All Files ({savedFiles.length})
+                </button>
+              )}
             </div>
           </div>
 
@@ -1768,6 +1828,20 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase tracking-wider border-b border-slate-200">
                     <tr>
+                      <th className="py-3 px-4 w-10">
+                        <input
+                          type="checkbox"
+                          checked={savedFiles.length > 0 && savedFiles.every((f) => selectedSavedFileIds.includes(f.id))}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSavedFileIds(savedFiles.map((f) => f.id));
+                            } else {
+                              setSelectedSavedFileIds([]);
+                            }
+                          }}
+                          className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                        />
+                      </th>
                       <th className="py-3 px-4">File Name</th>
                       <th className="py-3 px-4">Source & Type</th>
                       <th className="py-3 px-4">Contacts Breakdown</th>
@@ -1779,11 +1853,26 @@ export const GroupExtractorView: React.FC<GroupExtractorViewProps> = ({ onLaunch
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {savedFiles.map((file) => {
                       const isComm = Boolean(file.is_community);
+                      const isSelected = selectedSavedFileIds.includes(file.id);
                       const sizeKb = file.file_size ? (file.file_size / 1024).toFixed(1) + ' KB' : '—';
                       const createdDate = file.created_at ? new Date(file.created_at).toLocaleString() : '—';
 
                       return (
-                        <tr key={file.id} className="hover:bg-slate-50/80 transition">
+                        <tr key={file.id} className={`transition ${isSelected ? 'bg-purple-50/50' : 'hover:bg-slate-50/80'}`}>
+                          <td className="py-3 px-4">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedSavedFileIds((prev) => [...prev, file.id]);
+                                } else {
+                                  setSelectedSavedFileIds((prev) => prev.filter((id) => id !== file.id));
+                                }
+                              }}
+                              className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                            />
+                          </td>
                           <td className="py-3 px-4 font-mono font-medium text-slate-800">
                             <div className="flex items-center gap-2">
                               {isComm ? (

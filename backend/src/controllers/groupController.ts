@@ -649,4 +649,37 @@ export class GroupController {
       res.status(500).json({ error: err.message || 'Failed to delete file' });
     }
   };
+
+  public clearAllUserExtractedFiles = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const result = this.subscriptionService.clearUserExtractedFiles(userId);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to clear extracted files' });
+    }
+  };
+
+  public deleteBatchUserExtractedFiles = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({ error: 'Please provide an array of file IDs to delete' });
+        return;
+      }
+      const result = this.subscriptionService.deleteBatchUserExtractedFiles(userId, ids);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to delete selected files' });
+    }
+  };
 }

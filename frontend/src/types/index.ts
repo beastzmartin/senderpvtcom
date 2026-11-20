@@ -431,6 +431,9 @@ export interface VaultLogItem {
   user_id: string;
   group_id?: string | null;
   group_name?: string | null;
+  file_name?: string | null;
+  is_community?: number | boolean;
+  file_size?: number;
   extraction_type: string;
   total_contacts: number;
   phone_count: number;

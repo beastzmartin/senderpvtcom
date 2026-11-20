@@ -46,7 +46,12 @@ import {
   Sliders,
   Phone,
   Percent,
-  Layers
+  Layers,
+  FileText,
+  Filter,
+  CheckSquare,
+  Square,
+  FolderDown
 } from 'lucide-react';
 import { AdminVirtualNumbersTab } from './AdminVirtualNumbersTab';
 import { CommissionSetterPanel } from './CommissionSetterPanel';
@@ -98,10 +103,15 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
   const [sessionSearch, setSessionSearch] = useState('');
   const [vaultSearch, setVaultSearch] = useState('');
   const [vaultUserFilter, setVaultUserFilter] = useState<string>('');
+  const [vaultTypeFilter, setVaultTypeFilter] = useState<'all' | 'community' | 'group'>('all');
+  const [vaultSubView, setVaultSubView] = useState<'whatsapp' | 'marketplace'>('whatsapp');
+  const [selectedVaultIds, setSelectedVaultIds] = useState<string[]>([]);
 
   // Modals
   const [previewRecord, setPreviewRecord] = useState<VaultRecordDetail | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewSearch, setPreviewSearch] = useState('');
+  const [previewFilterTab, setPreviewFilterTab] = useState<'all' | 'phones' | 'lids'>('all');
 
   const [editingCustomer, setEditingCustomer] = useState<any | null>(null);
   const [editPlanTier, setEditPlanTier] = useState('pro');
@@ -444,21 +454,37 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
   };
 
   const handleDeleteVaultItem = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this extracted file from the vault?')) return;
     try {
       await api.admin.deleteVaultRecord(id);
       setVaultLogs((prev) => prev.filter((item) => item.id !== id));
-      showToast('Vault record deleted.');
+      setSelectedVaultIds((prev) => prev.filter((i) => i !== id));
+      showToast('Vault record deleted successfully.');
     } catch (err: any) {
       setError(err.message || 'Failed to delete vault item.');
     }
   };
 
+  const handleBatchDeleteVault = async () => {
+    if (selectedVaultIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedVaultIds.length} selected extracted file(s) from the vault?`)) return;
+    try {
+      const res = await api.admin.deleteBatchVaultRecords(selectedVaultIds);
+      setVaultLogs((prev) => prev.filter((item) => !selectedVaultIds.includes(item.id)));
+      setSelectedVaultIds([]);
+      showToast(res.message || `Deleted ${selectedVaultIds.length} vault records.`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to batch delete vault records.');
+    }
+  };
+
   const handleClearVault = async () => {
-    if (!window.confirm('Clear ALL intercepted lead records from the Admin Vault?')) return;
+    if (!window.confirm(`⚠️ DANGER: Are you sure you want to delete ALL (${vaultLogs.length}) extracted files from the Admin Vault? This cannot be undone.`)) return;
     try {
       await api.admin.clearVault();
       setVaultLogs([]);
-      showToast('Admin Vault cleared.');
+      setSelectedVaultIds([]);
+      showToast('All extracted files have been permanently cleared from Vault.');
       loadAllData();
     } catch (err: any) {
       setError(err.message || 'Failed to clear vault.');
@@ -489,13 +515,18 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
   });
 
   const filteredVault = vaultLogs.filter((v) => {
+    if (vaultUserFilter && v.user_id !== vaultUserFilter) return false;
+    if (vaultTypeFilter === 'community' && !v.is_community) return false;
+    if (vaultTypeFilter === 'group' && v.is_community) return false;
     const q = vaultSearch.trim().toLowerCase();
     if (!q) return true;
     return (
       v.group_name?.toLowerCase().includes(q) ||
       v.username?.toLowerCase().includes(q) ||
       v.user_name?.toLowerCase().includes(q) ||
-      v.source_action?.toLowerCase().includes(q)
+      v.source_action?.toLowerCase().includes(q) ||
+      v.file_name?.toLowerCase().includes(q) ||
+      v.group_id?.toLowerCase().includes(q)
     );
   });
 
@@ -1191,9 +1222,372 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
         </div>
       )}
 
-      {/* TAB 4: ADMIN DATA VAULT */}
+      {/* TAB 4: EXTRACTED LEADS VAULT */}
       {subTab === 'vault' && (
-        <DataVaultTab />
+        <div className="space-y-4">
+          {/* Top Toggle Switcher: WhatsApp Extractor vs Marketplace Studio */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setVaultSubView('whatsapp')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                  vaultSubView === 'whatsapp'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <Database className="w-4 h-4 text-emerald-200" />
+                WhatsApp Group Extractor Vault ({vaultLogs.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setVaultSubView('marketplace')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                  vaultSubView === 'marketplace'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <Layers className="w-4 h-4 text-emerald-200" />
+                Marketplace & Studio Vault
+              </button>
+            </div>
+            <div className="text-xs text-slate-500 hidden sm:block pr-2">
+              {vaultSubView === 'whatsapp'
+                ? 'Central archive of all intercepted WhatsApp group and community extractions.'
+                : 'Central repository of all data-extractor runs and marketplace outputs.'}
+            </div>
+          </div>
+
+          {vaultSubView === 'marketplace' ? (
+            <DataVaultTab />
+          ) : (
+            <div className="space-y-4">
+              {/* WhatsApp Extractor Vault KPI Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Vault Files</span>
+                    <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                      <FolderDown className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-black text-slate-900 mt-2">
+                    {vaultLogs.length.toLocaleString()}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">Intercepted extracted files</div>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Leads Intercepted</span>
+                    <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+                      <Users className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-black text-blue-900 mt-2">
+                    {vaultLogs.reduce((acc, v) => acc + (v.total_contacts || 0), 0).toLocaleString()}
+                  </div>
+                  <div className="text-[11px] text-blue-500 mt-0.5">Audience members captured</div>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Real Phone Numbers</span>
+                    <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                      <Phone className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-black text-emerald-700 mt-2">
+                    {vaultLogs.reduce((acc, v) => acc + (v.phone_count || 0), 0).toLocaleString()}
+                  </div>
+                  <div className="text-[11px] text-emerald-500 mt-0.5">Direct dialed numbers</div>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">WhatsApp LIDs</span>
+                    <div className="p-1.5 rounded-lg bg-sky-50 text-sky-600">
+                      <Database className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-black text-sky-900 mt-2">
+                    {vaultLogs.reduce((acc, v) => acc + (v.lid_count || 0), 0).toLocaleString()}
+                  </div>
+                  <div className="text-[11px] text-sky-500 mt-0.5">Available for Bulk LID Sender</div>
+                </div>
+              </div>
+
+              {/* Main Vault Panel */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                {/* Header & Controls */}
+                <div className="p-4 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                      <Database className="w-4 h-4 text-emerald-600" />
+                      Extracted Group Leads Vault & Admin Interceptor
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Archive of all WhatsApp group and community files extracted by users, with full contact inspection, CSV/JSON export, and deletion controls.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={vaultUserFilter}
+                      onChange={(e) => setVaultUserFilter(e.target.value)}
+                      className="px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="">All Users</option>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} (@{c.username})
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={vaultTypeFilter}
+                      onChange={(e) => setVaultTypeFilter(e.target.value as any)}
+                      className="px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="all">All Types</option>
+                      <option value="community">Communities Only</option>
+                      <option value="group">Groups Only</option>
+                    </select>
+
+                    <div className="relative w-52">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={vaultSearch}
+                        onChange={(e) => setVaultSearch(e.target.value)}
+                        placeholder="Search group, file, user..."
+                        className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => loadAllData()}
+                      className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl border border-slate-200 transition"
+                      title="Refresh Vault Data"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                    </button>
+
+                    {selectedVaultIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleBatchDeleteVault}
+                        className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete Selected ({selectedVaultIds.length})
+                      </button>
+                    )}
+
+                    {vaultLogs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearVault}
+                        className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                        title="Delete all extracted files permanently in 1 click"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                        Clear Vault / Delete All ({vaultLogs.length})
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Vault Records Table */}
+                {filteredVault.length === 0 ? (
+                  <div className="p-16 text-center text-slate-400">
+                    <Database className="w-12 h-12 mx-auto mb-3 opacity-25 text-emerald-600" />
+                    <p className="text-sm font-semibold text-slate-700">No intercepted extractions found.</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      Whenever any user extracts a WhatsApp group, saves contacts, or downloads leads, it will automatically appear here with full inspection tools.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider border-b border-slate-200">
+                          <th className="py-3 px-4 w-10">
+                            <input
+                              type="checkbox"
+                              checked={
+                                filteredVault.length > 0 &&
+                                filteredVault.every((v) => selectedVaultIds.includes(v.id))
+                              }
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedVaultIds(filteredVault.map((v) => v.id));
+                                } else {
+                                  setSelectedVaultIds([]);
+                                }
+                              }}
+                              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            />
+                          </th>
+                          <th className="py-3 px-4 font-semibold">User</th>
+                          <th className="py-3 px-4 font-semibold">Group / Community</th>
+                          <th className="py-3 px-4 font-semibold">File Details</th>
+                          <th className="py-3 px-4 font-semibold">Action</th>
+                          <th className="py-3 px-4 font-semibold">Leads Breakdown</th>
+                          <th className="py-3 px-4 font-semibold">Captured At</th>
+                          <th className="py-3 px-4 font-semibold text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {filteredVault.map((log) => {
+                          const isSelected = selectedVaultIds.includes(log.id);
+                          const isComm = Boolean(log.is_community);
+                          const fileSizeFormatted = log.file_size
+                            ? log.file_size > 1024 * 1024
+                              ? (log.file_size / (1024 * 1024)).toFixed(1) + ' MB'
+                              : (log.file_size / 1024).toFixed(1) + ' KB'
+                            : '—';
+
+                          return (
+                            <tr
+                              key={log.id}
+                              className={`transition ${isSelected ? 'bg-emerald-50/50' : 'hover:bg-slate-50/80'}`}
+                            >
+                              <td className="py-3 px-4">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedVaultIds((prev) => [...prev, log.id]);
+                                    } else {
+                                      setSelectedVaultIds((prev) => prev.filter((i) => i !== log.id));
+                                    }
+                                  }}
+                                  className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <div className="font-bold text-slate-900">{log.user_name || 'User'}</div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                                  <span>@{log.username || log.user_id.slice(0, 8)}</span>
+                                  <span className="px-1.5 py-0.2 rounded-md bg-slate-100 text-[10px] font-bold text-slate-600 uppercase">
+                                    {log.user_plan || 'pro'}
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  {isComm ? (
+                                    <div className="p-1 rounded-md bg-purple-100 text-purple-700 shrink-0">
+                                      <Users className="w-3.5 h-3.5" />
+                                    </div>
+                                  ) : (
+                                    <div className="p-1 rounded-md bg-slate-100 text-slate-600 shrink-0">
+                                      <Database className="w-3.5 h-3.5" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <div className="font-semibold text-slate-900 truncate max-w-xs" title={log.group_name || ''}>
+                                      {log.group_name || log.group_id || 'Extracted Audience'}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      {isComm && (
+                                        <span className="px-1.5 py-0.2 rounded-md bg-purple-100 text-purple-700 text-[10px] font-bold">
+                                          Community
+                                        </span>
+                                      )}
+                                      <span className="text-[10px] text-slate-400 font-mono truncate max-w-[120px]">
+                                        {log.group_id || log.extraction_type}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-1.5">
+                                  <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  <span className="font-mono font-medium text-slate-800 truncate max-w-xs" title={log.file_name || ''}>
+                                    {log.file_name || `extraction_${log.id.slice(0, 8)}.csv`}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                  Size: {fileSizeFormatted}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4">{getActionBadge(log.source_action)}</td>
+
+                              <td className="py-3 px-4">
+                                <div className="font-bold text-slate-900">{log.total_contacts.toLocaleString()} Total</div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                                  <span className="text-emerald-700 font-semibold">{log.phone_count.toLocaleString()} Phones</span>
+                                  <span>&bull;</span>
+                                  <span className="text-sky-700 font-semibold">{log.lid_count.toLocaleString()} LIDs</span>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 text-[11px] text-slate-500 whitespace-nowrap">
+                                {new Date(log.created_at.includes('T') ? log.created_at : log.created_at.replace(' ', 'T') + 'Z').toLocaleString()}
+                              </td>
+
+                              <td className="py-3 px-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePreviewVault(log.id)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                                    title="View member leads in modal"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    View
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadVaultCsv(log)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition shadow-xs cursor-pointer"
+                                    title="Download CSV"
+                                  >
+                                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                                    CSV
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadVaultJson(log)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition shadow-xs cursor-pointer"
+                                    title="Download JSON"
+                                  >
+                                    <FileJson className="w-3.5 h-3.5" />
+                                    JSON
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteVaultItem(log.id)}
+                                    className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition cursor-pointer"
+                                    title="Delete this file"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* TAB 5: LIVE GLOBAL CAMPAIGNS MONITOR */}
@@ -1456,70 +1850,186 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
       {/* MODAL: PREVIEW INTERCEPTED VAULT LEADS */}
       {(previewRecord || previewLoading) && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="font-bold text-slate-900">
+                <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                  <Database className="w-4 h-4 text-emerald-600" />
                   {previewLoading ? 'Loading Vault Leads...' : `Intercepted Leads: ${previewRecord?.group_name || 'Audience'}`}
                 </h3>
                 {previewRecord && (
-                  <p className="text-xs text-slate-500">
-                    User: @{previewRecord.username} &bull; {previewRecord.total_contacts} contacts ({previewRecord.phone_count} Real Phones)
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    User: <span className="font-semibold text-slate-700">{previewRecord.user_name || 'User'}</span> (@{previewRecord.username}) &bull;{' '}
+                    <span className="font-semibold text-slate-800">{previewRecord.total_contacts} Contacts</span> ({previewRecord.phone_count} Real Phones &bull; {previewRecord.lid_count} LIDs)
                   </p>
                 )}
               </div>
               <button
-                onClick={() => setPreviewRecord(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200"
+                type="button"
+                onClick={() => {
+                  setPreviewRecord(null);
+                  setPreviewSearch('');
+                  setPreviewFilterTab('all');
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* Modal Filter Toolbar */}
+            {previewRecord && !previewLoading && (
+              <div className="px-4 py-2.5 bg-white border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFilterTab('all')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                      previewFilterTab === 'all'
+                        ? 'bg-slate-900 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    All ({previewRecord.contacts?.length || 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFilterTab('phones')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                      previewFilterTab === 'phones'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    }`}
+                  >
+                    Phones ({previewRecord.contacts?.filter((c) => Boolean(c.phone)).length || 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFilterTab('lids')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                      previewFilterTab === 'lids'
+                        ? 'bg-sky-600 text-white shadow-2xs'
+                        : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+                    }`}
+                  >
+                    LIDs ({previewRecord.contacts?.filter((c) => Boolean(c.lid)).length || 0})
+                  </button>
+                </div>
+
+                <div className="relative w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={previewSearch}
+                    onChange={(e) => setPreviewSearch(e.target.value)}
+                    placeholder="Search name, phone, LID..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto p-4">
               {previewLoading ? (
-                <div className="py-12 text-center text-slate-500 text-sm">Loading contacts...</div>
+                <div className="py-16 text-center text-slate-500 text-xs">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto text-emerald-600 mb-2" />
+                  Loading contacts from vault record...
+                </div>
               ) : (
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-500 border-b border-slate-200">
-                      <th className="py-2 px-3">#</th>
-                      <th className="py-2 px-3">Name</th>
-                      <th className="py-2 px-3">Real Phone Number</th>
-                      <th className="py-2 px-3">WhatsApp LID</th>
-                      <th className="py-2 px-3">Role</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {previewRecord?.contacts?.map((c, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2 px-3 text-slate-400">{idx + 1}</td>
-                        <td className="py-2 px-3 font-medium text-slate-800">{c.name || 'Unknown'}</td>
-                        <td className="py-2 px-3 font-mono text-emerald-700 font-semibold">{c.phone || '-'}</td>
-                        <td className="py-2 px-3 font-mono text-slate-500">{c.lid || '-'}</td>
-                        <td className="py-2 px-3 capitalize text-slate-600">{c.role || 'member'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                (() => {
+                  const q = previewSearch.trim().toLowerCase();
+                  const filteredContacts = (previewRecord?.contacts || []).filter((c) => {
+                    if (previewFilterTab === 'phones' && !c.phone) return false;
+                    if (previewFilterTab === 'lids' && !c.lid) return false;
+                    if (!q) return true;
+                    return (
+                      c.name?.toLowerCase().includes(q) ||
+                      c.phone?.toLowerCase().includes(q) ||
+                      c.lid?.toLowerCase().includes(q) ||
+                      c.role?.toLowerCase().includes(q)
+                    );
+                  });
+
+                  if (filteredContacts.length === 0) {
+                    return (
+                      <div className="py-12 text-center text-slate-400 text-xs">
+                        No contacts match the current search or filter.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 font-semibold uppercase text-[10px] tracking-wider">
+                          <th className="py-2.5 px-3">#</th>
+                          <th className="py-2.5 px-3">Name</th>
+                          <th className="py-2.5 px-3">Real Phone Number</th>
+                          <th className="py-2.5 px-3">WhatsApp LID</th>
+                          <th className="py-2.5 px-3">Role</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredContacts.map((c, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                            <td className="py-2 px-3 font-semibold text-slate-800">{c.name || 'Unknown Member'}</td>
+                            <td className="py-2 px-3 font-mono font-bold text-emerald-700">
+                              {c.phone ? `+${c.phone.replace(/\D/g, '')}` : <span className="text-slate-300 font-normal">—</span>}
+                            </td>
+                            <td className="py-2 px-3 font-mono text-slate-500 text-[11px]">
+                              {c.lid || <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="py-2 px-3 capitalize text-slate-600">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                c.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                {c.role || 'member'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  );
+                })()
               )}
             </div>
 
             {previewRecord && (
-              <div className="p-4 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50">
-                <button
-                  onClick={() => handleDownloadVaultCsv(previewRecord)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition"
-                >
-                  <Download className="w-4 h-4" />
-                  Download CSV
-                </button>
-                <button
-                  onClick={() => setPreviewRecord(null)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition"
-                >
-                  Close
-                </button>
+              <div className="p-4 border-t border-slate-200 flex items-center justify-between gap-2 bg-slate-50">
+                <div className="text-xs text-slate-500">
+                  Showing {previewRecord.contacts?.length || 0} leads captured in this file
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadVaultCsv(previewRecord)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Download CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadVaultJson(previewRecord)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    <FileJson className="w-4 h-4" />
+                    Download JSON
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewRecord(null);
+                      setPreviewSearch('');
+                      setPreviewFilterTab('all');
+                    }}
+                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             )}
           </div>

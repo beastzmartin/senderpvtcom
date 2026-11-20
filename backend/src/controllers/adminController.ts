@@ -265,6 +265,25 @@ export class AdminController {
   };
 
   /**
+   * Extracted Data Vault: Batch delete multiple vault records
+   */
+  public deleteBatchVaultRecords = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminId = this.ensureAdmin(req);
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({ error: 'Please provide an array of IDs to delete.' });
+        return;
+      }
+
+      const result = this.subscriptionService.deleteBatchVault(adminId, ids);
+      res.json(result);
+    } catch (err: any) {
+      res.status(err.statusCode || 400).json({ error: err.message || 'Failed to delete selected records' });
+    }
+  };
+
+  /**
    * Extracted Data Vault: Clear all vault records
    */
   public clearAllVault = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {

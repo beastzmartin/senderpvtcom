@@ -654,6 +654,24 @@ export const api = {
         method: 'DELETE'
       }),
 
+    clearAllExtractedFiles: () =>
+      request<{
+        success: boolean;
+        message: string;
+      }>('/groups/extracted-files', {
+        method: 'DELETE'
+      }),
+
+    deleteBatchExtractedFiles: (ids: string[]) =>
+      request<{
+        success: boolean;
+        message: string;
+        count: number;
+      }>('/groups/extracted-files/batch-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids })
+      }),
+
     getExtractedFileDownloadUrl: (id: string, format: 'csv' | 'json' = 'csv') => {
       const token = localStorage.getItem('token');
       const authQuery = token ? `?token=${encodeURIComponent(token)}&format=${format}` : `?format=${format}`;
@@ -1000,6 +1018,12 @@ export const api = {
     deleteVaultRecord: (id: string) =>
       request<{ success: boolean; message: string }>(`/admin/vault/${id}`, {
         method: 'DELETE'
+      }),
+
+    deleteBatchVaultRecords: (ids: string[]) =>
+      request<{ success: boolean; message: string; count: number }>('/admin/vault/batch-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids })
       }),
 
     clearVault: () =>

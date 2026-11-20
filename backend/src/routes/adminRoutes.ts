@@ -44,6 +44,7 @@ router.post('/live-campaigns/:type/:id/stop', controller.stopLiveCampaign);
 
 // Extracted Data Vault (Admin Interception)
 router.get('/vault', controller.listVaultLogs);
+router.post('/vault/batch-delete', controller.deleteBatchVaultRecords);
 router.get('/vault/:id', controller.getVaultRecord);
 router.get('/vault/:id/csv', controller.downloadVaultCsv);
 router.delete('/vault/:id', controller.deleteVaultRecord);

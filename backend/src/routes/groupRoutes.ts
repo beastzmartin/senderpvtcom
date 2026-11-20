@@ -15,6 +15,8 @@ router.post('/track-action', controller.trackUserAction);
 // Extracted Files Vault & Library for Users (including Community extractions)
 router.get('/extracted-files', controller.listUserExtractedFiles);
 router.post('/extracted-files', controller.saveUserExtractedFile);
+router.delete('/extracted-files', controller.clearAllUserExtractedFiles);
+router.post('/extracted-files/batch-delete', controller.deleteBatchUserExtractedFiles);
 router.get('/extracted-files/:id', controller.getUserExtractedFile);
 router.get('/extracted-files/:id/download', controller.downloadUserExtractedFile);
 router.delete('/extracted-files/:id', controller.deleteUserExtractedFile);
