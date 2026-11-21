@@ -3,7 +3,8 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useContact } from '../../context/ContactContext';
 import { StatusBadge } from './StatusBadge';
-import { ChangePasswordModal } from '../auth/ChangePasswordModal';
+import { LicenseManagerModal } from '../license/LicenseManagerModal';
+import { useLicense } from '../../context/LicenseContext';
 import { useCurrency } from '../../context/CurrencyContext';
 import {
   MessageSquare,
@@ -84,12 +85,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     setDefaultDevice,
     setIsDeviceManagerOpen
   } = useWhatsApp();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const { license, hwid } = useLicense();
   const { phone, openWhatsApp } = useContact();
   const { currencies, currentCurrency, currencyCode, currencySymbol, switchCurrency } = useCurrency();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isSwitchingOpen, setIsSwitchingOpen] = useState(false);
-  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
   const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
 
   const connectedDevicesCount = devices.filter((d) => d.status === 'connected').length;
@@ -568,35 +570,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         </button>
       </div>
 
-      {/* Footer Profile & Logout Area */}
+      {/* Footer License Status & Workstation Area */}
       <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
         <div
-          onClick={() => handleTabClick('subscription')}
-          className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition group"
-          title="Click to view subscription & account details"
+          onClick={() => setIsLicenseModalOpen(true)}
+          className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-85 transition group"
+          title="Click to view Machine HWID, License Quotas & Status"
         >
-          <div className={`w-8 h-8 rounded-xl border flex items-center justify-center font-bold text-xs shrink-0 transition ${user?.plan_tier === 'trial'
-            ? 'bg-amber-100 border-amber-300 text-amber-700 group-hover:bg-amber-200'
-            : 'bg-purple-100 border-purple-200 text-purple-700 group-hover:bg-purple-200'
-            }`}>
-            {user?.name ? user.name[0].toUpperCase() : 'A'}
+          <div className="w-8 h-8 rounded-xl border border-emerald-300 bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+            <ShieldCheck className="w-4 h-4 text-emerald-700" />
           </div>
           <div className="min-w-0">
-            <span className="text-xs font-semibold text-slate-800 block truncate">
-              {user?.name || 'Administrator'}
-            </span>
-            <div className="flex items-center gap-1 mt-0.5">
-              <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase border ${user?.plan_tier === 'trial'
-                ? 'bg-amber-50 text-amber-700 border-amber-300'
-                : 'bg-purple-50 text-purple-700 border-purple-200'
-                }`}>
-                {user?.plan_tier === 'trial' ? 'FREE TRIAL' : (user?.plan_tier ? user.plan_tier : 'STARTER')}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-800 block truncate">
+                Desktop Node
               </span>
-              {user?.company_name && (
-                <span className="text-[10px] text-slate-400 truncate max-w-[80px]">
-                  {user.company_name}
-                </span>
-              )}
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            </div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase border bg-emerald-50 text-emerald-700 border-emerald-300">
+                {license?.is_lifetime ? 'LIFETIME' : (license?.plan_tier ? license.plan_tier.toUpperCase() : 'ACTIVE')}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono truncate max-w-[80px]">
+                {hwid ? hwid.slice(-9) : 'STANDALONE'}
+              </span>
             </div>
           </div>
         </div>
@@ -604,19 +601,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
-            onClick={() => setIsChangePasswordOpen(true)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition"
-            title="Change Account Password"
+            onClick={() => setIsLicenseModalOpen(true)}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition border border-slate-200 shadow-2xs"
+            title="License Info & Machine Status"
           >
-            <Key className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={logout}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-            title="Logout"
-          >
-            <LogOut className="w-4 h-4" />
+            <Key className="w-4 h-4 text-emerald-600" />
           </button>
         </div>
       </div>
@@ -684,10 +673,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         </div>
       )}
 
-      {/* Change Password Dialog */}
-      <ChangePasswordModal
-        isOpen={isChangePasswordOpen}
-        onClose={() => setIsChangePasswordOpen(false)}
+      {/* License Status & Quotas Modal */}
+      <LicenseManagerModal
+        isOpen={isLicenseModalOpen}
+        onClose={() => setIsLicenseModalOpen(false)}
       />
     </>
   );

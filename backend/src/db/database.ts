@@ -35,6 +35,7 @@ export function initDatabase(): Database.Database {
   // Ensure directories exist
   fs.mkdirSync(config.dataDir, { recursive: true });
   fs.mkdirSync(config.sessionsDir, { recursive: true });
+  fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 
   const db = new Database(config.dbPath, { timeout: 10000 });
   db.pragma('journal_mode = WAL');
@@ -78,7 +79,24 @@ export function initDatabase(): Database.Database {
     `ALTER TABLE license_keys ADD COLUMN daily_limit_override INTEGER;`,
     `ALTER TABLE license_keys ADD COLUMN extraction_limit_override INTEGER;`,
     `ALTER TABLE license_keys ADD COLUMN status TEXT DEFAULT 'available';`,
-    `ALTER TABLE license_keys ADD COLUMN created_by_user_id TEXT;`
+    `ALTER TABLE license_keys ADD COLUMN created_by_user_id TEXT;`,
+    `ALTER TABLE license_keys ADD COLUMN bound_hwid TEXT;`,
+    `CREATE TABLE IF NOT EXISTS app_license (
+      id INTEGER PRIMARY KEY CHECK(id = 1),
+      license_key TEXT NOT NULL,
+      hwid TEXT NOT NULL,
+      plan_tier TEXT NOT NULL DEFAULT 'enterprise',
+      status TEXT NOT NULL DEFAULT 'active',
+      activated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT,
+      is_lifetime INTEGER DEFAULT 0,
+      daily_message_limit INTEGER DEFAULT 10000,
+      daily_extraction_limit INTEGER DEFAULT 10000,
+      max_devices INTEGER DEFAULT 10,
+      features TEXT,
+      signature TEXT,
+      last_verified_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );`
   ];
 
   for (const migration of userMigrations) {
@@ -372,6 +390,22 @@ export function initDatabase(): Database.Database {
       SET plan_tier = 'enterprise', role = 'admin', max_devices = 10, daily_message_limit = 10000, subscription_status = 'active'
       WHERE username = ?
     `).run(config.defaultAdminUsername);
+  }
+
+  // Ensure default local desktop user exists for offline desktop mode
+  try {
+    const localUser = db.prepare("SELECT id FROM users WHERE id = 'local_user'").get();
+    if (!localUser) {
+      db.prepare(`
+        INSERT OR IGNORE INTO users (
+          id, username, email, password_hash, name, company_name, role,
+          plan_tier, subscription_status, subscription_expires_at, max_devices, daily_message_limit, daily_extraction_limit
+        )
+        VALUES ('local_user', 'local_user', 'user@desktop.local', 'desktop_licensed_user', 'Desktop User', 'Local Workstation', 'admin', 'enterprise', 'active', NULL, 10, 10000, 10000)
+      `).run();
+    }
+  } catch (err) {
+    console.warn('[DB] Local user ensure warning:', err);
   }
 
   // Seed sample license keys if none exist

@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { api, getAuthToken, setAuthToken, removeAuthToken } from '../services/api';
+import React, { createContext, useContext, useMemo } from 'react';
 import { User } from '../types';
+import { useLicense } from './LicenseContext';
 
 export interface RegisterParams {
   username: string;
@@ -30,149 +30,70 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setTokenState] = useState<string | null>(getAuthToken());
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isImpersonating, setIsImpersonating] = useState<boolean>(false);
-  const [impersonatorAdmin, setImpersonatorAdmin] = useState<{ id?: string; username?: string; name?: string } | null>(null);
+  const { isLicensed, isLoading, license, deactivateLicense, refreshLicense } = useLicense();
 
-  useEffect(() => {
-    const initAuth = async () => {
-      const backupStr = localStorage.getItem('wa_admin_impersonation_backup');
-      if (backupStr) {
-        try {
-          const backup = JSON.parse(backupStr);
-          setIsImpersonating(true);
-          setImpersonatorAdmin({ id: backup.user?.id, username: backup.user?.username, name: backup.user?.name });
-        } catch {}
-      }
+  const user: User | null = useMemo(() => {
+    if (!isLicensed) return null;
 
-      const existingToken = getAuthToken();
-      if (existingToken) {
-        try {
-          const res = await api.auth.getMe();
-          setUser(res.user);
-        } catch {
-          // If token expired, clear it
-          localStorage.removeItem('wa_admin_impersonation_backup');
-          removeAuthToken();
-          setTokenState(null);
-          setUser(null);
-          setIsImpersonating(false);
-          setImpersonatorAdmin(null);
-        }
-      }
-      setIsLoading(false);
+    return {
+      id: 'local_user',
+      username: 'local_user',
+      email: 'user@desktop.local',
+      name: 'Desktop User',
+      company_name: 'Local Workstation',
+      phone: '',
+      role: 'admin', // Full administrator rights on desktop workstation
+      plan_tier: (license?.plan_tier as any) || 'enterprise',
+      subscription_status: 'active',
+      subscription_expires_at: license?.expires_at || null,
+      max_devices: license?.max_devices || 10,
+      daily_message_limit: license?.daily_message_limit || 10000,
+      daily_extraction_limit: license?.daily_extraction_limit || 10000,
+      messages_sent_today: 0,
+      last_message_date: null,
+      active_license_code: license?.license_key || 'ACTIVE',
+      reseller_license_quota: 0,
+      allowed_pages: null, // Full access to all features
+      is_active: true,
+      created_at: license?.activated_at || new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
+  }, [isLicensed, license]);
 
-    initAuth();
-  }, []);
-
-  const login = async (usernameOrEmail: string, password: string) => {
-    localStorage.removeItem('wa_admin_impersonation_backup');
-    setIsImpersonating(false);
-    setImpersonatorAdmin(null);
-    const res = await api.auth.login(usernameOrEmail, password);
-    setAuthToken(res.token);
-    setTokenState(res.token);
-    setUser(res.user);
+  const login = async () => {
+    console.warn('[AuthContext] Login is deprecated in Desktop Edition. Software is activated via License Key.');
   };
 
-  const register = async (params: RegisterParams | string, password?: string, name?: string) => {
-    localStorage.removeItem('wa_admin_impersonation_backup');
-    setIsImpersonating(false);
-    setImpersonatorAdmin(null);
-    let payload: {
-      username: string;
-      password: string;
-      name?: string;
-      email?: string;
-      company_name?: string;
-      phone?: string;
-      plan_tier?: string;
-    };
-
-    if (typeof params === 'string') {
-      payload = {
-        username: params,
-        password: password || '',
-        name
-      };
-    } else {
-      payload = params;
-    }
-
-    const res = await api.auth.register(payload);
-    setAuthToken(res.token);
-    setTokenState(res.token);
-    setUser(res.user);
-  };
-
-  const impersonateUser = async (targetUserId: string) => {
-    if (!token || !user) throw new Error('You must be logged in as Administrator to impersonate.');
-    const res = await api.admin.impersonate(targetUserId);
-
-    // Backup current admin credentials
-    const adminBackup = {
-      token,
-      user
-    };
-    localStorage.setItem('wa_admin_impersonation_backup', JSON.stringify(adminBackup));
-
-    setAuthToken(res.token);
-    setTokenState(res.token);
-    setUser(res.user);
-    setIsImpersonating(true);
-    setImpersonatorAdmin({ id: user.id, username: user.username, name: user.name });
-  };
-
-  const stopImpersonation = () => {
-    const backupStr = localStorage.getItem('wa_admin_impersonation_backup');
-    if (backupStr) {
-      try {
-        const backup = JSON.parse(backupStr);
-        setAuthToken(backup.token);
-        setTokenState(backup.token);
-        setUser(backup.user);
-      } catch {}
-      localStorage.removeItem('wa_admin_impersonation_backup');
-    }
-    setIsImpersonating(false);
-    setImpersonatorAdmin(null);
+  const register = async () => {
+    console.warn('[AuthContext] Registration is deprecated in Desktop Edition. Software is activated via License Key.');
   };
 
   const refreshUser = async (): Promise<User | null> => {
-    try {
-      const res = await api.auth.getMe();
-      setUser(res.user);
-      return res.user;
-    } catch {
-      return null;
-    }
+    await refreshLicense();
+    return user;
   };
 
   const logout = () => {
-    localStorage.removeItem('wa_admin_impersonation_backup');
-    setIsImpersonating(false);
-    setImpersonatorAdmin(null);
-    removeAuthToken();
-    setTokenState(null);
-    setUser(null);
+    // In desktop edition, logout prompts deactivating or changing the license
+    deactivateLicense();
   };
+
+  const impersonateUser = async () => {};
+  const stopImpersonation = () => {};
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        token,
+        token: isLicensed ? 'desktop_active_session' : null,
         isLoading,
         login,
         register,
         refreshUser,
         logout,
-        isAuthenticated: !!token && !!user,
-        isImpersonating,
-        impersonatorAdmin,
+        isAuthenticated: isLicensed,
+        isImpersonating: false,
+        impersonatorAdmin: null,
         impersonateUser,
         stopImpersonation
       }}
@@ -189,4 +110,3 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
-

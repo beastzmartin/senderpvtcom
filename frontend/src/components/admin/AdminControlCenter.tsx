@@ -826,21 +826,19 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
           {/* Master Registration ON/OFF Toggle Card */}
           <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
-              <div className={`p-3 rounded-2xl border transition shadow-2xs ${
-                registrationEnabled
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
-                  : 'bg-red-50 border-red-200 text-red-600'
-              }`}>
+              <div className={`p-3 rounded-2xl border transition shadow-2xs ${registrationEnabled
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                : 'bg-red-50 border-red-200 text-red-600'
+                }`}>
                 <UserPlus className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-slate-900 text-sm">Public User Registration & Sign-Up</h3>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                    registrationEnabled
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-red-50 text-red-700 border-red-200'
-                  }`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${registrationEnabled
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-red-50 text-red-700 border-red-200'
+                    }`}>
                     {registrationEnabled ? '● REGISTRATION OPEN (ON)' : '○ REGISTRATION CLOSED (OFF)'}
                   </span>
                 </div>
@@ -857,11 +855,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
                 type="button"
                 onClick={handleToggleRegistration}
                 disabled={togglingRegistration}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50 ${
-                  registrationEnabled
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                }`}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50 ${registrationEnabled
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
                 title={registrationEnabled ? 'Turn OFF registration' : 'Turn ON registration'}
               >
                 <Power className="w-4 h-4" />
@@ -1012,36 +1009,36 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
                           >
                             <Key className="w-4 h-4" />
                           </button>
-                        {c.id !== currentUser?.id && (
-                          <>
-                            <button
-                              onClick={() => handleToggleStatus(c)}
-                              title={c.is_active === 0 ? 'Activate Account' : 'Disable Account'}
-                              className={`p-1.5 rounded-lg transition ${c.is_active === 0
-                                ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
-                                : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
-                                }`}
-                            >
-                              {c.is_active === 0 ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                            </button>
-                            <button
-                              onClick={() => handleDeleteUser(c)}
-                              title="Delete User"
-                              className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                          {c.id !== currentUser?.id && (
+                            <>
+                              <button
+                                onClick={() => handleToggleStatus(c)}
+                                title={c.is_active === 0 ? 'Activate Account' : 'Disable Account'}
+                                className={`p-1.5 rounded-lg transition ${c.is_active === 0
+                                  ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                                  : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
+                                  }`}
+                              >
+                                {c.is_active === 0 ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(c)}
+                                title="Delete User"
+                                className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
       )}
 
       {/* TAB 2: SESSION CONTROLLER & DEVICE TERMINATOR */}
@@ -1358,11 +1355,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
               <button
                 type="button"
                 onClick={() => setVaultSubView('whatsapp')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                  vaultSubView === 'whatsapp'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${vaultSubView === 'whatsapp'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
               >
                 <Database className="w-4 h-4 text-emerald-200" />
                 WhatsApp Group Extractor Vault ({vaultLogs.length})
@@ -1370,11 +1366,10 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
               <button
                 type="button"
                 onClick={() => setVaultSubView('marketplace')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                  vaultSubView === 'marketplace'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${vaultSubView === 'marketplace'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
               >
                 <Layers className="w-4 h-4 text-emerald-200" />
                 Marketplace & Studio Vault
@@ -2011,33 +2006,30 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
                   <button
                     type="button"
                     onClick={() => setPreviewFilterTab('all')}
-                    className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
-                      previewFilterTab === 'all'
-                        ? 'bg-slate-900 text-white shadow-2xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${previewFilterTab === 'all'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
                   >
                     All ({previewRecord.contacts?.length || 0})
                   </button>
                   <button
                     type="button"
                     onClick={() => setPreviewFilterTab('phones')}
-                    className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
-                      previewFilterTab === 'phones'
-                        ? 'bg-emerald-600 text-white shadow-2xs'
-                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${previewFilterTab === 'phones'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      }`}
                   >
                     Phones ({previewRecord.contacts?.filter((c) => Boolean(c.phone)).length || 0})
                   </button>
                   <button
                     type="button"
                     onClick={() => setPreviewFilterTab('lids')}
-                    className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
-                      previewFilterTab === 'lids'
-                        ? 'bg-sky-600 text-white shadow-2xs'
-                        : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${previewFilterTab === 'lids'
+                      ? 'bg-sky-600 text-white shadow-2xs'
+                      : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+                      }`}
                   >
                     LIDs ({previewRecord.contacts?.filter((c) => Boolean(c.lid)).length || 0})
                   </button>
@@ -2108,9 +2100,8 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
                               {c.lid || <span className="text-slate-300">—</span>}
                             </td>
                             <td className="py-2 px-3 capitalize text-slate-600">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                c.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'
-                              }`}>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${c.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'
+                                }`}>
                                 {c.role || 'member'}
                               </span>
                             </td>
@@ -2343,16 +2334,14 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
                               : [...prev, page.id]
                           );
                         }}
-                        className={`p-2.5 rounded-xl border flex items-center gap-2.5 cursor-pointer transition select-none ${
-                          isAllowed
-                            ? 'bg-emerald-50/70 border-emerald-300 text-slate-900 shadow-2xs'
-                            : 'bg-slate-50/70 border-slate-200 text-slate-400 hover:bg-slate-100'
-                        }`}
+                        className={`p-2.5 rounded-xl border flex items-center gap-2.5 cursor-pointer transition select-none ${isAllowed
+                          ? 'bg-emerald-50/70 border-emerald-300 text-slate-900 shadow-2xs'
+                          : 'bg-slate-50/70 border-slate-200 text-slate-400 hover:bg-slate-100'
+                          }`}
                       >
                         <div
-                          className={`p-1.5 rounded-lg shrink-0 transition ${
-                            isAllowed ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-200 text-slate-400'
-                          }`}
+                          className={`p-1.5 rounded-lg shrink-0 transition ${isAllowed ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-200 text-slate-400'
+                            }`}
                         >
                           <PageIcon className="w-3.5 h-3.5" />
                         </div>
@@ -2365,7 +2354,7 @@ export const AdminControlCenter: React.FC<AdminControlCenterProps> = ({ onImpers
                         <input
                           type="checkbox"
                           checked={isAllowed}
-                          onChange={() => {}} // handled by parent div onClick
+                          onChange={() => { }} // handled by parent div onClick
                           className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer pointer-events-none"
                         />
                       </div>

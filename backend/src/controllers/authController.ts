@@ -10,55 +10,17 @@ export class AuthController {
   }
 
   public login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { username, password } = req.body;
-
-      if (!username || !password) {
-        res.status(400).json({ error: 'Username (or Email) and password are required.' });
-        return;
-      }
-
-      const { token, user } = this.authService.login(username, password);
-
-      res.json({
-        success: true,
-        message: 'Login successful',
-        token,
-        user
-      });
-    } catch (err: any) {
-      res.status(401).json({ error: err.message || 'Authentication failed' });
-    }
+    res.status(400).json({
+      error: 'User login system has been replaced with License Key Activation in Desktop Edition.',
+      desktop_mode: true
+    });
   };
 
   public register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { username, password, name, email, company_name, phone, plan_tier } = req.body;
-
-      if (!username || !password) {
-        res.status(400).json({ error: 'Username and password are required.' });
-        return;
-      }
-
-      const { token, user } = this.authService.register({
-        username,
-        password,
-        name,
-        email,
-        company_name,
-        phone,
-        plan_tier
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Account created successfully',
-        token,
-        user
-      });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message || 'Registration failed' });
-    }
+    res.status(400).json({
+      error: 'User registration is disabled in Desktop Edition. The application operates via License Key.',
+      desktop_mode: true
+    });
   };
 
   public getRegistrationStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -86,13 +48,29 @@ export class AuthController {
         return;
       }
 
-      const user = this.authService.getUserById(req.user.id);
+      let user = this.authService.getUserById(req.user.id);
       if (!user) {
-        res.status(404).json({ error: 'User not found' });
-        return;
+        user = {
+          id: req.user.id || 'local_user',
+          username: req.user.username || 'local_user',
+          name: req.user.name || 'Desktop User',
+          email: 'user@desktop.local',
+          company_name: 'Local Workstation',
+          phone: '',
+          role: 'admin',
+          plan_tier: req.user.plan_tier || 'enterprise',
+          subscription_status: 'active',
+          subscription_expires_at: null,
+          max_devices: req.user.max_devices || 10,
+          daily_message_limit: req.user.daily_message_limit || 10000,
+          daily_extraction_limit: req.user.daily_extraction_limit || 10000,
+          allowed_pages: null,
+          is_active: true,
+          created_at: new Date().toISOString()
+        };
       }
 
-      res.json({ user });
+      res.json({ user, isLicensed: true });
     } catch (err) {
       next(err);
     }

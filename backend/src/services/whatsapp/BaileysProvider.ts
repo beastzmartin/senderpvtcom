@@ -597,11 +597,11 @@ export class BaileysWhatsAppProvider extends EventEmitter implements IWhatsAppPr
 
     if (this.sock) {
       try {
-        await this.sock.logout().catch(() => {});
+        await this.sock.logout().catch(() => { });
       } catch {
         try {
           this.sock.end(undefined);
-        } catch {}
+        } catch { }
       }
       this.sock = null;
     }
@@ -1242,7 +1242,7 @@ export class BaileysWhatsAppProvider extends EventEmitter implements IWhatsAppPr
         if (info.id && participating[info.id]) {
           isAlreadyJoined = true;
         }
-      } catch {}
+      } catch { }
 
       return {
         id: info.id,

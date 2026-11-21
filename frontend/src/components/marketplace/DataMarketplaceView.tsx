@@ -304,22 +304,20 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
             <div className="flex flex-wrap items-center gap-2.5">
               <button
                 onClick={() => setActiveTab('catalog')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                  activeTab === 'catalog'
-                    ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
-                    : 'bg-white/10 text-white hover:bg-white/15'
-                }`}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${activeTab === 'catalog'
+                  ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                  : 'bg-white/10 text-white hover:bg-white/15'
+                  }`}
               >
                 <Database className="w-4 h-4" />
                 <span>Catalog Marketplace</span>
               </button>
               <button
                 onClick={() => setActiveTab('jobs')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                  activeTab === 'jobs'
-                    ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
-                    : 'bg-white/10 text-white hover:bg-white/15'
-                }`}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${activeTab === 'jobs'
+                  ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                  : 'bg-white/10 text-white hover:bg-white/15'
+                  }`}
               >
                 <Clock className="w-4 h-4" />
                 <span>My Extraction Jobs</span>
@@ -397,11 +395,10 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
-                    selectedCategory === cat
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${selectedCategory === cat
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
                 >
                   {cat === 'all' ? 'All Categories' : cat}
                 </button>
@@ -544,17 +541,16 @@ export const DataMarketplaceView: React.FC<DataMarketplaceViewProps> = ({
                         </td>
                         <td className="py-3 px-4">
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                              job.status === 'COMPLETED'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : job.status === 'RUNNING'
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${job.status === 'COMPLETED'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : job.status === 'RUNNING'
                                 ? 'bg-blue-50 text-blue-700 border border-blue-200 animate-pulse'
                                 : job.status === 'PARTIAL'
-                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                : job.status === 'QUEUED'
-                                ? 'bg-slate-100 text-slate-700'
-                                : 'bg-rose-50 text-rose-700 border border-rose-200'
-                            }`}
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : job.status === 'QUEUED'
+                                    ? 'bg-slate-100 text-slate-700'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              }`}
                           >
                             {job.status === 'COMPLETED' && <CheckCircle className="w-3 h-3" />}
                             {job.status === 'RUNNING' && <RefreshCw className="w-3 h-3 animate-spin" />}

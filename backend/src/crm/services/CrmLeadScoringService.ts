@@ -138,7 +138,7 @@ export class CrmLeadScoringService {
         const titles: string[] = criteria.titles || ['CEO', 'CTO', 'Founder', 'Director', 'VP'];
         const currentTitle = (contact.title || '').toLowerCase();
         if (!currentTitle) return { matched: false, reason: 'No job title defined' };
-        
+
         const matchedTitle = titles.find((t) => currentTitle.includes(t.toLowerCase()));
         if (matchedTitle) {
           return { matched: true, reason: `Matched ICP title keyword: "${matchedTitle}"` };
@@ -180,7 +180,7 @@ export class CrmLeadScoringService {
       case 'activity_recency': {
         const withinDays = criteria.within_days || 7;
         if (!latestActivity) return { matched: false, reason: 'No recorded interactions' };
-        
+
         const activityTime = new Date(latestActivity.created_at).getTime();
         const diffDays = (Date.now() - activityTime) / (1000 * 60 * 60 * 24);
         if (diffDays <= withinDays) {

@@ -525,11 +525,10 @@ export class CrmBillingService {
             <span>Gross Price:</span>
             <span>$${grossPriceUsd.toFixed(2)}</span>
           </div>
-          ${
-            invoice.discount_usd > 0
-              ? `<div class="summary-row" style="color: #16a34a;"><span>Discounts & Credits:</span><span>-$${invoice.discount_usd.toFixed(2)}</span></div>`
-              : ''
-          }
+          ${invoice.discount_usd > 0
+        ? `<div class="summary-row" style="color: #16a34a;"><span>Discounts & Credits:</span><span>-$${invoice.discount_usd.toFixed(2)}</span></div>`
+        : ''
+      }
           <div class="summary-row" style="border-top: 1px dashed #cbd5e1; padding-top: 8px;">
             <span>Net Taxable Amount:</span>
             <span>$${invoice.subtotal_usd.toFixed(2)}</span>

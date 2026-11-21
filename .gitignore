@@ -4,6 +4,8 @@ node_modules/
 # Production outputs
 dist/
 build/
+dist_desktop/
+release/
 
 # Sessions and SQLite data (contains WhatsApp keys & database)
 backend/data/*

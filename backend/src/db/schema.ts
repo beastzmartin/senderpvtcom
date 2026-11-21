@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS license_keys (
   max_devices_override INTEGER,
   daily_limit_override INTEGER,
   extraction_limit_override INTEGER,
+  bound_hwid TEXT,
   status TEXT DEFAULT 'available' CHECK(status IN ('available', 'used', 'revoked', 'expired')),
   is_used INTEGER DEFAULT 0,
   used_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -55,6 +56,23 @@ CREATE TABLE IF NOT EXISTS license_keys (
   created_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   note TEXT,
   created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS app_license (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  license_key TEXT NOT NULL,
+  hwid TEXT NOT NULL,
+  plan_tier TEXT NOT NULL DEFAULT 'enterprise',
+  status TEXT NOT NULL DEFAULT 'active',
+  activated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT,
+  is_lifetime INTEGER DEFAULT 0,
+  daily_message_limit INTEGER DEFAULT 10000,
+  daily_extraction_limit INTEGER DEFAULT 10000,
+  max_devices INTEGER DEFAULT 10,
+  features TEXT,
+  signature TEXT,
+  last_verified_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS extraction_logs (

@@ -88,6 +88,9 @@ import {
 } from '../types';
 
 const getApiBase = (): string => {
+  if (typeof window !== 'undefined' && (window as any).DESKTOP_ENV?.apiUrl) {
+    return (window as any).DESKTOP_ENV.apiUrl;
+  }
   const envUrl = ((import.meta as any).env?.VITE_API_URL as string)?.trim();
   if (envUrl) {
     const clean = envUrl.replace(/\/+$/, '');
@@ -146,6 +149,44 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  // Desktop Licensing Management
+  license: {
+    getStatus: () => request<{
+      active: boolean;
+      hwid: string;
+      license?: {
+        license_key: string;
+        hwid: string;
+        plan_tier: string;
+        status: string;
+        activated_at: string;
+        expires_at: string | null;
+        is_lifetime: boolean;
+        daily_message_limit: number;
+        daily_extraction_limit: number;
+        max_devices: number;
+        features: string[];
+      };
+      usage?: {
+        messagesSentToday: number;
+        dailyMessageLimit: number;
+        extractionsDoneToday: number;
+        dailyExtractionLimit: number;
+        connectedDevices: number;
+        maxDevices: number;
+      };
+      reason?: string;
+    }>('/license/status'),
+    getHwid: () => request<{ hwid: string; platform: string; arch: string }>('/license/hwid'),
+    activate: (licenseKey: string) => request<{ success: boolean; message: string; license?: any }>('/license/activate', {
+      method: 'POST',
+      body: JSON.stringify({ licenseKey })
+    }),
+    deactivate: () => request<{ success: boolean; message: string }>('/license/deactivate', {
+      method: 'POST'
+    })
+  },
+
   // Generic HTTP methods
   get: async <T = any>(endpoint: string) => {
     const data = await request<T>(endpoint.replace(/^\/api/, ''), { method: 'GET' });

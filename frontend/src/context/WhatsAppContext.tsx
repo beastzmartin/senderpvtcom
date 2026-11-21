@@ -135,6 +135,9 @@ export const WhatsAppProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     // Resolve socket server target URL
     const getSocketUrl = (): string => {
+      if (typeof window !== 'undefined' && (window as any).DESKTOP_ENV?.socketUrl) {
+        return (window as any).DESKTOP_ENV.socketUrl;
+      }
       const envUrl = ((import.meta as any).env?.VITE_API_URL as string)?.trim();
       if (envUrl && envUrl.startsWith('http')) {
         try {

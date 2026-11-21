@@ -1,7 +1,8 @@
 {
   "name": "whatsapp-messenger-suite",
   "version": "1.0.0",
-  "description": "Full-Stack WhatsApp Messaging Application with Phone & LID support",
+  "description": "Full-Stack WhatsApp Messaging Application with Phone & LID support (Standalone Offline Desktop Edition)",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
@@ -16,15 +17,77 @@
     "start": "cd backend && npm start",
     "test": "cd backend && npm run test:verify",
     "reset-password": "npm --prefix backend run reset-password",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "desktop:dev": "cross-env NODE_ENV=development VITE_DEV_SERVER=true concurrently -n \"BACKEND,FRONTEND,ELECTRON\" -c \"blue,green,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on tcp:5173 && wait-on tcp:3000 && electron .\"",
+    "desktop:build": "npm run build && electron-builder",
+    "desktop:build:win": "npm run build && electron-builder --win",
+    "desktop:build:mac": "npm run build && electron-builder --mac",
+    "desktop:build:dir": "npm run build && electron-builder --dir",
+    "generate-license": "node scripts/generate-license.cjs"
   },
   "engines": {
     "node": ">=20.0.0 <23.0.0"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "cross-env": "^10.1.0",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "wait-on": "^9.5.1"
   },
   "dependencies": {
     "pg": "^8.23.1"
+  },
+  "build": {
+    "appId": "com.pvtsender.whatsappdesktop",
+    "productName": "WhatsApp Messaging & Extractor CRM Suite",
+    "directories": {
+      "output": "dist_desktop"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "backend/dist/**/*",
+      "backend/package.json",
+      "backend/node_modules/**/*"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/better-sqlite3/**",
+      "**/backend/dist/**"
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg"
+        },
+        {
+          "target": "zip"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }

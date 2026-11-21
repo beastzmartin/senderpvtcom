@@ -172,7 +172,7 @@ export const LidLinkGeneratorView: React.FC<LidLinkGeneratorViewProps> = ({
       .then((res) => {
         if (res && res.data) setAvailableGroups(res.data);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Stats Counters
@@ -725,10 +725,10 @@ export const LidLinkGeneratorView: React.FC<LidLinkGeneratorViewProps> = ({
         activeProtocol === 'wa_me'
           ? item.links.waMe
           : activeProtocol === 'api_whatsapp'
-          ? item.links.apiWhatsApp
-          : activeProtocol === 'web_whatsapp'
-          ? item.links.webWhatsApp
-          : item.links.appIntent;
+            ? item.links.apiWhatsApp
+            : activeProtocol === 'web_whatsapp'
+              ? item.links.webWhatsApp
+              : item.links.appIntent;
 
       if (link) {
         window.open(link, '_blank');
@@ -834,9 +834,8 @@ export const LidLinkGeneratorView: React.FC<LidLinkGeneratorViewProps> = ({
 
         {/* WhatsApp Connection Pill */}
         <div className="flex items-center gap-3">
-          <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border ${
-            isConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-          }`}>
+          <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border ${isConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+            }`}>
             <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
             <span>{isConnected ? `Connected (${activeDevice?.phone_number || 'Live Session'})` : 'WhatsApp Disconnected'}</span>
           </div>
@@ -1223,17 +1222,15 @@ export const LidLinkGeneratorView: React.FC<LidLinkGeneratorViewProps> = ({
             <button
               key={proto.id}
               onClick={() => setActiveProtocol(proto.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap border ${
-                activeProtocol === proto.id
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap border ${activeProtocol === proto.id
+                ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
             >
               <span>{proto.label}</span>
               {proto.badge && (
-                <span className={`text-[9px] px-1 py-0.2 rounded font-extrabold ${
-                  activeProtocol === proto.id ? 'bg-emerald-500 text-slate-950' : 'bg-slate-200 text-slate-700'
-                }`}>
+                <span className={`text-[9px] px-1 py-0.2 rounded font-extrabold ${activeProtocol === proto.id ? 'bg-emerald-500 text-slate-950' : 'bg-slate-200 text-slate-700'
+                  }`}>
                   {proto.badge}
                 </span>
               )}
@@ -1338,31 +1335,28 @@ export const LidLinkGeneratorView: React.FC<LidLinkGeneratorViewProps> = ({
           <div className="flex items-center gap-1.5 w-full md:w-auto">
             <button
               onClick={() => setFilterStatus('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
-                filterStatus === 'all'
-                  ? 'bg-slate-900 text-white border-slate-900'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${filterStatus === 'all'
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
             >
               All ({totalCount})
             </button>
             <button
               onClick={() => setFilterStatus('resolved')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
-                filterStatus === 'resolved'
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${filterStatus === 'resolved'
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
             >
               Resolved ({resolvedCount})
             </button>
             <button
               onClick={() => setFilterStatus('unresolved')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
-                filterStatus === 'unresolved'
-                  ? 'bg-amber-600 text-white border-amber-600'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${filterStatus === 'unresolved'
+                ? 'bg-amber-600 text-white border-amber-600'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
             >
               Unresolved ({unresolvedCount})
             </button>
@@ -1402,10 +1396,10 @@ export const LidLinkGeneratorView: React.FC<LidLinkGeneratorViewProps> = ({
                     activeProtocol === 'wa_me'
                       ? item.links.waMe
                       : activeProtocol === 'api_whatsapp'
-                      ? item.links.apiWhatsApp
-                      : activeProtocol === 'web_whatsapp'
-                      ? item.links.webWhatsApp
-                      : item.links.appIntent;
+                        ? item.links.apiWhatsApp
+                        : activeProtocol === 'web_whatsapp'
+                          ? item.links.webWhatsApp
+                          : item.links.appIntent;
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/70 transition">
@@ -1490,13 +1484,12 @@ export const LidLinkGeneratorView: React.FC<LidLinkGeneratorViewProps> = ({
                           <button
                             onClick={() => handleDirectSend(item)}
                             disabled={item.sendState === 'sending'}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm ${
-                              item.sendState === 'sent'
-                                ? 'bg-emerald-600 text-white'
-                                : item.sendState === 'failed'
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm ${item.sendState === 'sent'
+                              ? 'bg-emerald-600 text-white'
+                              : item.sendState === 'failed'
                                 ? 'bg-rose-600 text-white'
                                 : 'bg-slate-900 hover:bg-slate-800 text-white'
-                            }`}
+                              }`}
                             title="Directly dispatch message via connected WhatsApp session"
                           >
                             {item.sendState === 'sending' ? (
@@ -1581,11 +1574,10 @@ export const LidLinkGeneratorView: React.FC<LidLinkGeneratorViewProps> = ({
                 availableGroups.map((g) => (
                   <label
                     key={g.id}
-                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition ${
-                      selectedGroupId === g.id
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
+                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition ${selectedGroupId === g.id
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
                   >
                     <div className="flex items-center gap-2.5">
                       <input
